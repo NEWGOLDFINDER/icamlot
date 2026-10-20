@@ -82,7 +82,23 @@ kbd { font-family: var(--font-mono); font-size: 12px; background: var(--panel-2)
 .cams button { border: none; background: transparent; padding: 5px 9px; font-size: 12.5px; color: var(--muted); }
 .cams button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); font-weight: 600; }
 .pick { left: 50%; top: 12px; transform: translateX(-50%); padding: 6px 12px; font-size: 13px; color: var(--accent); border-color: rgba(245,197,24,0.5); pointer-events: none; white-space: nowrap; }
-.busy { right: 12px; top: 62px; font-size: 12px; padding: 3px 9px; }
+.score { right: 12px; top: 60px; padding: 2px 12px; color: var(--muted); font-size: 13px; font-weight: 600; cursor: pointer; }
+.score b { color: var(--accent); font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.score:hover { border-color: var(--accent); }
+.busy { right: 12px; top: 104px; font-size: 12px; padding: 3px 9px; }
+.tpts { font-weight: 800; color: var(--accent); font-size: 13px; white-space: nowrap; }
+.scorebox { padding: 14px 14px 6px; }
+.scorebox .big { font-size: 15px; color: var(--muted); font-weight: 600; }
+.scorebox .big b { font-size: 38px; font-weight: 800; color: var(--accent); line-height: 1; font-variant-numeric: tabular-nums; }
+.scorebox .note { margin-top: 4px; font-size: 12.5px; }
+.sgrp { margin: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); overflow: hidden; }
+.sgrp .sh { display: flex; justify-content: space-between; padding: 7px 11px; font-weight: 700; border-bottom: 1px solid var(--line); }
+.sgrp .sh b { color: var(--accent); }
+.sgrp .srw { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 6px 11px; font-size: 13px; }
+.sgrp .srw small { display: block; color: var(--muted); font-size: 12px; }
+.sgrp .srw b { font-variant-numeric: tabular-nums; min-width: 2ch; text-align: right; }
+.sgrp .srw.zero b { color: var(--muted); font-weight: 500; }
+.rh { margin: 14px 14px 0; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
 @media (max-width: 1250px) { .now { max-width: calc(100% - 24px); bottom: 58px; } }
 
 /* ---------- panneau programme ---------- */
@@ -210,6 +226,8 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
   body.v-table .panel, body.v-prog .stage { display: none; }
   .hud { min-width: 0; }
   .clock { font-size: 20px; }
+  .score { top: 50px; }
+  .score b { font-size: 18px; }
   .cams { bottom: 12px; }
   .now { bottom: 56px; font-size: 12.5px; }
   .tl { gap: 8px; }
@@ -286,6 +304,7 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
         </div>
       </div>
       <div class="ov clock"><span id="clk">0,0</span> <small>/ 100 s</small></div>
+      <button type="button" class="ov score" id="score" title="Score estimé : détail dans l'onglet Résultat"><b id="scoreV">-</b> pts</button>
       <div class="ov pick" id="pick" hidden></div>
       <div class="ov busy" id="busy" hidden>Calcul…</div>
       <div class="ov now"><span id="now">Départ</span></div>
@@ -305,6 +324,7 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
       <div class="pane" id="pane-prog">
         <div class="phead">
           <span class="tot" id="tot"></span>
+          <span class="tpts" id="totPts" title="Score estimé (détail dans Résultat)"></span>
           <button type="button" class="ghost" id="bUndo" title="Annuler (Ctrl+Z)" aria-label="Annuler"><i class="fa-solid fa-rotate-left"></i></button>
           <button type="button" class="ghost" id="bRedo" title="Rétablir (Ctrl+Y)" aria-label="Rétablir"><i class="fa-solid fa-rotate-right"></i></button>
           <button type="button" class="ghost" id="bExample" title="Remplacer par la stratégie d'exemple">Exemple</button>
@@ -442,7 +462,8 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
         <li>Hauteur du robot : 350 mm (règlement général F.3). Objets tenus : 350 mm, ou 430 mm dans les zones de construction et les châteaux (règlement 2027).</li>
         <li>Périmètre : 1200 mm au départ, 1400 mm ensuite (F.3). Boulets comptés s'ils tombent entre 85 et 100 s (E.4). Graal : plus grand qu'un cube de 100 mm (contraintes PAMI). Fin : robot dans la salle du trône (E.3).</li>
         <li>Trajets calculés sur une grille de 40 mm avec la forme exacte du robot et des pierres tenues. Sans trajet sans contact, le robot va tout droit et le contact est signalé.</li>
-        <li>Porte : 2 piliers accolés et linteau tenu par de petites ventouses. Tour : la pierre est centrée sur son cercle si la place le permet, sinon décalée (signalé). Robot adverse absent, points non calculés.</li>
+        <li>Porte : 2 piliers accolés et linteau tenu par de petites ventouses. Tour : la pierre est centrée sur son cercle si la place le permet, sinon décalée (signalé). Robot adverse absent.</li>
+        <li>Score : barème du compteur de points, état de la table à 100 s (ou en fin de programme). Seules nos zones comptent. Niveau du Graal estimé d'après sa hauteur. Douves et attaque de PAMI non simulées.</li>
       </ul>
     </div>
     <div class="crow"><button type="button" id="bLogout"><i class="fa-solid fa-right-from-bracket"></i> Se déconnecter</button></div>
@@ -854,7 +875,7 @@ var ENGINE = (function () {
         zz(f, hcp + 5, 'Montée du Graal au-dessus de ' + z.id);
         lin(b.c.O, b.c.h, VA, 'Graal au-dessus de ' + z.id);
         zz(f, hcp, 'Pose du Graal');
-        graal.cur = { k: 'free', c: b.c.Gc, z: top + GS / 2, pose: poseNow(), f: f, top: top + GS }; graal.tl.push({ t: s.t, k: 'free', pose: poseNow(), f: f, top: top + GS });
+        graal.cur = { k: 'free', c: b.c.Gc, z: top + GS / 2, pose: poseNow(), f: f, top: top + GS }; graal.tl.push({ t: s.t, k: 'free', pose: poseNow(), f: f, top: top + GS, c: b.c.Gc, zone: z.id });
         held[f] = null; var v = s[f].vac.slice(); v[0] = 0; vac(f, v, 'Graal posé sur ' + z.id + ' (haut à ' + Math.round(top + GS) + ' mm)', TL);
         lin(Ob, b.c.h, VA, 'Recul'); zz(f, 165, 'Pince ' + f + ' en position basse');
       },
@@ -909,6 +930,7 @@ var ENGINE = (function () {
 /*ENGINE_END*/
 
 </script>
+<script src="../bareme.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

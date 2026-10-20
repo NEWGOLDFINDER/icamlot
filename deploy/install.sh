@@ -31,7 +31,7 @@ apt-get install -y nginx curl python3
 
 # Pages du site
 install -d "$WEB" "$WEB/point-counter" "$WEB/plateau" "$WEB/connexion"
-install -m 644 "$SRC/index.html" "$WEB/index.html"
+install -m 644 "$SRC/index.html" "$SRC/bareme.js" "$WEB/"
 install -m 644 "$SRC/point-counter/index.html" "$WEB/point-counter/index.html"
 install -m 644 "$SRC/connexion/index.html" "$WEB/connexion/index.html"
 install -m 644 "$SRC/plateau/index.html" "$SRC/plateau/app.js" "$SRC/plateau/table.jpg" "$WEB/plateau/"

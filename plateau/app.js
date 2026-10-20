@@ -510,18 +510,20 @@
 
   function fmt(t) { return (Math.round(t * 10) / 10).toFixed(1).replace('.', ','); }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
-  function renderResults() {
-    var T = R.T, fin = {};
+  /* état de la table à l'instant t : constructions, Graal, retour du roi, boulets */
+  function own(id) { var n = parseInt(id.slice(1), 10); return id[0] === 'M' ? n <= 5 : n <= 4; }
+  function outcome(T) {
+    var fin = {};
     R.stones.forEach(function (st) {
       var e = R.stoneAt(st, T);
       if (e.k === 'home') { var pk = ENGINE.PK[st.pk]; fin[st.id] = { foot: rectPoly({ cx: pk.x, cy: pk.y, hl: 160, hn: 55, ang: pk.tan + 90 }), v: false, bottom: 110 * st.l, home: true }; }
       else if (e.k === 'free') { var g = e.pose[e.f], th = g.rot * Math.PI / 180, fo = heldFoot(e.pose, e.f === 'A' ? 0 : 1, e.l), zc = g.hc + 110 * (e.l - 1) * Math.cos(th); fin[st.id] = { foot: rectPoly(fo), v: Math.abs(Math.sin(th)) > 0.7, bottom: zc - (160 * Math.abs(Math.sin(th)) + 55 * Math.abs(Math.cos(th))) }; }
     });
     function zr(z) { return rectPoly({ cx: z.c[0], cy: z.c[1], hl: 200, hn: 100, ang: z.tan + 90 }); }
-    var rows = [], walls = [], doors = [], towers = [], inZ = {};
+    var walls = [], doors = [], towers = [], inZ = {}, inOwn = {};
     ENGINE.ZM.forEach(function (z) {
       var P = zr(z), ss = Object.keys(fin).filter(function (k) { return !fin[k].home && overlap(fin[k].foot, P, 0); });
-      ss.forEach(function (k) { inZ[k] = 1; });
+      ss.forEach(function (k) { inZ[k] = 1; if (own(z.id)) inOwn[k] = 1; });
       var h = ss.filter(function (k) { return !fin[k].v; }), v = ss.filter(function (k) { return fin[k].v; });
       if (v.length >= 2 && h.some(function (k) { return fin[k].bottom > 300; })) doors.push(z.id);
       else if (h.length >= 3) walls.push(z.id);
@@ -530,27 +532,72 @@
       Object.keys(fin).forEach(function (k) {
         if (fin[k].home) return; var d = 1e9, P = fin[k].foot;
         if (ENGINE.inPoly(z.c[0], z.c[1], P)) d = 0; else for (var i = 0; i < 4; i++) { var a = P[i], b = P[(i + 1) % 4], dx = b[0] - a[0], dy = b[1] - a[1], L = dx * dx + dy * dy, u = Math.max(0, Math.min(1, ((z.c[0] - a[0]) * dx + (z.c[1] - a[1]) * dy) / L)); d = Math.min(d, Math.hypot(z.c[0] - a[0] - u * dx, z.c[1] - a[1] - u * dy)); }
-        if (d < 100) { inZ[k] = 1; if (fin[k].v && towers.indexOf(z.id) < 0) towers.push(z.id); }
+        if (d < 100) { inZ[k] = 1; if (own(z.id)) inOwn[k] = 1; if (fin[k].v && towers.indexOf(z.id) < 0) towers.push(z.id); }
       });
     });
-    var own = function (id) { var n = parseInt(id.slice(1), 10); return id[0] === 'M' ? n <= 5 : n <= 4; };
-    var bOk = R.balls.t >= 85 && R.balls.t + R.balls.d <= 100, ge = graalAt(T), gTxt = 'dans la salle du trône';
-    if (ge.k === 'held') gTxt = 'encore tenu par le robot (non compté)';
-    if (ge.k === 'free') { var gt = ge.top != null ? ge.top : ge.pose[ge.f].hc - 110 + params.gs; gTxt = 'posé, sommet à ' + Math.round(gt) + ' mm' + (gt > 430.5 ? ' (au-delà de 430 mm)' : ''); }
-    var pEnd = R.poseAt(T), tri = triPoly(pEnd), inThrone = tri.every(function (v) { return v[0] >= 0 && v[0] <= 500 && v[1] >= 750 && v[1] <= 1250; });
+    var ge = graalAt(T), tri = triPoly(R.poseAt(T));
+    var throneFull = tri.every(function (v) { return ENGINE.inPoly(v[0], v[1], ENGINE.THRONE); });
+    var thronePart = !throneFull && overlap(tri, ENGINE.THRONE, 0);
+    var nBalls = 0;
+    if (R.balls.t < Infinity) for (var i = 0; i < 10; i++) { var ti = R.balls.t + (i + 0.5) * R.balls.d / 10; if (ti >= 85 && ti <= T + 1e-6) nBalls++; }
+    return { T: T, fin: fin, walls: walls, doors: doors, towers: towers, inZ: inZ, inOwn: inOwn, ge: ge, throneFull: throneFull, thronePart: thronePart, nBalls: nBalls };
+  }
+  /* points de la stratégie avec le barème du compteur (bareme.js) ; douves et PAMI ne sont pas simulés */
+  function scoreOf(o) {
+    var B = BAREME, rows = [];
+    var nP = Object.keys(o.inOwn).length, wOwn = o.walls.filter(own), tOwn = o.towers.filter(own), dOwn = o.doors.filter(own);
+    var g = o.ge, gIn = false, lvl = 0, gNote = 'non posé dans le château';
+    if (g.k === 'free' && g.zone && own(g.zone)) {
+      gIn = true; var bottom = g.top - params.gs;
+      lvl = bottom >= 300 ? 3 : bottom >= 200 ? 2 : bottom >= 100 ? 1 : 0;
+      gNote = 'posé sur ' + g.zone + ' (base à ' + Math.round(bottom) + ' mm)';
+    } else if (g.k === 'held') gNote = 'encore tenu par le robot';
+    var roi = o.throneFull ? B.retourComplet : o.thronePart ? B.retourPartiel : 0;
+    var bl = (o.nBalls >= 1 ? B.boulet1 : 0) + (o.nBalls >= 3 ? B.boulet3 : 0);
+    rows.push(['Construction', [
+      ['Pierres dans nos zones', nP + ' × ' + B.pierre + ' pt', nP * B.pierre],
+      ['Murs', wOwn.length ? wOwn.join(', ') : 'aucun', wOwn.length * B.mur],
+      ['Tours', tOwn.length ? tOwn.join(', ') : 'aucune', tOwn.length * B.tour],
+      ['Porte', dOwn.length ? dOwn[0] : 'aucune', dOwn.length ? B.porte : 0]
+    ]]);
+    rows.push(['Graal', [
+      ['Dans le château', gNote, gIn ? B.graalPresent : 0],
+      ['Niveau d\'élévation', gIn ? 'niveau ' + lvl + ' (estimé d\'après la hauteur)' : '-', lvl * B.graalNiveau]
+    ]]);
+    rows.push(['Retour du roi', [
+      ['Salle du trône', o.throneFull ? 'complètement' : o.thronePart ? 'en partie' : 'dehors', roi]
+    ]]);
+    rows.push(['Assaut', [
+      ['Boulets dans la cour adverse', o.nBalls + ' tombés entre 85 et 100 s', bl],
+      ['Douves et attaque de PAMI', 'non simulées', 0]
+    ]]);
+    var total = 0; rows.forEach(function (r) { r[1].forEach(function (x) { total += x[2]; }); });
+    return { total: total, rows: rows };
+  }
+  function renderResults() {
+    var T = R.T, tE = Math.min(T, MATCH), o = outcome(tE), sc = scoreOf(o);
+    $('scoreV').textContent = sc.total; $('totPts').textContent = sc.total + ' pts';
+    $('score').title = 'Score estimé ' + (T > MATCH ? 'à 100 s' : 'en fin de programme') + ' : détail dans l\'onglet Résultat';
+    var h = '<div class="scorebox"><div class="big"><b>' + sc.total + '</b> pts</div><p class="note">Score estimé ' + (T > MATCH ? 'à 100 s : ce qui est fait après ne compte pas' : 'en fin de programme') + '. Barème du compteur de points, robot adverse absent.</p></div>';
+    sc.rows.forEach(function (r) {
+      var sub = 0; r[1].forEach(function (x) { sub += x[2]; });
+      h += '<div class="sgrp"><div class="sh"><span>' + esc(r[0]) + '</span><b>' + sub + ' pts</b></div>';
+      r[1].forEach(function (x) { h += '<div class="srw' + (x[2] ? '' : ' zero') + '"><span>' + esc(x[0]) + '<small>' + esc(x[1]) + '</small></span><b>' + x[2] + '</b></div>'; });
+      h += '</div>';
+    });
+    if (params.gs <= 100) h += '<p class="note bad" style="padding:0 14px">Le Graal fait ' + params.gs + ' mm : le règlement exige plus qu\'un cube de 100 mm.</p>';
+    var rows = [];
     rows.push(['Durée du programme', fmt(T) + ' s', T <= MATCH]);
-    rows.push(['Pierres prises', Object.keys(fin).filter(function (k) { return !fin[k].home; }).length + R.stones.filter(function (st) { return R.stoneAt(st, T).k === 'held'; }).length + ' / 30', null]);
-    rows.push(['Pierres dans nos zones', Object.keys(inZ).length, null]);
-    rows.push(['Murs', walls.length ? walls.join(', ') + (walls.some(function (z) { return !own(z); }) ? ' (zone adverse incluse)' : '') : 'aucun', null]);
-    rows.push(['Tours', towers.length ? towers.join(', ') : 'aucune', null]);
-    rows.push(['Porte', doors.length ? doors.join(', ') : 'aucune', null]);
-    rows.push(['Boulets', R.balls.t < Infinity ? 'lâchés de ' + fmt(R.balls.t) + ' à ' + fmt(R.balls.t + R.balls.d) + ' s' + (bOk ? ', comptés' : ', hors phase d\'attaque') : 'non lâchés', R.balls.t < Infinity ? bOk : null]);
-    rows.push(['Graal', gTxt + (params.gs <= 100 ? ' · taille sous le cube de 100 mm exigé' : ''), ge.k === 'free' ? ((ge.top != null ? ge.top : 0) <= 430.5 && params.gs > 100) : null]);
-    rows.push(['Fin dans la salle du trône', inThrone ? (T <= MATCH ? 'oui' : 'oui, mais après 100 s') : 'non', inThrone && T <= MATCH]);
+    rows.push(['Pierres prises', Object.keys(o.fin).filter(function (k) { return !o.fin[k].home; }).length + R.stones.filter(function (st) { return R.stoneAt(st, tE).k === 'held'; }).length + ' / 30', null]);
+    rows.push(['Pierres dans une zone', Object.keys(o.inZ).length + ' (dont ' + Object.keys(o.inOwn).length + ' chez nous)', null]);
+    var adv = o.walls.concat(o.towers, o.doors).filter(function (z) { return !own(z); });
+    rows.push(['Constructions côté adverse', adv.length ? adv.join(', ') + ' (non comptées)' : 'aucune', adv.length ? false : null]);
+    rows.push(['Boulets', R.balls.t < Infinity ? 'lâchés de ' + fmt(R.balls.t) + ' à ' + fmt(R.balls.t + R.balls.d) + ' s' : 'non lâchés', R.balls.t < Infinity ? o.nBalls === 10 : null]);
     var badT = badMap.filter(function (b, i) { return b.bad && i * 0.2 <= T; }).length * 0.2;
     rows.push(['Temps hors règlement', badT ? 'environ ' + fmt(badT) + ' s (voir Alertes)' : 'aucun', !badT]);
     rows.push(['Contacts robot-pierre', R.collisions.length ? R.collisions.length + ' (voir Alertes)' : 'aucun', !R.collisions.length]);
-    $('results').innerHTML = '<dl class="facts">' + rows.map(function (r) { return '<dt>' + esc(r[0]) + '</dt><dd class="' + (r[2] === true ? 'ok' : r[2] === false ? 'bad' : '') + '">' + esc(r[1]) + '</dd>'; }).join('') + '</dl>';
+    h += '<h3 class="rh">Détails</h3><dl class="facts">' + rows.map(function (r) { return '<dt>' + esc(r[0]) + '</dt><dd class="' + (r[2] === true ? 'ok' : r[2] === false ? 'bad' : '') + '">' + esc(r[1]) + '</dd>'; }).join('') + '</dl>';
+    $('results').innerHTML = h;
   }
   function renderAlerts() {
     var items = [];
@@ -836,6 +883,10 @@
   }
   $('vTable').addEventListener('click', function () { setView('table'); });
   $('vProg').addEventListener('click', function () { setView('prog'); });
+  $('score').addEventListener('click', function () {
+    document.querySelector('.tab[data-pane="res"]').click();
+    if (window.matchMedia('(max-width: 900px)').matches) setView('prog');
+  });
 
   /* raccourcis clavier */
   document.addEventListener('keydown', function (e) {
