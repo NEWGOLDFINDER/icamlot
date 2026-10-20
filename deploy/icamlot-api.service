@@ -1,0 +1,20 @@
+[Unit]
+Description=ICAM LOT - API des stratégies du programmeur de match
+After=network.target
+
+[Service]
+User=icamlot
+Group=icamlot
+Environment=ICAMLOT_DATA=/var/lib/icamlot/strategies
+# Facultatif : ICAMLOT_TOKEN=<clé d'équipe> pour protéger l'enregistrement et la suppression.
+EnvironmentFile=-/etc/icamlot/api.env
+ExecStart=/usr/bin/python3 /opt/icamlot/api/server.py --host 127.0.0.1 --port 8081
+Restart=on-failure
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/icamlot
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -24,11 +24,13 @@
 
     /* En-tête (identique à la fiche technique) */
     header {
-      position: sticky; top: 0; z-index: 100; display: flex; align-items: center; justify-content: flex-end;
+      position: sticky; top: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between;
       padding: 0.9rem 1.5rem; background: rgba(14,15,19,0.85); backdrop-filter: blur(10px);
       border-bottom: 1px solid rgba(255,255,255,0.06); height: 62px;
     }
     .header-right { display: flex; align-items: center; gap: 1rem; }
+    .back { display: inline-flex; align-items: center; gap: 0.5rem; color: var(--texte-doux); font-weight: 600; font-size: 0.9rem; }
+    .back:hover { color: var(--jaune); }
     .lang-switch { display: inline-flex; border: 1px solid rgba(255,255,255,0.16); border-radius: 999px; overflow: hidden; }
     .lang-switch button { background: transparent; color: var(--texte-doux); border: none; padding: 0.3rem 0.68rem; font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: background 0.2s, color 0.2s; }
     .lang-switch button.active { background: var(--jaune); color: #17130a; }
@@ -131,6 +133,7 @@
 
 <body>
   <header>
+    <a class="back" href="../"><i class="fa-solid fa-arrow-left"></i> Accueil</a>
     <div class="header-right">
       <div class="lang-switch" id="lang-switch">
         <button type="button" data-lang="fr">FR</button>
