@@ -17,12 +17,8 @@ WEB=/var/www/point-counter
 apt-get update
 apt-get install -y nginx curl
 
-# Copie du compteur de points seul (servi comme page d'accueil) + ses icônes.
 install -d "$WEB"
-install -m 644 "$SRC/calculateur.html" "$WEB/index.html"
-for f in opossum-logo.ico opossum-logo.svg opossum-logo-96.png opossum-logo-180.png; do
-  install -m 644 "$SRC/$f" "$WEB/$f"
-done
+install -m 644 "$SRC/index.html" "$WEB/index.html"
 
 install -m 644 "$SRC/deploy/nginx-point-counter.conf" /etc/nginx/sites-available/point-counter
 ln -sf /etc/nginx/sites-available/point-counter /etc/nginx/sites-enabled/point-counter

@@ -1,37 +1,28 @@
-# Déploiement du compteur de points sur pve1
+# Déploiement du compteur de points — icamlot.arkode-studio.fr
 
-Seul `calculateur.html` est mis en ligne (servi comme page d'accueil `/`),
-avec ses icônes. Nginx sert le site en HTTP dans le LXC ; le HTTPS est assuré
-par un tunnel Cloudflare (`cloudflared`) qui tourne dans le même LXC.
+`point-counter/index.html` est servi par Nginx (HTTP, port 80) dans un LXC
+Ubuntu du nœud Proxmox pve1. Le HTTPS est assuré par un tunnel Cloudflare
+(`cloudflared`) qui tourne dans le même LXC.
 
-## 1. Préparer le LXC (interface Proxmox, nœud pve1)
+## 1. Créer le tunnel Cloudflare et récupérer le jeton
 
-Dans le LXC libre (template Debian ou Ubuntu), avec un accès Internet sortant :
+Tableau de bord Cloudflare → Zero Trust → Networks → Tunnels → *Create a tunnel*
+→ type *Cloudflared* → nommer le tunnel. Cloudflare affiche une commande
+`cloudflared service install eyJ...` : la longue chaîne `eyJ...` est le jeton.
+
+Onglet *Public Hostname* du tunnel :
+- Subdomain : `icamlot` — Domain : `arkode-studio.fr`
+- Service : `HTTP` → `localhost:80`
+
+## 2. Installer dans le LXC (en root)
 
 ```bash
 apt-get update && apt-get install -y git
-git clone -b <branche> https://github.com/NEWGOLDFINDER/icamlot.git /opt/icamlot
+git clone https://github.com/NEWGOLDFINDER/icamlot.git /opt/icamlot
+CF_TUNNEL_TOKEN='eyJ...' bash /opt/icamlot/point-counter/deploy/install.sh
 ```
 
-Dépôt privé : utiliser un jeton GitHub ou copier le dossier `point-counter/`
-avec `scp`.
-
-## 2. Créer le tunnel Cloudflare
-
-Tableau de bord Cloudflare → Zero Trust → Networks → Tunnels → *Create a tunnel*
-(type Cloudflared). Copier le jeton affiché dans la commande d'installation.
-
-Dans l'onglet *Public Hostname* du tunnel, ajouter :
-- Hostname : le sous-domaine choisi sur ton domaine Cloudflare
-- Service : `HTTP` → `localhost:80`
-
-## 3. Installer
-
-```bash
-CF_TUNNEL_TOKEN='<jeton>' bash /opt/icamlot/point-counter/deploy/install.sh
-```
-
-Sans `CF_TUNNEL_TOKEN`, seul Nginx est installé (test en local sur `http://<IP du LXC>/`).
+Le site est ensuite en ligne sur https://icamlot.arkode-studio.fr
 
 ## Mettre à jour
 
