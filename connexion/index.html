@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Connexion · ICAM LOT</title>
+  <meta name="robots" content="noindex" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <style>
+    :root { --jaune: #f5c518; --fond: #0e0f13; --fond-2: #171922; --texte: #f2f3f5; --texte-doux: #a9adba; --bad: #ff6b6b; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Poppins', system-ui, sans-serif; background: var(--fond); color: var(--texte); min-height: 100vh; display: grid; place-items: center; padding: 1rem; }
+    .back { position: fixed; top: 1rem; left: 1rem; display: inline-flex; gap: 0.5rem; align-items: center; color: var(--texte-doux); font-weight: 600; font-size: 0.9rem; text-decoration: none; }
+    .back:hover { color: var(--jaune); }
+    .card { width: min(380px, 100%); background: var(--fond-2); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 2rem 1.6rem 1.6rem; text-align: center; }
+    .lock { width: 56px; height: 56px; border-radius: 14px; display: grid; place-items: center; margin: 0 auto 1rem; background: rgba(245,197,24,0.12); color: var(--jaune); font-size: 1.4rem; }
+    h1 { font-size: 1.5rem; font-weight: 800; }
+    h1 span { color: var(--jaune); }
+    p { color: var(--texte-doux); font-size: 0.92rem; margin: 0.3rem 0 1.4rem; }
+    form { display: grid; gap: 0.7rem; text-align: left; }
+    label { font-size: 0.85rem; color: var(--texte-doux); }
+    .field { position: relative; }
+    input { width: 100%; font: inherit; color: var(--texte); background: var(--fond); border: 1px solid rgba(255,255,255,0.14); border-radius: 10px; padding: 0.7rem 2.8rem 0.7rem 0.9rem; }
+    input:focus { outline: 2px solid var(--jaune); outline-offset: 1px; }
+    .eye { position: absolute; right: 0.4rem; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--texte-doux); padding: 0.4rem; cursor: pointer; font-size: 1rem; }
+    .eye:hover { color: var(--jaune); }
+    button.go { font: inherit; font-weight: 700; background: var(--jaune); color: #17130a; border: none; border-radius: 10px; padding: 0.75rem; cursor: pointer; margin-top: 0.3rem; }
+    button.go:disabled { opacity: 0.6; cursor: wait; }
+    .err { color: var(--bad); font-size: 0.88rem; min-height: 1.3em; }
+  </style>
+</head>
+<body>
+  <a class="back" href="../"><i class="fa-solid fa-arrow-left"></i> Accueil</a>
+  <main class="card">
+    <div class="lock"><i class="fa-solid fa-lock"></i></div>
+    <h1>ICAM <span>LOT</span></h1>
+    <p>Le simulateur du plateau est réservé à l'équipe.</p>
+    <form id="f">
+      <label for="pw">Mot de passe</label>
+      <div class="field">
+        <input id="pw" type="password" autocomplete="current-password" required autofocus />
+        <button type="button" class="eye" id="eye" aria-label="Afficher le mot de passe"><i class="fa-solid fa-eye"></i></button>
+      </div>
+      <span class="err" id="err" role="alert"></span>
+      <button class="go" type="submit" id="go">Entrer</button>
+    </form>
+  </main>
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var m = /[?&]suite=([^&]+)/.exec(location.search), suite = '/plateau/';
+  if (m) { var s = decodeURIComponent(m[1]); if (/^\/[^\/\\]/.test(s)) suite = s; }
+
+  fetch('/api/auth', { credentials: 'same-origin', cache: 'no-store' }).then(function (r) { if (r.status === 204) location.replace(suite); }, function () {});
+
+  $('eye').addEventListener('click', function () {
+    var show = $('pw').type === 'password'; $('pw').type = show ? 'text' : 'password';
+    $('eye').innerHTML = '<i class="fa-solid ' + (show ? 'fa-eye-slash' : 'fa-eye') + '"></i>';
+    $('eye').setAttribute('aria-label', show ? 'Masquer le mot de passe' : 'Afficher le mot de passe');
+  });
+  $('pw').addEventListener('input', function () { $('err').textContent = ''; });
+  $('f').addEventListener('submit', function (e) {
+    e.preventDefault(); $('go').disabled = true; $('err').textContent = '';
+    fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ password: $('pw').value }) })
+      .then(function (r) {
+        if (r.ok) { location.replace(suite); return; }
+        return r.json().catch(function () { return {}; }).then(function (j) { $('err').textContent = j.error || 'Connexion impossible.'; $('pw').select(); });
+      }, function () { $('err').textContent = 'Serveur injoignable.'; })
+      .finally(function () { $('go').disabled = false; });
+  });
+})();
+</script>
+</body>
+</html>

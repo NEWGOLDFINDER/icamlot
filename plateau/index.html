@@ -9,220 +9,346 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <style>
-/* Layout : table 3D et résultats à gauche, éditeur du programme à droite, paramètres et stratégies dessous */
+/* Appli plein écran : barre du haut, table 3D + programme, frise du match en bas */
 :root {
   color-scheme: dark;
-  --bg: #0e0f13;
-  --panel: #171922;
-  --fg: #f2f3f5;
-  --muted: #a9adba;
-  --line: #2a2d39;
-  --accent: #f5c518;
-  --accent-fg: #17130a;
-  --stage: #13151c;
-  --ok: #3ccf7a;
-  --bad: #ff6b6b;
-  --radius: 14px;
+  --bg: #0e0f13; --panel: #171922; --panel-2: #1d202a; --fg: #f2f3f5; --muted: #a9adba; --line: #2a2d39;
+  --accent: #f5c518; --accent-fg: #17130a; --stage: #13151c; --ok: #3ccf7a; --bad: #ff6b6b;
+  --radius: 12px; --top: 56px;
   --font-body: "Poppins", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
 }
 * { box-sizing: border-box; }
-body {
-  margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.5;
-  padding-bottom: 32px;
-}
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 14px; line-height: 1.45; overflow: hidden; }
 a { color: inherit; text-decoration: none; }
-/* En-tête du site */
-.topbar {
-  position: sticky; top: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between; gap: 1rem;
-  padding: 0.9rem max(1.5rem, env(safe-area-inset-left, 0px)); height: 62px; margin-bottom: 20px;
-  background: rgba(14,15,19,0.85); backdrop-filter: blur(10px); border-bottom: 1px solid rgba(255,255,255,0.06);
-}
-.back { display: inline-flex; align-items: center; gap: 0.5rem; color: var(--muted); font-weight: 600; font-size: 0.9rem; }
-.back:hover { color: var(--accent); }
-.brand { font-weight: 800; letter-spacing: 0.02em; }
-.brand span { color: var(--accent); }
-.wrap {
-  max-width: 1320px; margin: 0 auto; display: grid; gap: 16px;
-  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
-}
-h1 { font-size: clamp(1.6rem, 4vw, 2.3rem); line-height: 1.2; margin: 0; font-weight: 800; text-wrap: balance; }
-h1 span { color: var(--accent); }
-h2 { font-size: 15px; margin: 0; padding: 12px 14px 4px; font-weight: 700; }
-.sub { color: var(--muted); margin: 4px 0 0; max-width: 80ch; }
-.grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
-.two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-@media (max-width: 960px) { .grid, .two { grid-template-columns: minmax(0, 1fr); } }
-.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); min-width: 0; }
-.stage { position: relative; overflow: hidden; background: var(--stage); border-radius: var(--radius); border: 1px solid var(--line); }
-#view { display: block; width: 100%; height: clamp(380px, 66vh, 720px); touch-action: none; }
-.hud { position: absolute; left: 12px; top: 12px; display: grid; gap: 2px; font-family: var(--font-mono); font-size: 12px;
-  background: color-mix(in srgb, var(--panel) 90%, transparent); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; min-width: 230px; }
-.hud .row { display: flex; justify-content: space-between; gap: 12px; }
-.hud b { font-weight: 500; font-variant-numeric: tabular-nums; }
-.clock { position: absolute; right: 12px; top: 12px; font-family: var(--font-mono); font-size: 28px; font-weight: 500;
-  background: color-mix(in srgb, var(--panel) 90%, transparent); border: 1px solid var(--line); border-radius: 6px; padding: 4px 12px; font-variant-numeric: tabular-nums; }
-.clock small { font-size: 13px; color: var(--muted); }
-.now { position: absolute; left: 12px; right: 12px; bottom: 10px; text-align: center; pointer-events: none; font-weight: 500; }
-.now span { background: color-mix(in srgb, var(--panel) 90%, transparent); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; }
-.ok { color: var(--ok); } .bad { color: var(--bad); }
-.controls { display: grid; gap: 10px; padding: 10px 12px; margin-top: 12px; }
-.crow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-button, select { font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; cursor: pointer; }
-button:hover:not(.primary) { border-color: var(--accent); }
+button, select, input, textarea { font: inherit; color: var(--fg); }
+button, select { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 6px 11px; cursor: pointer; }
+button:hover:not(.primary):not(.tab) { border-color: var(--accent); }
 button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; }
 button.primary:hover { filter: brightness(1.08); }
-button.danger:hover { border-color: var(--bad); color: var(--bad); }
-button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-label { color: var(--muted); font-size: 13px; display: inline-flex; gap: 6px; align-items: center; }
-#scrub { width: 100%; accent-color: var(--accent); }
-.ticks { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
-.log { list-style: none; margin: 0; padding: 6px; display: grid; gap: 2px; max-height: 640px; overflow: auto; }
-.log li { padding: 5px 10px; border-radius: 6px; border: 1px solid transparent; font-size: 13px; display: grid; grid-template-columns: 52px 1fr; gap: 8px; cursor: pointer; }
-.log li .t { font-family: var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
-.log li.sec { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding-top: 10px; cursor: default; display: block; }
-.log li.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
-.log li.done { color: var(--muted); }
-.facts { margin: 0; padding: 8px 14px 14px; display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 14px; }
-.facts dt { color: var(--muted); }
-.facts dd { margin: 0; }
-.list { padding: 4px 14px 14px 32px; margin: 0; display: grid; gap: 8px; font-size: 14px; }
-/* Éditeur de programme */
-.grid { grid-template-columns: minmax(0, 1fr) 420px; }
-@media (max-width: 1100px) { .grid { grid-template-columns: minmax(0, 1fr); } }
-.editor { position: sticky; top: 12px; display: flex; flex-direction: column; max-height: calc(100vh - 24px); }
-.ehead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding-right: 14px; flex-wrap: wrap; }
-.tot { font-family: var(--font-mono); font-size: 12px; padding: 0 0 0 14px; }
-.steps { list-style: none; margin: 0; padding: 6px 8px; display: grid; gap: 6px; overflow: auto; flex: 1 1 auto; align-content: start; }
-.step { border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; display: grid; gap: 6px; background: var(--panel); cursor: pointer; }
-.step.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--panel)); }
-.step.drag { opacity: .45; } .step.over { border-color: var(--accent); border-style: dashed; }
+button.ghost { background: transparent; border-color: transparent; color: var(--muted); }
+button.ghost:hover { color: var(--fg); }
+button.danger:hover { border-color: var(--bad) !important; color: var(--bad); }
+button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible, .sg:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+input[type=number], input[type=text], input[type=search], input[type=password], textarea { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; }
 [hidden] { display: none !important; }
-.srow { display: grid; grid-template-columns: auto 22px minmax(0, 1fr) auto auto; gap: 6px; align-items: center; }
-.frow { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
-.frow { padding-left: 46px; }
-.grip { cursor: grab; color: var(--muted); font-size: 13px; letter-spacing: -2px; user-select: none; }
-.num { font-family: var(--font-mono); font-size: 12px; color: var(--muted); width: 22px; text-align: right; }
-.step select, .step input { padding: 4px 6px; font-size: 13px; }
-.srow > select { min-width: 0; width: 100%; }
+.ok { color: var(--ok); } .bad { color: var(--bad); }
+.muted { color: var(--muted); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+kbd { font-family: var(--font-mono); font-size: 12px; background: var(--panel-2); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; padding: 0 5px; }
+
+.app { height: 100dvh; display: grid; grid-template-rows: var(--top) minmax(0, 1fr) auto; }
+
+/* ---------- barre du haut ---------- */
+.top { display: flex; align-items: center; gap: 10px; padding: 0 12px; border-bottom: 1px solid rgba(255,255,255,0.06); background: rgba(14,15,19,0.92); min-width: 0; }
+.back { display: inline-flex; align-items: center; gap: 0.45rem; color: var(--muted); font-weight: 600; font-size: 0.88rem; padding: 6px 4px; }
+.back:hover { color: var(--accent); }
+.brand { font-weight: 800; letter-spacing: 0.02em; white-space: nowrap; }
+.brand span { color: var(--accent); }
+.sepv { width: 1px; height: 24px; background: var(--line); }
+.namebox { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+#sName { flex: 0 1 340px; min-width: 60px; background: transparent; border: 1px solid transparent; font-weight: 600; font-size: 15px; padding: 5px 8px; text-overflow: ellipsis; }
+#sName:hover, #sName:focus { border-color: var(--line); background: var(--panel); }
+#sName::placeholder { color: var(--muted); font-weight: 500; }
+.state { font-size: 12px; border-radius: 999px; padding: 2px 9px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.state.dirty { color: var(--accent); border-color: rgba(245,197,24,0.45); }
+.state.saved { color: var(--ok); border-color: rgba(60,207,122,0.4); }
+.tbtns { display: flex; gap: 6px; }
+.tbtns button { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+@media (max-width: 1000px) { .tbtns .lbl, .brand, .sepv { display: none; } }
+
+/* ---------- bascule table / programme (téléphone) ---------- */
+.views { display: none; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+.views button { flex: 1; }
+.views button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; }
+
+/* ---------- zone centrale ---------- */
+.main { display: grid; grid-template-columns: minmax(0, 1fr) 400px; min-height: 0; }
+.stage { position: relative; min-height: 0; background: var(--stage); overflow: hidden; }
+#view { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+.ov { position: absolute; background: rgba(23,25,34,0.88); border: 1px solid var(--line); border-radius: 10px; backdrop-filter: blur(6px); }
+.hud { left: 12px; top: 12px; font-family: var(--font-mono); font-size: 12px; min-width: 230px; }
+.hud > button { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 10px; background: transparent; border: none; padding: 7px 10px; font-family: var(--font-body); font-size: 12.5px; font-weight: 600; }
+.hud .rows { display: grid; gap: 2px; padding: 0 10px 8px; }
+.hud .row { display: flex; justify-content: space-between; gap: 12px; }
+.hud b { font-weight: 500; font-variant-numeric: tabular-nums; }
+.hud.min .rows { display: none; }
+.hud.min > button i { transform: rotate(-90deg); }
+.clock { right: 12px; top: 12px; font-family: var(--font-mono); font-size: 26px; font-weight: 500; padding: 2px 12px; font-variant-numeric: tabular-nums; }
+.clock small { font-size: 13px; color: var(--muted); }
+.now { left: 50%; bottom: 12px; transform: translateX(-50%); padding: 5px 12px; font-weight: 500; max-width: calc(100% - 300px); text-align: center; pointer-events: none; }
+.cams { right: 12px; bottom: 12px; display: flex; padding: 3px; gap: 2px; }
+.cams button { border: none; background: transparent; padding: 5px 9px; font-size: 12.5px; color: var(--muted); }
+.cams button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); font-weight: 600; }
+.pick { left: 50%; top: 12px; transform: translateX(-50%); padding: 6px 12px; font-size: 13px; color: var(--accent); border-color: rgba(245,197,24,0.5); pointer-events: none; white-space: nowrap; }
+.busy { right: 12px; top: 62px; font-size: 12px; padding: 3px 9px; }
+@media (max-width: 1250px) { .now { max-width: calc(100% - 24px); bottom: 58px; } }
+
+/* ---------- panneau programme ---------- */
+.panel { display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--line); background: var(--panel); }
+.tabs { display: flex; gap: 2px; padding: 6px 10px 0; border-bottom: 1px solid var(--line); }
+.tab { background: none; border: none; border-bottom: 2px solid transparent; border-radius: 0; padding: 9px 10px; color: var(--muted); font-weight: 600; display: inline-flex; gap: 6px; align-items: center; }
+.tab[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); }
+.tab .cnt { font-size: 11px; background: var(--bad); color: #fff; border-radius: 999px; padding: 0 6px; }
+.tab .cnt.zero { background: var(--panel-2); color: var(--muted); }
+.pane { flex: 1; min-height: 0; overflow: auto; }
+.phead { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--panel); z-index: 2; }
+.phead .tot { flex: 1; font-family: var(--font-mono); font-size: 12px; }
+.phead button { padding: 4px 8px; font-size: 13px; }
+
+.steps { list-style: none; margin: 0; padding: 8px; display: grid; gap: 5px; }
+.step { border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); }
+.step.sel { border-color: var(--accent); }
+.step.play .srow { box-shadow: inset 3px 0 0 var(--accent); }
+.step.drag { opacity: 0.45; } .step.over { border-style: dashed; border-color: var(--accent); }
+.srow { display: grid; grid-template-columns: 12px 20px 22px minmax(0, 1fr) auto; gap: 6px; align-items: center; padding: 7px 9px; cursor: pointer; border-radius: 10px; }
+.grip { cursor: grab; color: var(--muted); font-size: 11px; letter-spacing: -2px; user-select: none; }
+.num { font-family: var(--font-mono); font-size: 12px; color: var(--muted); text-align: right; }
+.ico { color: var(--accent); text-align: center; }
+.step.err .ico { color: var(--bad); }
+.txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 .tm { font-family: var(--font-mono); font-size: 11px; color: var(--muted); white-space: nowrap; }
 .tm.bad { color: var(--bad); }
-.sbtn { display: flex; gap: 2px; }
-.sbtn button { padding: 2px 7px; font-size: 13px; line-height: 1.3; }
-.serr { color: var(--bad); font-size: 12.5px; padding-left: 46px; }
-.empty { color: var(--muted); font-size: 14px; padding: 14px; text-align: center; }
-.unit { color: var(--muted); font-size: 12px; }
-input[type=number], textarea { font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }
-.step input[type=number] { width: 70px; }
-.hint2 { margin: 0 12px 12px; font-size: 13px; color: var(--bad); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.pgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px 16px; padding: 8px 14px 14px; }
-.pgrid label { justify-content: space-between; color: var(--fg); }
-.pgrid label span { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-family: var(--font-mono); font-size: 12px; }
-.pgrid input { width: 78px; text-align: right; font-family: var(--font-mono); font-size: 13px; }
-.jbox { padding: 8px 14px 14px; display: grid; gap: 10px; }
-.jbox textarea { width: 100%; font-family: var(--font-mono); font-size: 12px; resize: vertical; }
+.serr { color: var(--bad); font-size: 12.5px; padding: 0 10px 8px 46px; }
+.sedit { border-top: 1px solid var(--line); padding: 10px; display: grid; gap: 9px; }
+.fld { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 8px; align-items: center; }
+.fld > span { color: var(--muted); font-size: 12.5px; }
+.fld select { width: 100%; padding: 5px 8px; }
+.fld input[type=number] { width: 90px; }
+.segc { display: inline-flex; background: var(--bg); border: 1px solid var(--line); border-radius: 999px; padding: 2px; gap: 2px; flex-wrap: wrap; }
+.segc button { border: none; background: transparent; border-radius: 999px; padding: 4px 11px; font-size: 13px; color: var(--muted); }
+.segc button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); font-weight: 600; }
+.sacts { display: flex; gap: 5px; flex-wrap: wrap; padding-top: 2px; }
+.sacts button { padding: 4px 9px; font-size: 12.5px; display: inline-flex; gap: 6px; align-items: center; }
+.hintp { font-size: 12px; color: var(--accent); display: flex; gap: 6px; align-items: center; }
+.empty { padding: 26px 16px; text-align: center; color: var(--muted); }
+.empty b { color: var(--fg); display: block; margin-bottom: 4px; }
+
+.palette { border-top: 1px solid var(--line); padding: 9px 10px 10px; background: var(--panel); }
+.palette .lab { font-size: 12px; color: var(--muted); margin-bottom: 7px; }
+.palette .grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; }
+.palette button { display: grid; justify-items: center; gap: 2px; padding: 6px 2px; font-size: 11px; line-height: 1.2; }
+.palette button i { color: var(--accent); font-size: 14px; }
+
+.facts { margin: 0; padding: 12px 14px; display: grid; grid-template-columns: auto 1fr; gap: 7px 14px; font-size: 13.5px; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; overflow-wrap: anywhere; }
+.alerts { list-style: none; margin: 0; padding: 8px; display: grid; gap: 5px; }
+.alerts li { display: grid; grid-template-columns: 54px minmax(0, 1fr); gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; background: var(--panel-2); }
+.alerts li:hover { border-color: var(--bad); }
+.alerts .t { font-family: var(--font-mono); font-size: 12px; color: var(--bad); }
+.alerts .k { color: var(--muted); font-size: 12px; display: block; }
+.alerts .none { display: block; border: none; background: none; cursor: default; color: var(--ok); text-align: center; padding: 26px; }
+
+/* ---------- frise du match ---------- */
+.tl { display: flex; align-items: center; gap: 10px; padding: 8px 12px 10px; border-top: 1px solid var(--line); background: var(--panel); }
+.tl .ctl { display: flex; gap: 5px; align-items: center; }
+#bPlay { width: 42px; }
+.speed { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.speed button { border: none; border-radius: 0; padding: 5px 8px; font-size: 12px; color: var(--muted); background: var(--panel-2); }
+.speed button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); font-weight: 600; }
+.track { position: relative; flex: 1; height: 38px; cursor: pointer; touch-action: none; min-width: 0; }
+.segs { position: absolute; left: 0; right: 0; top: 0; height: 24px; }
+.sg { position: absolute; top: 0; height: 24px; border-radius: 5px; background: #2b2f3c; border: 1px solid #353a49; font-family: var(--font-mono); font-size: 11px; color: var(--muted); display: flex; align-items: center; justify-content: center; overflow: hidden; white-space: nowrap; }
+.sg.err { background: rgba(255,107,107,0.18); border-color: rgba(255,107,107,0.55); color: var(--bad); }
+.sg.sel { background: rgba(245,197,24,0.22); border-color: var(--accent); color: var(--accent); }
+#strip { position: absolute; left: 0; bottom: 2px; width: 100%; height: 6px; border-radius: 3px; display: block; }
+.ph { position: absolute; top: -4px; bottom: 0; width: 2px; background: #fff; border-radius: 2px; pointer-events: none; box-shadow: 0 0 0 1px rgba(0,0,0,0.4); }
+.m100 { position: absolute; top: -4px; bottom: 0; width: 0; border-left: 2px dashed var(--muted); pointer-events: none; }
+.tl .clk2 { font-family: var(--font-mono); font-size: 12px; color: var(--muted); white-space: nowrap; min-width: 82px; text-align: right; }
+
+/* ---------- panneaux latéraux ---------- */
+.scrim { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 190; }
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(440px, 100%); background: var(--panel); border-left: 1px solid var(--line); z-index: 200; display: flex; flex-direction: column; transform: translateX(100%); transition: transform 0.2s ease; visibility: hidden; }
+.drawer.open { transform: none; visibility: visible; }
+.dhead { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.dhead h2 { margin: 0; font-size: 16px; font-weight: 700; }
+.dbody { flex: 1; overflow: auto; padding: 14px; display: grid; gap: 16px; align-content: start; }
+.dbody h3 { margin: 0 0 8px; font-size: 13px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
 .note { color: var(--muted); font-size: 13px; margin: 0; }
-.msg { font-size: 13px; }
-.filebtn { position: relative; font-size: 15px; color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 7px 12px; cursor: pointer; background: var(--panel); }
-.filebtn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
-.filebtn:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
-.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
-.legend { margin: 0; font-size: 12px; color: var(--muted); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
-.sw { display: inline-block; width: 12px; height: 8px; border-radius: 2px; margin-left: 6px; }
-.sw-ok { background: var(--ok); } .sw-bad { background: var(--bad); } .sw-end { background: var(--fg); width: 3px; }
-.busy { position: absolute; right: 12px; bottom: 10px; font-size: 12px; background: color-mix(in srgb, var(--panel) 90%, transparent); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; }
-.idgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 4px 18px; padding: 4px 14px 14px; font-size: 13.5px; }
-.idgrid h3 { font-size: 13px; margin: 8px 0 4px; font-weight: 600; }
-.idgrid ul { margin: 0; padding-left: 18px; }
-.facts dd { overflow-wrap: anywhere; }
-/* Stratégies enregistrées sur le serveur */
-.strats { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 260px; overflow: auto; }
-.strats li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; }
-.strats li.cur { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--panel)); }
+.crow { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.strats { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.strats li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); }
+.strats li.cur { border-color: var(--accent); }
 .strats .nm { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .strats .meta { display: block; color: var(--muted); font-size: 12px; font-weight: 400; }
 .strats .act { display: flex; gap: 4px; }
-.strats .act button { padding: 4px 10px; font-size: 13px; }
-.strats .empty { display: block; border: none; }
-.sname { display: flex; gap: 8px; }
-.sname input { flex: 1; min-width: 0; font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; }
-details.json summary { cursor: pointer; color: var(--muted); font-size: 13.5px; }
-details.json[open] summary { margin-bottom: 10px; }
+.strats .act button { padding: 4px 9px; font-size: 12.5px; }
+.strats .emptyl { display: block; border: none; background: none; color: var(--muted); text-align: center; }
+.pgrid { display: grid; gap: 8px; }
+.pgrid label { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13.5px; }
+.pgrid label span { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-family: var(--font-mono); font-size: 12px; }
+.pgrid input { width: 84px; text-align: right; font-family: var(--font-mono); font-size: 13px; }
+.chk { display: flex; gap: 8px; align-items: center; font-size: 13.5px; }
+.chk input { accent-color: var(--accent); width: 16px; height: 16px; }
+.keys { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 13px; margin: 0; }
+.keys dd { margin: 0; color: var(--muted); }
+.idgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 14px; font-size: 12.5px; }
+.idgrid ul { margin: 0; padding-left: 16px; }
+.idgrid h4 { margin: 6px 0 4px; font-size: 12.5px; }
+.rules { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 13px; color: #d6d9e0; }
+textarea { width: 100%; font-family: var(--font-mono); font-size: 12px; resize: vertical; }
+.filebtn { position: relative; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 8px; padding: 6px 11px; cursor: pointer; background: var(--panel-2); }
+.filebtn:hover { border-color: var(--accent); }
+.filebtn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
+details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+
+/* ---------- message ---------- */
+.toast { position: fixed; left: 50%; bottom: 76px; transform: translateX(-50%); z-index: 300; background: #232633; border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; display: flex; gap: 10px; align-items: center; box-shadow: 0 12px 30px rgba(0,0,0,0.45); max-width: calc(100% - 24px); }
+.toast.bad { border-color: rgba(255,107,107,0.6); }
+.toast.ok { border-color: rgba(60,207,122,0.5); }
+.toast .tb { display: flex; gap: 6px; }
+.toast button { padding: 4px 10px; font-size: 13px; }
+
+/* ---------- téléphone ---------- */
+@media (max-width: 900px) {
+  .app { grid-template-rows: var(--top) auto minmax(0, 1fr) auto; }
+  .views { display: flex; }
+  .main { grid-template-columns: minmax(0, 1fr); }
+  .panel { border-left: none; }
+  body.v-table .panel, body.v-prog .stage { display: none; }
+  .hud { min-width: 0; }
+  .clock { font-size: 20px; }
+  .cams { bottom: 12px; }
+  .now { bottom: 56px; font-size: 12.5px; }
+  .tl { flex-wrap: wrap; gap: 8px; }
+  .track { order: -1; flex-basis: 100%; }
+  .tl .clk2 { margin-left: auto; }
+  .palette .grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .pick { top: auto; bottom: 100px; white-space: normal; text-align: center; width: max-content; max-width: calc(100% - 24px); }
+}
 </style>
 </head>
-<body>
-
-<div class="topbar">
-  <a class="back" href="../"><i class="fa-solid fa-arrow-left"></i> Accueil</a>
-  <span class="brand">ICAM <span>LOT</span></span>
-</div>
-
-<div class="wrap">
-  <header>
-    <h1>Simulation <span>du plateau</span></h1>
-    <p class="sub">Écris la stratégie du robot étape par étape, règle ses vitesses et ses temps, et regarde le match se jouer sur la table officielle. Le robot (triangle de 400 mm, faces A et B) calcule seul ses trajets et ses orientations en évitant les pierres ; les contacts et les écarts au règlement sont signalés en rouge.</p>
+<body class="v-table">
+<div class="app">
+  <header class="top">
+    <a class="back" href="../" title="Retour à l'accueil"><i class="fa-solid fa-arrow-left"></i></a>
+    <span class="brand">ICAM <span>LOT</span></span>
+    <span class="sepv"></span>
+    <form class="namebox" id="fName">
+      <label for="sName" class="sr">Nom de la stratégie</label>
+      <input id="sName" type="text" maxlength="80" placeholder="Stratégie sans nom" autocomplete="off" spellcheck="false">
+      <span class="state" id="state">non enregistrée</span>
+    </form>
+    <div class="tbtns">
+      <button type="button" id="bStrats" title="Stratégies de l'équipe"><i class="fa-solid fa-folder-open"></i><span class="lbl">Stratégies</span></button>
+      <button type="button" class="primary" id="bSave" title="Enregistrer (Ctrl+S)"><i class="fa-solid fa-floppy-disk"></i><span class="lbl">Enregistrer</span></button>
+      <button type="button" id="bParams" title="Paramètres du robot"><i class="fa-solid fa-sliders"></i><span class="lbl">Paramètres</span></button>
+      <button type="button" id="bHelp" title="Aide, repères et raccourcis"><i class="fa-solid fa-circle-question"></i></button>
+    </div>
   </header>
 
-  <div class="grid">
-    <div>
-      <div class="stage">
-        <canvas id="view" aria-label="Simulation 3D du programme sur la table de jeu"></canvas>
-        <div class="hud">
+  <div class="views" role="group" aria-label="Affichage">
+    <button type="button" id="vTable" aria-pressed="true"><i class="fa-solid fa-cube"></i> Table</button>
+    <button type="button" id="vProg" aria-pressed="false"><i class="fa-solid fa-list-ol"></i> Programme</button>
+  </div>
+
+  <div class="main">
+    <div class="stage">
+      <canvas id="view" aria-label="Simulation 3D du programme sur la table de jeu"></canvas>
+      <div class="ov hud" id="hud">
+        <button type="button" id="bHud" aria-expanded="true"><span>Mesures du robot</span><i class="fa-solid fa-chevron-down"></i></button>
+        <div class="rows">
           <div class="row"><span>Étape</span><b id="hStep">-</b></div>
           <div class="row"><span>Hauteur robot</span><b id="hR">345 mm</b></div>
           <div class="row"><span>Objets tenus</span><b id="hS">-</b></div>
           <div class="row"><span>Périmètre</span><b id="hP">1200 mm</b></div>
-          <div class="row"><span>Face A : Z / rotation</span><b id="hA">165 / 0°</b></div>
-          <div class="row"><span>Face B : Z / rotation</span><b id="hB">165 / 0°</b></div>
+          <div class="row"><span>Face A : Z / rot.</span><b id="hA">165 / 0°</b></div>
+          <div class="row"><span>Face B : Z / rot.</span><b id="hB">165 / 0°</b></div>
           <div class="row"><span>Boulets</span><b id="hBall">à bord</b></div>
         </div>
-        <div class="clock"><span id="clk">0,0</span> <small>/ 100 s</small></div>
-        <div class="now"><span id="now">Départ</span></div>
-        <div class="busy" id="busy" hidden>Calcul du programme…</div>
       </div>
-      <div class="card controls">
-        <canvas id="strip" height="14" aria-label="Frise : contacts et écarts au règlement" style="width:100%;height:14px;display:block;border-radius:3px"></canvas>
-        <input id="scrub" type="range" min="0" max="1000" value="0" aria-label="Temps du match">
-        <div class="ticks"><span>0 s</span><span id="tkMid"></span><span id="tkEnd"></span></div>
-        <p class="legend"><span class="sw sw-ok"></span>conforme <span class="sw sw-bad"></span>contact ou hors règlement <span class="sw sw-end"></span>fin des 100 s</p>
-        <div class="crow">
-          <button class="primary" id="bPlay" type="button">Pause</button>
-          <button id="bRestart" type="button">Recommencer</button>
-          <label for="sSpeed">Lecture
-            <select id="sSpeed"><option value="1">1x (temps réel)</option><option value="2" selected>2x</option><option value="4">4x</option></select>
-          </label>
-          <label for="sCam">Caméra
-            <select id="sCam"><option value="table">Vue de la table</option><option value="follow">Suivre le robot</option><option value="top">Vue de dessus</option></select>
-          </label>
-          <label for="cLab"><input id="cLab" type="checkbox" checked> Repères (P, M, T)</label>
-          <label for="cPer"><input id="cPer" type="checkbox" checked> Pierres tenues dans le périmètre</label>
-        </div>
+      <div class="ov clock"><span id="clk">0,0</span> <small>/ 100 s</small></div>
+      <div class="ov pick" id="pick" hidden></div>
+      <div class="ov busy" id="busy" hidden>Calcul…</div>
+      <div class="ov now"><span id="now">Départ</span></div>
+      <div class="ov cams" role="group" aria-label="Caméra">
+        <button type="button" data-cam="table" aria-pressed="true">Table</button>
+        <button type="button" data-cam="top" aria-pressed="false">Dessus</button>
+        <button type="button" data-cam="follow" aria-pressed="false">Suivre</button>
       </div>
-
-      <section class="card" aria-label="Résultat du programme">
-        <h2>Résultat en fin de programme</h2>
-        <div class="results" id="results"></div>
-      </section>
     </div>
 
-    <aside class="card editor" aria-label="Programme du robot">
-      <div class="ehead">
-        <h2>Programme du robot</h2>
-        <span class="tot" id="tot"></span>
+    <aside class="panel" aria-label="Programme du robot">
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" type="button" data-pane="prog" aria-selected="true">Programme</button>
+        <button class="tab" role="tab" type="button" data-pane="res" aria-selected="false">Résultat</button>
+        <button class="tab" role="tab" type="button" data-pane="alerts" aria-selected="false">Alertes <span class="cnt zero" id="nAlerts">0</span></button>
       </div>
-      <ol class="steps" id="steps"></ol>
-      <div class="crow" style="padding:8px 12px 12px">
-        <button class="primary" id="bAdd" type="button">Ajouter une étape</button>
-        <button id="bExample" type="button">Charger l'exemple</button>
-        <button id="bClear" type="button">Tout effacer</button>
+      <div class="pane" id="pane-prog">
+        <div class="phead">
+          <span class="tot" id="tot"></span>
+          <button type="button" class="ghost" id="bUndo" title="Annuler (Ctrl+Z)" aria-label="Annuler"><i class="fa-solid fa-rotate-left"></i></button>
+          <button type="button" class="ghost" id="bRedo" title="Rétablir (Ctrl+Y)" aria-label="Rétablir"><i class="fa-solid fa-rotate-right"></i></button>
+          <button type="button" class="ghost" id="bExample" title="Remplacer par la stratégie d'exemple">Exemple</button>
+          <button type="button" class="ghost danger" id="bClear" title="Effacer toutes les étapes">Effacer</button>
+        </div>
+        <ol class="steps" id="steps"></ol>
       </div>
-      <p class="hint2" id="confirmClear" hidden>Effacer toutes les étapes ? <button id="bClearYes" type="button">Oui, effacer</button> <button id="bClearNo" type="button">Annuler</button></p>
+      <div class="pane" id="pane-res" hidden><div id="results"></div></div>
+      <div class="pane" id="pane-alerts" hidden><ul class="alerts" id="alerts"></ul></div>
+      <div class="palette" id="palette">
+        <div class="lab" id="palLab">Ajouter une étape</div>
+        <div class="grid" id="palGrid"></div>
+      </div>
     </aside>
   </div>
 
-  <div class="two">
-    <section class="card params" aria-label="Paramètres du robot">
-      <h2>Paramètres du robot</h2>
+  <div class="tl">
+    <div class="ctl">
+      <button type="button" class="primary" id="bPlay" title="Lecture / pause (Espace)" aria-label="Pause"><i class="fa-solid fa-pause"></i></button>
+      <button type="button" id="bRestart" title="Revenir au départ (Début)" aria-label="Revenir au départ"><i class="fa-solid fa-backward-step"></i></button>
+      <div class="speed" role="group" aria-label="Vitesse de lecture">
+        <button type="button" data-speed="1" aria-pressed="false">1x</button>
+        <button type="button" data-speed="2" aria-pressed="true">2x</button>
+        <button type="button" data-speed="4" aria-pressed="false">4x</button>
+      </div>
+    </div>
+    <div class="track" id="track" role="slider" tabindex="0" aria-label="Temps du match" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <div class="segs" id="segs"></div>
+      <canvas id="strip" height="6" aria-hidden="true"></canvas>
+      <div class="m100" id="m100"></div>
+      <div class="ph" id="ph"></div>
+    </div>
+    <span class="clk2" id="clk2">0,0 / 100 s</span>
+  </div>
+</div>
+
+<!-- Panneau : stratégies -->
+<div class="scrim" id="scrim" hidden></div>
+<section class="drawer" id="dStrats" aria-label="Stratégies de l'équipe">
+  <div class="dhead"><h2>Stratégies de l'équipe</h2><button type="button" class="ghost" data-close aria-label="Fermer"><i class="fa-solid fa-xmark"></i></button></div>
+  <div class="dbody">
+    <div class="crow">
+      <label for="sFilter" class="sr">Chercher</label>
+      <input id="sFilter" type="search" placeholder="Chercher une stratégie" style="flex:1;min-width:0">
+      <button type="button" id="bNew"><i class="fa-solid fa-plus"></i> Nouvelle</button>
+    </div>
+    <ul class="strats" id="strats"><li class="emptyl">Chargement…</li></ul>
+    <div>
+      <h3>Fichier JSON</h3>
+      <div class="crow">
+        <button type="button" id="bExport"><i class="fa-solid fa-download"></i> Exporter</button>
+        <label class="filebtn" for="fImport"><i class="fa-solid fa-upload"></i> Importer<input id="fImport" type="file" accept=".json,application/json"></label>
+        <button type="button" id="bCopy"><i class="fa-regular fa-copy"></i> Copier</button>
+      </div>
+      <details style="margin-top:10px">
+        <summary>Coller du JSON</summary>
+        <label for="tJson" class="sr">Texte JSON</label>
+        <textarea id="tJson" rows="6" spellcheck="false" placeholder="Colle ici un programme JSON" style="margin-top:8px"></textarea>
+        <button type="button" id="bLoadText" style="margin-top:6px">Charger ce texte</button>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- Panneau : paramètres -->
+<section class="drawer" id="dParams" aria-label="Paramètres du robot">
+  <div class="dhead"><h2>Paramètres du robot</h2><button type="button" class="ghost" data-close aria-label="Fermer"><i class="fa-solid fa-xmark"></i></button></div>
+  <div class="dbody">
+    <div>
+      <h3>Vitesses et temps</h3>
       <div class="pgrid">
         <label for="pV">Vitesse de déplacement <span><input id="pV" type="number" min="0.1" max="2" step="0.05"> m/s</span></label>
         <label for="pVA">Vitesse d'approche <span><input id="pVA" type="number" min="0.05" max="1" step="0.05"> m/s</span></label>
@@ -232,63 +358,72 @@ details.json[open] summary { margin-bottom: 10px; }
         <label for="pTV">Mise sous vide <span><input id="pTV" type="number" min="0" max="5" step="0.1"> s</span></label>
         <label for="pTL">Lâcher (vide coupé) <span><input id="pTL" type="number" min="0" max="5" step="0.1"> s</span></label>
         <label for="pTB">Déchargement des 10 boulets <span><input id="pTB" type="number" min="0.5" max="20" step="0.5"> s</span></label>
+      </div>
+    </div>
+    <div>
+      <h3>Départ et Graal</h3>
+      <div class="pgrid">
         <label for="pX0">Départ x <span><input id="pX0" type="number" min="0" max="3000" step="10"> mm</span></label>
         <label for="pY0">Départ y <span><input id="pY0" type="number" min="0" max="2000" step="10"> mm</span></label>
-        <label for="pH0">Départ orientation face A <span><input id="pH0" type="number" min="-360" max="360" step="5"> °</span></label>
+        <label for="pH0">Orientation face A <span><input id="pH0" type="number" min="-360" max="360" step="5"> °</span></label>
         <label for="pGX">Graal x <span><input id="pGX" type="number" min="0" max="3000" step="10"> mm</span></label>
         <label for="pGY">Graal y <span><input id="pGY" type="number" min="0" max="2000" step="10"> mm</span></label>
         <label for="pGS">Graal (cube) <span><input id="pGS" type="number" min="20" max="200" step="5"> mm</span></label>
       </div>
-      <div class="crow" style="padding:0 14px 14px"><button id="bReset" type="button">Valeurs par défaut</button></div>
-    </section>
-
-    <section class="card" aria-label="Stratégies enregistrées">
-      <h2>Stratégies de l'équipe</h2>
-      <div class="jbox">
-        <p class="note">Enregistre le programme et les paramètres sur le serveur sous un nom : toute l'équipe les retrouve ici. Un nom déjà utilisé remplace l'ancienne version.</p>
-        <form class="sname" id="fSave">
-          <label for="sName" class="sr">Nom de la stratégie</label>
-          <input id="sName" type="text" maxlength="80" placeholder="Nom de la stratégie (ex. Mur + Graal rapide)" autocomplete="off" required>
-          <button class="primary" type="submit"><i class="fa-solid fa-floppy-disk"></i> Enregistrer</button>
-        </form>
-        <p class="hint2" id="confirmOver" hidden>« <b id="overName"></b> » existe déjà. Remplacer ? <button id="bOverYes" type="button">Oui, remplacer</button> <button id="bOverNo" type="button">Annuler</button></p>
-        <span class="msg" id="sMsg" role="status"></span>
-        <ul class="strats" id="strats"><li class="empty note">Chargement de la liste…</li></ul>
-
-        <details class="json">
-          <summary>Import / export en JSON</summary>
-        <div class="crow">
-          <button class="primary" id="bExport" type="button">Exporter en JSON</button>
-          <label class="filebtn" for="fImport">Importer un fichier JSON<input id="fImport" type="file" accept=".json,application/json"></label>
-        </div>
-        <label for="tJson" class="sr">Texte JSON</label>
-        <textarea id="tJson" rows="6" spellcheck="false" placeholder="Colle ici un programme JSON, ou exporte pour voir le texte."></textarea>
-        <div class="crow">
-          <button id="bLoadText" type="button">Charger ce texte</button>
-          <button id="bCopy" type="button">Copier le texte</button>
-          <span class="msg" id="jMsg" role="status"></span>
-        </div>
-        </details>
+    </div>
+    <div class="crow"><button type="button" id="bReset">Valeurs par défaut</button></div>
+    <div>
+      <h3>Affichage</h3>
+      <div style="display:grid;gap:8px">
+        <label class="chk" for="cLab"><input id="cLab" type="checkbox" checked> Repères sur la table (P, M, T)</label>
+        <label class="chk" for="cTrail"><input id="cTrail" type="checkbox" checked> Trajet du robot</label>
+        <label class="chk" for="cPer"><input id="cPer" type="checkbox" checked> Compter les pierres tenues dans le périmètre</label>
       </div>
-    </section>
+    </div>
   </div>
+</section>
 
-  <div class="two">
-    <section class="card" aria-label="Repères">
-      <h2>Repères de la table (plan table_FINALE_1.0, x vers la droite, y vers le bas, en mm)</h2>
-      <div class="ids" id="ids"></div>
-    </section>
-    <section class="card" aria-label="Règles et limites">
-      <h2>Règles contrôlées et limites du simulateur</h2>
-      <ul class="list">
+<!-- Panneau : aide -->
+<section class="drawer" id="dHelp" aria-label="Aide">
+  <div class="dhead"><h2>Aide</h2><button type="button" class="ghost" data-close aria-label="Fermer"><i class="fa-solid fa-xmark"></i></button></div>
+  <div class="dbody">
+    <div>
+      <h3>Pour aller vite</h3>
+      <p class="note">Sélectionne une étape, puis clique un repère sur la table (paquet P, zone de mur M, tour T ou une pierre) pour la remplir. Les boutons du bas ajoutent une étape juste après celle qui est sélectionnée. Clique la frise pour aller à un instant ou à une étape.</p>
+    </div>
+    <div>
+      <h3>Raccourcis clavier</h3>
+      <dl class="keys">
+        <dt><kbd>Espace</kbd></dt><dd>Lecture / pause</dd>
+        <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>Reculer / avancer d'1 s (Maj : 5 s)</dd>
+        <dt><kbd>Début</kbd></dt><dd>Revenir au départ</dd>
+        <dt><kbd>↑</kbd> <kbd>↓</kbd></dt><dd>Étape précédente / suivante</dd>
+        <dt><kbd>Alt</kbd> + <kbd>↑</kbd> <kbd>↓</kbd></dt><dd>Déplacer l'étape</dd>
+        <dt><kbd>Ctrl</kbd> + <kbd>D</kbd></dt><dd>Dupliquer l'étape</dd>
+        <dt><kbd>Suppr</kbd></dt><dd>Supprimer l'étape</dd>
+        <dt><kbd>Ctrl</kbd> + <kbd>Z</kbd> / <kbd>Y</kbd></dt><dd>Annuler / rétablir</dd>
+        <dt><kbd>Ctrl</kbd> + <kbd>S</kbd></dt><dd>Enregistrer sur le serveur</dd>
+      </dl>
+    </div>
+    <div>
+      <h3>Repères de la table</h3>
+      <p class="note" style="margin-bottom:8px">Plan table_FINALE_1.0, x vers la droite, y vers le bas, en mm.</p>
+      <div id="ids"></div>
+    </div>
+    <div>
+      <h3>Règles contrôlées</h3>
+      <ul class="rules">
         <li>Hauteur du robot : 350 mm (règlement général F.3). Objets tenus : 350 mm, ou 430 mm dans les zones de construction et les châteaux (règlement 2027).</li>
         <li>Périmètre : 1200 mm au départ, 1400 mm ensuite (F.3). Boulets comptés s'ils tombent entre 85 et 100 s (E.4). Graal : plus grand qu'un cube de 100 mm (contraintes PAMI). Fin : robot dans la salle du trône (E.3).</li>
-        <li>Les trajets sont calculés sur une grille de 40 mm avec la forme exacte du robot et des pierres tenues. Quand aucun trajet sans contact n'existe, le robot va tout droit et le contact est signalé.</li>
+        <li>Trajets calculés sur une grille de 40 mm avec la forme exacte du robot et des pierres tenues. Sans trajet sans contact, le robot va tout droit et le contact est signalé.</li>
         <li>Porte : 2 piliers accolés et linteau tenu par de petites ventouses. Tour : la pierre est centrée sur son cercle si la place le permet, sinon décalée (signalé). Robot adverse absent, points non calculés.</li>
       </ul>
-    </section>
+    </div>
+    <div class="crow"><button type="button" id="bLogout"><i class="fa-solid fa-right-from-bracket"></i> Se déconnecter</button></div>
   </div>
-</div>
+</section>
+
+<div class="toast" id="toast" role="status" hidden><span id="toastMsg"></span><span class="tb" id="toastBtns"></span></div>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -748,548 +883,6 @@ var ENGINE = (function () {
 /*ENGINE_END*/
 
 </script>
-<script>
-(function () {
-  var $ = function (id) { return document.getElementById(id); };
-  var MATCH = 100;
-  var DEF = { v: 0.5, va: 0.2, w: 120, vz: 100, trot: 1.5, tvac: 0.5, trel: 0.4, tballs: 4, x0: 250, y0: 1000, h0: 0, gx: 100, gy: 1180, gs: 60 };
-  var PIDS = { v: 'pV', va: 'pVA', w: 'pW', vz: 'pVZ', trot: 'pTR', tvac: 'pTV', trel: 'pTL', tballs: 'pTB', x0: 'pX0', y0: 'pY0', h0: 'pH0', gx: 'pGX', gy: 'pGY', gs: 'pGS' };
-  var EXAMPLE = [
-    { a: 'prendre', f: 'A', p: 'P1' }, { a: 'prendre', f: 'B', p: 'P9' },
-    { a: 'mur', f: 'A', z: 'M1', side: 'ext' }, { a: 'mur', f: 'B', z: 'M2', side: 'ext' },
-    { a: 'prendre', f: 'A', p: 'P5' }, { a: 'prendre', f: 'B', p: 'P10' },
-    { a: 'mur', f: 'A', z: 'M5', side: 'ext' }, { a: 'mur', f: 'B', z: 'M4', side: 'ext' },
-    { a: 'prendre', f: 'A', p: 'P4' }, { a: 'boulets' },
-    { a: 'porte', f: 'A', z: 'M3', side: 'int' },
-    { a: 'prendreGraal', f: 'B' }, { a: 'poserGraal', f: 'B', z: 'M3' },
-    { a: 'trone' }
-  ];
-  var ACTIONS = [
-    ['prendre', 'Prendre le paquet'], ['mur', 'Poser en mur'], ['tour', 'Faire une tour'], ['porte', 'Faire une porte'],
-    ['boulets', 'Lâcher les boulets (cour adverse)'], ['prendreGraal', 'Prendre le Graal'], ['poserGraal', 'Poser le Graal sur'],
-    ['attendre', 'Attendre (s)'], ['attendreJusqua', 'Attendre jusqu\'à (s)'], ['trone', 'Aller dans la salle du trône']
-  ];
-  var FIELDS = { prendre: ['f', 'p'], mur: ['f', 'zm', 'side'], tour: ['f', 'zt', 's'], porte: ['f', 'zm', 'side'], boulets: [], prendreGraal: ['f'], poserGraal: ['f', 'zmt'], attendre: ['sec'], attendreJusqua: ['sec'], trone: [] };
-  var PKIDS = ENGINE.PK.map(function (p) { return p.id; }), MIDS = ENGINE.ZM.map(function (z) { return z.id; }), TIDS = ENGINE.ZT.map(function (z) { return z.id; });
-  var SIDS = []; PKIDS.forEach(function (p) { for (var l = 1; l <= 3; l++) SIDS.push(p + '.' + l); });
-  var prog = [], params = {};
-
-  /* ---------- stockage navigateur (commodité) ---------- */
-  function saveLocal() { try { localStorage.setItem('camelot-prog-v1', JSON.stringify({ params: params, program: prog })); } catch (e) {} }
-  function loadLocal() { try { var j = JSON.parse(localStorage.getItem('camelot-prog-v1') || 'null'); if (j && Array.isArray(j.program)) return j; } catch (e) {} return null; }
-
-  /* ---------- paramètres ---------- */
-  function writeParams() { for (var k in PIDS) $(PIDS[k]).value = params[k]; }
-  function readParams() {
-    for (var k in PIDS) {
-      var v = parseFloat($(PIDS[k]).value), zeroOk = (k === 'tvac' || k === 'trel' || k === 'x0' || k === 'y0' || k === 'h0' || k === 'gx' || k === 'gy');
-      params[k] = isFinite(v) && (zeroOk ? true : v > 0) ? v : DEF[k];
-    }
-  }
-
-  /* ---------- éditeur ---------- */
-  var stepsEl = $('steps'), dragFrom = -1;
-  function opt(sel, list, val) { list.forEach(function (o) { var e = document.createElement('option'); e.value = o[0]; e.textContent = o[1]; if (o[0] === val) e.selected = true; sel.appendChild(e); }); }
-  function mkSel(label, list, val, onCh) { var s = document.createElement('select'); s.setAttribute('aria-label', label); opt(s, list, val); s.addEventListener('change', function () { onCh(s.value); }); return s; }
-  function zoneLabel(id) { var z = ENGINE.zoneById(id); return id + (z && z.name ? ' · ' + z.name : (id[0] === 'T' ? ' · tour' : '')); }
-  function defaults(a) {
-    var st = { a: a };
-    FIELDS[a].forEach(function (k) {
-      if (k === 'f') st.f = 'A'; if (k === 'p') st.p = 'P1'; if (k === 'zm') st.z = 'M1'; if (k === 'zt') st.z = 'T1'; if (k === 'zmt') st.z = 'M3';
-      if (k === 'side') st.side = 'auto'; if (k === 's') st.s = 'P1.1'; if (k === 'sec') st.sec = a === 'attendreJusqua' ? 85 : 1;
-    });
-    return st;
-  }
-  function renderSteps() {
-    stepsEl.innerHTML = '';
-    prog.forEach(function (st, i) {
-      var li = document.createElement('li'); li.className = 'step'; li.draggable = true; li.dataset.i = i;
-      var top = document.createElement('div'); top.className = 'srow';
-      var grip = document.createElement('span'); grip.className = 'grip'; grip.textContent = '⋮⋮'; grip.title = 'Glisser pour déplacer'; top.appendChild(grip);
-      var num = document.createElement('span'); num.className = 'num'; num.textContent = i + 1; top.appendChild(num);
-      top.appendChild(mkSel('Action', ACTIONS, st.a, function (v) { prog[i] = defaults(v); changed(true); }));
-      var tm = document.createElement('span'); tm.className = 'tm'; tm.id = 'tm' + i; top.appendChild(tm);
-      var bu = document.createElement('div'); bu.className = 'sbtn';
-      [['↑', 'Monter', function () { if (i > 0) { var t = prog[i - 1]; prog[i - 1] = prog[i]; prog[i] = t; changed(true); } }],
-       ['↓', 'Descendre', function () { if (i < prog.length - 1) { var t = prog[i + 1]; prog[i + 1] = prog[i]; prog[i] = t; changed(true); } }],
-       ['✕', 'Supprimer', function () { prog.splice(i, 1); changed(true); }]].forEach(function (b) {
-        var e = document.createElement('button'); e.type = 'button'; e.textContent = b[0]; e.setAttribute('aria-label', b[1] + ' l\'étape ' + (i + 1)); e.addEventListener('click', b[2]); bu.appendChild(e);
-      });
-      top.appendChild(bu); li.appendChild(top);
-      var fl = FIELDS[st.a] || [];
-      if (fl.length) {
-        var row = document.createElement('div'); row.className = 'frow';
-        fl.forEach(function (k) {
-          if (k === 'f') row.appendChild(mkSel('Face', [['A', 'Face A'], ['B', 'Face B']], st.f, function (v) { st.f = v; changed(); }));
-          if (k === 'p') row.appendChild(mkSel('Paquet', PKIDS.map(function (p) { return [p, p]; }), st.p, function (v) { st.p = v; changed(); }));
-          if (k === 'zm') row.appendChild(mkSel('Zone de mur', MIDS.map(function (z) { return [z, zoneLabel(z)]; }), st.z, function (v) { st.z = v; changed(); }));
-          if (k === 'zt') row.appendChild(mkSel('Tour', TIDS.map(function (z) { return [z, z]; }), st.z, function (v) { st.z = v; changed(); }));
-          if (k === 'zmt') row.appendChild(mkSel('Construction', MIDS.concat(TIDS).map(function (z) { return [z, zoneLabel(z)]; }), st.z, function (v) { st.z = v; changed(); }));
-          if (k === 'side') row.appendChild(mkSel('Côté', [['auto', 'Côté auto'], ['ext', 'De l\'extérieur'], ['int', 'De l\'intérieur']], st.side, function (v) { st.side = v; changed(); }));
-          if (k === 's') row.appendChild(mkSel('Pierre', SIDS.map(function (p) { return [p, 'Pierre ' + p]; }), st.s, function (v) { st.s = v; changed(); }));
-          if (k === 'sec') { var inp = document.createElement('input'); inp.type = 'number'; inp.min = '0'; inp.step = '0.5'; inp.value = st.sec; inp.setAttribute('aria-label', 'Secondes'); inp.addEventListener('change', function () { st.sec = Math.max(0, parseFloat(inp.value) || 0); changed(); }); row.appendChild(inp); var u = document.createElement('span'); u.className = 'unit'; u.textContent = 's'; row.appendChild(u); }
-        });
-        li.appendChild(row);
-      }
-      var er = document.createElement('div'); er.className = 'serr'; er.id = 'er' + i; er.hidden = true; li.appendChild(er);
-      li.addEventListener('dragstart', function (e) { dragFrom = i; li.classList.add('drag'); try { e.dataTransfer.setData('text/plain', String(i)); e.dataTransfer.effectAllowed = 'move'; } catch (x) {} });
-      li.addEventListener('dragend', function () { li.classList.remove('drag'); });
-      li.addEventListener('dragover', function (e) { e.preventDefault(); li.classList.add('over'); });
-      li.addEventListener('dragleave', function () { li.classList.remove('over'); });
-      li.addEventListener('drop', function (e) { e.preventDefault(); li.classList.remove('over'); if (dragFrom < 0 || dragFrom === i) return; var m = prog.splice(dragFrom, 1)[0]; prog.splice(i, 0, m); dragFrom = -1; changed(true); });
-      li.addEventListener('click', function (e) { if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return; if (R && R.stepInfo[i]) time = R.stepInfo[i].t0 + 0.01; });
-      stepsEl.appendChild(li);
-    });
-    if (!prog.length) { var e = document.createElement('li'); e.className = 'empty'; e.textContent = 'Aucune étape. Ajoute une étape, ou charge l\'exemple de stratégie.'; stepsEl.appendChild(e); }
-    showStepInfo();
-  }
-  function showStepInfo() {
-    if (!R) return;
-    prog.forEach(function (st, i) {
-      var inf = R.stepInfo[i], tm = $('tm' + i), er = $('er' + i); if (!inf || !tm) return;
-      tm.textContent = fmt(inf.t0) + ' → ' + fmt(inf.t1) + ' s';
-      tm.className = 'tm' + (inf.t1 > MATCH ? ' bad' : '');
-      if (inf.err) { er.textContent = inf.err; er.hidden = false; } else er.hidden = true;
-    });
-  }
-  var timer = null;
-  function changed(rerender) { if (rerender) renderSteps(); saveLocal(); clearTimeout(timer); timer = setTimeout(recompute, 250); }
-
-  /* ---------- calcul (Web Worker si possible) ---------- */
-  var worker = null, reqId = 0, R = null;
-  try {
-    var src = $('geomSrc').textContent + '\n' + $('engSrc').textContent + '\nonmessage=function(e){var r=ENGINE.simulate(e.data.prog,e.data.P);delete r.poseAt;delete r.stoneAt;postMessage({id:e.data.id,r:r});};';
-    worker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
-    worker.onmessage = function (e) { if (e.data.id === reqId) accept(e.data.r); };
-    worker.onerror = function () { worker = null; recompute(); };
-  } catch (e) { worker = null; }
-  function recompute() {
-    readParams(); $('busy').hidden = false;
-    var data = { prog: JSON.parse(JSON.stringify(prog)), P: Object.assign({}, params), id: ++reqId };
-    if (worker) worker.postMessage(data);
-    else setTimeout(function () { var r = ENGINE.simulate(data.prog, data.P); accept(r); }, 0);
-  }
-  function accept(r) {
-    r.poseAt = function (t) { return ENGINE.poseAtK(r.K, t); };
-    r.stoneAt = function (st, t) { var e = st.tl[0]; for (var i = 0; i < st.tl.length; i++) if (st.tl[i].t <= t) e = st.tl[i]; return e; };
-    R = r; $('busy').hidden = true;
-    TEND = Math.max(MATCH, Math.ceil(R.T + 1));
-    $('tkMid').textContent = Math.round(TEND / 2) + ' s'; $('tkEnd').textContent = TEND + ' s';
-    var tot = $('tot'); tot.textContent = 'Durée : ' + fmt(R.T) + ' s' + (R.T <= MATCH ? '' : ' (dépasse de ' + fmt(R.T - MATCH) + ' s)') + (R.errors.length ? ' · ' + R.errors.length + ' alerte' + (R.errors.length > 1 ? 's' : '') : '');
-    tot.className = 'tot ' + (R.T <= MATCH && !R.errors.length ? 'ok' : 'bad');
-    showStepInfo(); buildTrail(); computeBad(); drawStrip(); renderResults();
-    if (time > TEND) time = TEND;
-  }
-
-  /* ---------- géométrie côté page ---------- */
-  var BARS = [{ y: -110, hl: 105, r: 25 }, { y: 0, hl: 105, r: 25 }, { y: 70, hl: 90, r: 10 }];
-  function gripTop(g) { var th = g.rot * Math.PI / 180, c = Math.abs(Math.cos(th)), s = Math.abs(Math.sin(th)), m = 0; BARS.forEach(function (b) { m = Math.max(m, b.y * Math.cos(th) + b.hl * s + b.r * c); }); return g.hc + m; }
-  function hullPer(P) {
-    P = P.slice().sort(function (a, b) { return a[0] - b[0] || a[1] - b[1]; });
-    function cr(o, a, b) { return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]); }
-    var lo = [], up = [];
-    P.forEach(function (q) { while (lo.length >= 2 && cr(lo[lo.length - 2], lo[lo.length - 1], q) <= 0) lo.pop(); lo.push(q); });
-    for (var i = P.length - 1; i >= 0; i--) { var q = P[i]; while (up.length >= 2 && cr(up[up.length - 2], up[up.length - 1], q) <= 0) up.pop(); up.push(q); }
-    var H = lo.slice(0, -1).concat(up.slice(0, -1)), per = 0;
-    for (var j = 0; j < H.length; j++) { var a = H[j], b = H[(j + 1) % H.length]; per += Math.hypot(a[0] - b[0], a[1] - b[1]); }
-    return per;
-  }
-  function inCastle(x, y) { return ENGINE.inPoly(x, y, ENGINE.CASTLE) || ENGINE.inPoly(x, y, ENGINE.CASTLE_B); }
-  var countPer = true;
-  function graalAt(t) { var e = R.graal.tl[0]; for (var i = 0; i < R.graal.tl.length; i++) if (R.graal.tl[i].t <= t) e = R.graal.tl[i]; return e; }
-  function checks(t) {
-    var p = R.poseAt(t), robotH = Math.max(345, gripTop(p.A), gripTop(p.B)), pts = triPoly(p), oTop = 0, oLim = 350, bad = false, n = 0;
-    R.stones.forEach(function (st) {
-      var e = R.stoneAt(st, t); if (e.k !== 'held') return; n++;
-      var g = p[e.f], th = g.rot * Math.PI / 180, top = g.hc + 110 * (e.l - 1) * Math.cos(th) + 160 * Math.abs(Math.sin(th)) + 55 * Math.abs(Math.cos(th));
-      var fo = heldFoot(p, e.f === 'A' ? 0 : 1, e.l), lim = inCastle(fo.cx, fo.cy) ? 430 : 350;
-      if (top > lim + 0.5) bad = true; if (top > oTop) { oTop = top; oLim = lim; }
-      if (countPer) pts = pts.concat(rectPoly(fo));
-    });
-    var ge = graalAt(t), gTop = 0;
-    if (ge.k === 'held' || ge.k === 'free') { gTop = ge.k === 'held' ? p[ge.f].hc - 110 + params.gs / 2 : (ge.top != null ? ge.top : ge.pose[ge.f].hc - 110 + params.gs); var glim = 430; if (gTop > glim + 0.5) bad = true; if (ge.k === 'held') { n++; if (gTop > oTop) { oTop = gTop; oLim = glim; } } }
-    var per = hullPer(pts), plim = t <= 0.01 ? 1200 : 1400;
-    var col = false; R.collisions.forEach(function (c) { if (t >= c.t - 0.001 && t < c.t + 0.1) col = true; });
-    return { p: p, robotH: robotH, oTop: oTop, oLim: oLim, n: n, per: per, plim: plim, gTop: gTop, bad: bad || robotH > 350.5 || per > plim + 0.5 || col };
-  }
-
-  /* ---------- scène ---------- */
-  var canvas = $('view'), gl;
-  try { gl = new THREE.WebGLRenderer({ canvas: canvas, antialias: true }); }
-  catch (e) { canvas.insertAdjacentHTML('afterend', '<p style="padding:16px">Le rendu 3D n\'est pas disponible dans ce navigateur. Le programme et les résultats restent calculés.</p>'); gl = null; }
-  var scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(38, 1, 10, 20000), controls = null;
-  if (gl) {
-    gl.outputEncoding = THREE.sRGBEncoding; gl.shadowMap.enabled = true; gl.shadowMap.type = THREE.PCFSoftShadowMap; gl.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    controls = new THREE.OrbitControls(camera, canvas); controls.enableDamping = true; controls.maxPolarAngle = Math.PI * 0.495; controls.minDistance = 300; controls.maxDistance = 9000;
-  }
-  var CAMS = { table: { pos: [0, 2800, 2700], tgt: [0, 0, 300] }, top: { pos: [0, 4300, 1], tgt: [0, 0, 0] } };
-  function setCam(name) { if (name === 'follow' || !controls) return; var c = CAMS[name]; camera.position.set(c.pos[0], c.pos[1], c.pos[2]); controls.target.set(c.tgt[0], c.tgt[1], c.tgt[2]); controls.update(); }
-  setCam('table');
-  function applyStage() { var c = getComputedStyle(document.documentElement).getPropertyValue('--stage').trim(); scene.background = new THREE.Color(c || '#dfe4ec'); drawStrip(); }
-  if (window.matchMedia) { var mq = window.matchMedia('(prefers-color-scheme: dark)'); if (mq.addEventListener) mq.addEventListener('change', applyStage); }
-  new MutationObserver(applyStage).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x606a78, 0.9));
-  var sun = new THREE.DirectionalLight(0xffffff, 0.7); sun.position.set(800, 3000, 1600); sun.castShadow = true; sun.shadow.mapSize.set(4096, 4096);
-  var sc = sun.shadow.camera; sc.left = -1700; sc.right = 1700; sc.top = 1200; sc.bottom = -1200; sc.near = 100; sc.far = 8000; scene.add(sun);
-  function W(x, y) { return [x - 1500, y - 1000]; }
-  function mat(c, r, m) { return new THREE.MeshStandardMaterial({ color: c, roughness: r == null ? 0.7 : r, metalness: m == null ? 0.1 : m }); }
-  function box(w, h, d, m) { var o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.castShadow = o.receiveShadow = true; return o; }
-  function cyl(rt, rb, h, m, seg) { var o = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg || 28), m); o.castShadow = o.receiveShadow = true; return o; }
-  var tex = new THREE.TextureLoader().load('table.jpg');
-  tex.encoding = THREE.sRGBEncoding; if (gl) tex.anisotropy = gl.capabilities.getMaxAnisotropy();
-  var topM = new THREE.Mesh(new THREE.PlaneGeometry(3000, 2000), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95 })); topM.rotation.x = -Math.PI / 2; topM.receiveShadow = true; scene.add(topM);
-  var under = box(3044, 40, 2044, mat(0x6b5a45, 0.9, 0)); under.position.set(0, -20.5, 0); scene.add(under);
-  var grey = mat(0xb5b0a1, 0.8, 0);
-  [[0, -1011, 3044, 22], [0, 1011, 3044, 22], [-1511, 0, 22, 2000], [1511, 0, 22, 2000]].forEach(function (b) { var m = box(b[2], 70, b[3], grey); m.position.set(b[0], 35, b[1]); scene.add(m); });
-
-  /* repères */
-  var labels = new THREE.Group(); scene.add(labels);
-  function label(text, x, y, z, flat, color) {
-    var c = document.createElement('canvas'); c.width = 256; c.height = 128; var g = c.getContext('2d');
-    g.fillStyle = 'rgba(20,24,32,0.78)'; g.beginPath(); g.moveTo(20, 8); g.arcTo(248, 8, 248, 120, 18); g.arcTo(248, 120, 8, 120, 18); g.arcTo(8, 120, 8, 8, 18); g.arcTo(8, 8, 248, 8, 18); g.fill();
-    g.fillStyle = color || '#ffffff'; g.font = 'bold 64px "IBM Plex Mono", monospace'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, 128, 66);
-    var t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding;
-    var m;
-    if (flat) { m = new THREE.Mesh(new THREE.PlaneGeometry(130, 65), new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false })); m.rotation.x = -Math.PI / 2; m.position.set(x, 3, z); }
-    else { m = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false })); m.scale.set(150, 75, 1); m.position.set(x, y, z); m.renderOrder = 10; }
-    labels.add(m);
-  }
-  ENGINE.PK.forEach(function (p) { var w = W(p.x, p.y); label(p.id, w[0], 470, w[1], false, '#ffd36b'); });
-  ENGINE.ZM.forEach(function (z) { var w = W(z.c[0], z.c[1]), n = nv(z.nin); label(z.id, w[0] + n[0] * 150, 0, w[1] + n[1] * 150, true); });
-  ENGINE.ZT.forEach(function (z) { var w = W(z.c[0], z.c[1]); label(z.id, w[0], 0, w[1] + 150, true, '#9fd1ff'); });
-
-  /* pierres */
-  var stoneMat = [mat(0xc39a66, 0.9, 0), mat(0xb68c5a, 0.9, 0), mat(0xa98050, 0.9, 0)];
-  var edgeMat = new THREE.LineBasicMaterial({ color: 0x6d4e2b }), tagMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
-  var stoneMeshes = [];
-  ENGINE.PK.forEach(function (pk, qi) {
-    for (var l = 0; l < 3; l++) {
-      var m = box(320, 110, 110, stoneMat[l]);
-      m.add(new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry), edgeMat));
-      [55.5, -55.5].forEach(function (z) { var t = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), tagMat); t.position.z = z; if (z < 0) t.rotation.y = Math.PI; m.add(t); });
-      var w = W(pk.x, pk.y); m.userData = { home: { x: w[0], y: 55 + 110 * l, z: w[1], ry: pk.tan ? Math.PI / 2 : 0 }, l: l };
-      scene.add(m); stoneMeshes.push(m);
-    }
-  });
-
-  /* robot */
-  var robot = new THREE.Group(); scene.add(robot);
-  var yellow = mat(0xf2b600, 0.5, 0.1), blue = mat(0x3a6fd0, 0.55, 0.15), dark = mat(0x39414e, 0.5, 0.3), black = mat(0x1d2128, 0.8, 0);
-  var shp = new THREE.Shape();
-  [180, 300, 60].forEach(function (a, i) { var r = a * Math.PI / 180, x = GEO.R * Math.cos(r), z = GEO.R * Math.sin(r); if (i) shp.lineTo(x, -z); else shp.moveTo(x, -z); });
-  var plateGeo = new THREE.ExtrudeGeometry(shp, { depth: 20, bevelEnabled: false });
-  [70, 220].forEach(function (y) { var pl = new THREE.Mesh(plateGeo, dark); pl.rotation.x = -Math.PI / 2; pl.position.y = y; pl.castShadow = true; robot.add(pl); });
-  var elec = cyl(70, 70, 130, yellow, 3); elec.rotation.y = Math.PI / 6; elec.position.set(-25, 155, 0); robot.add(elec);
-  var lidar = cyl(38, 38, 40, black); lidar.position.set(-30, 260, 0); robot.add(lidar);
-  [180, 300, 60].forEach(function (a) { var r = a * Math.PI / 180, g = new THREE.Group(); g.position.set(150 * Math.cos(r), 50.8, 150 * Math.sin(r)); g.rotation.y = -r; robot.add(g); var wh = cyl(50.8, 50.8, 39.5, black, 24); wh.rotation.z = Math.PI / 2; g.add(wh); });
-  var rc = nv(240), bau = cyl(22, 22, 25, mat(0xd62f2f, 0.4, 0.1)); bau.position.set(60 * rc[0], 245, 60 * rc[1]); robot.add(bau);
-  function makeModule(k) {
-    var face = new THREE.Group(); face.rotation.y = -k * 120 * Math.PI / 180; robot.add(face);
-    var mod = new THREE.Group(); mod.position.x = GEO.rin; face.add(mod);
-    [-175, 175].forEach(function (z) { var u = box(20, 345, 20, blue); u.position.set(-40, 172.5, z); mod.add(u); });
-    var tb = box(20, 15, 370, blue); tb.position.set(-40, 337.5, 0); mod.add(tb);
-    var carr = new THREE.Group(); mod.add(carr);
-    var cross = box(14, 14, 330, blue); cross.position.set(-40, 0, 0); carr.add(cross);
-    var ring = new THREE.Mesh(new THREE.TorusGeometry(58, 3.5, 10, 48), new THREE.MeshStandardMaterial({ color: 0xd62f2f, roughness: 0.5 })); ring.rotation.y = Math.PI / 2; ring.position.set(-34, 0, 0); carr.add(ring);
-    var grip = new THREE.Group(); carr.add(grip);
-    var spine = box(6, 200, 14, blue); spine.position.set(-27, -20, 0); grip.add(spine);
-    var mats = [0, 1, 2].map(function () { return new THREE.MeshStandardMaterial({ color: 0xd62f2f, roughness: 0.55 }); });
-    BARS.forEach(function (b, i) {
-      var bar = box(6, 14, 2 * (b.hl - b.r) + 20, blue); bar.position.set(-27, b.y, 0); grip.add(bar);
-      [-80, 80].forEach(function (z) { var c = cyl(b.r * 0.4, b.r, 24, mats[i]); c.rotation.z = -Math.PI / 2; c.position.set(-12, b.y, z); grip.add(c); });
-    });
-    var gcup = cyl(8, 16, 24, mats[0]); gcup.rotation.z = -Math.PI / 2; gcup.position.set(-12, -110, 0); grip.add(gcup);
-    var lab = box(4, 40, 40, k ? mat(0x2aa3a3, 0.5, 0.1) : mat(0x8a5cd0, 0.5, 0.1)); lab.position.set(-60, 300, 0); mod.add(lab);
-    return { carr: carr, grip: grip, mats: mats };
-  }
-  var MOD = { A: makeModule(0), B: makeModule(1) };
-  var graalM = box(60, 60, 60, new THREE.MeshStandardMaterial({ color: 0xe8c547, roughness: 0.3, metalness: 0.6 })); scene.add(graalM);
-  var ballMat = new THREE.MeshStandardMaterial({ color: 0xf2b600, roughness: 0.8 }), balls = [];
-  for (var bi = 0; bi < 10; bi++) { var bm = new THREE.Mesh(new THREE.SphereGeometry(22.5, 16, 12), ballMat); bm.castShadow = true; scene.add(bm); balls.push(bm); }
-  var BSEED = []; for (var bj = 0; bj < 10; bj++) BSEED.push([((bj * 37) % 10) / 10 - 0.5, ((bj * 53) % 10) / 10 - 0.5]);
-  var trail = null;
-  function buildTrail() {
-    if (trail) { scene.remove(trail); trail.geometry.dispose(); }
-    var pts = []; for (var t = 0; t <= R.T; t += 0.1) { var p = R.poseAt(t), w = W(p.x, p.y); pts.push(new THREE.Vector3(w[0], 2, w[1])); }
-    trail = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0xff3d7f })); scene.add(trail);
-  }
-  function placeRobot(p) {
-    var w = W(p.x, p.y); robot.position.set(w[0], 0, w[1]); robot.rotation.y = -p.h * Math.PI / 180;
-    ['A', 'B'].forEach(function (f) { MOD[f].carr.position.y = p[f].hc; MOD[f].grip.rotation.x = p[f].rot * Math.PI / 180; });
-    robot.updateMatrixWorld(true);
-  }
-  var tmpM = new THREE.Matrix4(), tmpQ = new THREE.Quaternion(), tmpV = new THREE.Vector3(), tmpS = new THREE.Vector3(), loc = new THREE.Object3D();
-  function fromGrip(mesh, f, lx, ly, ry) {
-    loc.position.set(lx, ly, 0); loc.rotation.set(0, ry, 0); loc.updateMatrix();
-    tmpM.multiplyMatrices(MOD[f].grip.matrixWorld, loc.matrix); tmpM.decompose(tmpV, tmpQ, tmpS);
-    mesh.position.copy(tmpV); mesh.quaternion.copy(tmpQ);
-  }
-
-  /* ---------- frise, résultats ---------- */
-  var strip = $('strip'), badMap = [], TEND = 100, time = 0;
-  function computeBad() { badMap = []; for (var t = 0; t <= TEND; t += 0.2) badMap.push(checks(Math.min(t, R.T)).bad); }
-  function drawStrip() {
-    if (!R) return;
-    var w = strip.clientWidth || 800, ctx = strip.getContext('2d'), cs = getComputedStyle(document.documentElement);
-    strip.width = w; strip.height = 14; ctx.fillStyle = cs.getPropertyValue('--ok').trim(); ctx.fillRect(0, 0, w, 14);
-    ctx.fillStyle = cs.getPropertyValue('--bad').trim();
-    badMap.forEach(function (b, i) { if (b) ctx.fillRect(Math.floor(i * 0.2 / TEND * w), 0, Math.ceil(0.2 / TEND * w) + 1, 14); });
-    ctx.fillStyle = cs.getPropertyValue('--fg').trim(); ctx.fillRect(Math.round(MATCH / TEND * w) - 1, 0, 2, 14);
-  }
-  function fmt(t) { return (Math.round(t * 10) / 10).toFixed(1).replace('.', ','); }
-  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
-  function renderResults() {
-    var T = R.T, fin = {};
-    R.stones.forEach(function (st) {
-      var e = R.stoneAt(st, T);
-      if (e.k === 'home') { var pk = ENGINE.PK[st.pk]; fin[st.id] = { foot: rectPoly({ cx: pk.x, cy: pk.y, hl: 160, hn: 55, ang: pk.tan + 90 }), v: false, bottom: 110 * st.l, home: true }; }
-      else if (e.k === 'free') { var g = e.pose[e.f], th = g.rot * Math.PI / 180, fo = heldFoot(e.pose, e.f === 'A' ? 0 : 1, e.l), zc = g.hc + 110 * (e.l - 1) * Math.cos(th); fin[st.id] = { foot: rectPoly(fo), v: Math.abs(Math.sin(th)) > 0.7, bottom: zc - (160 * Math.abs(Math.sin(th)) + 55 * Math.abs(Math.cos(th))) }; }
-    });
-    function zr(z) { return rectPoly({ cx: z.c[0], cy: z.c[1], hl: 200, hn: 100, ang: z.tan + 90 }); }
-    var rows = [], walls = [], doors = [], towers = [], inZ = {};
-    ENGINE.ZM.forEach(function (z) {
-      var P = zr(z), ss = Object.keys(fin).filter(function (k) { return !fin[k].home && overlap(fin[k].foot, P, 0); });
-      ss.forEach(function (k) { inZ[k] = 1; });
-      var h = ss.filter(function (k) { return !fin[k].v; }), v = ss.filter(function (k) { return fin[k].v; });
-      if (v.length >= 2 && h.some(function (k) { return fin[k].bottom > 300; })) doors.push(z.id);
-      else if (h.length >= 3) walls.push(z.id);
-    });
-    ENGINE.ZT.forEach(function (z) {
-      Object.keys(fin).forEach(function (k) {
-        if (fin[k].home) return; var d = 1e9, P = fin[k].foot;
-        if (ENGINE.inPoly(z.c[0], z.c[1], P)) d = 0; else for (var i = 0; i < 4; i++) { var a = P[i], b = P[(i + 1) % 4], dx = b[0] - a[0], dy = b[1] - a[1], L = dx * dx + dy * dy, u = Math.max(0, Math.min(1, ((z.c[0] - a[0]) * dx + (z.c[1] - a[1]) * dy) / L)); d = Math.min(d, Math.hypot(z.c[0] - a[0] - u * dx, z.c[1] - a[1] - u * dy)); }
-        if (d < 100) { inZ[k] = 1; if (fin[k].v && towers.indexOf(z.id) < 0) towers.push(z.id); }
-      });
-    });
-    var own = function (id) { var n = parseInt(id.slice(1), 10); return id[0] === 'M' ? n <= 5 : n <= 4; };
-    var bOk = R.balls.t >= 85 && R.balls.t + R.balls.d <= 100, ge = graalAt(T), gTxt = 'dans la salle du trône';
-    if (ge.k === 'held') gTxt = 'encore tenu par le robot (non compté)';
-    if (ge.k === 'free') { var gt = ge.top != null ? ge.top : ge.pose[ge.f].hc - 110 + params.gs; gTxt = 'posé, sommet à ' + Math.round(gt) + ' mm' + (gt > 430.5 ? ' (au-delà de 430 mm)' : ''); }
-    var pEnd = R.poseAt(T), tri = triPoly(pEnd), inThrone = tri.every(function (v) { return v[0] >= 0 && v[0] <= 500 && v[1] >= 750 && v[1] <= 1250; });
-    rows.push(['Durée du programme', fmt(T) + ' s', T <= MATCH]);
-    rows.push(['Pierres prises', Object.keys(fin).filter(function (k) { return !fin[k].home; }).length + R.stones.filter(function (st) { return R.stoneAt(st, T).k === 'held'; }).length + ' / 30', null]);
-    rows.push(['Pierres dans nos zones de construction', Object.keys(inZ).filter(function (k) { return true; }).length, null]);
-    rows.push(['Murs', walls.length ? walls.join(', ') + (walls.some(function (z) { return !own(z); }) ? ' (zone adverse incluse)' : '') : 'aucun', null]);
-    rows.push(['Tours', towers.length ? towers.join(', ') : 'aucune', null]);
-    rows.push(['Porte', doors.length ? doors.join(', ') : 'aucune', null]);
-    rows.push(['Boulets', R.balls.t < Infinity ? 'lâchés de ' + fmt(R.balls.t) + ' à ' + fmt(R.balls.t + R.balls.d) + ' s' + (bOk ? ', comptés' : ', hors phase d\'attaque') : 'non lâchés', R.balls.t < Infinity ? bOk : null]);
-    rows.push(['Graal', gTxt + (params.gs <= 100 ? ' · taille sous le cube de 100 mm exigé' : ''), ge.k === 'free' ? ((ge.top != null ? ge.top : 0) <= 430.5 && params.gs > 100) : null]);
-    rows.push(['Fin dans la salle du trône', inThrone ? (T <= MATCH ? 'oui' : 'oui, mais après 100 s') : 'non', inThrone && T <= MATCH]);
-    var badT = badMap.filter(function (b, i) { return b && i * 0.2 <= T; }).length * 0.2;
-    rows.push(['Temps hors règlement (hauteur, périmètre, contacts)', badT ? 'environ ' + fmt(badT) + ' s, voir la frise rouge' : 'aucun', !badT]);
-    rows.push(['Contacts robot-pierre', R.collisions.length ? R.collisions.map(function (c) { return fmt(c.t) + ' s : ' + c.with; }).join(' · ') : 'aucun', !R.collisions.length]);
-    rows.push(['Alertes du programme', R.errors.length ? R.errors.map(function (e) { return 'étape ' + e.step + ' : ' + e.msg; }).join(' · ') : 'aucune', !R.errors.length]);
-    $('results').innerHTML = '<dl class="facts">' + rows.map(function (r) { return '<dt>' + esc(r[0]) + '</dt><dd class="' + (r[2] === true ? 'ok' : r[2] === false ? 'bad' : '') + '">' + esc(r[1]) + '</dd>'; }).join('') + '</dl>';
-  }
-
-  /* ---------- mise à jour de la vue ---------- */
-  var red = new THREE.Color(0xd62f2f), green = new THREE.Color(0x2fbf71), scrub = $('scrub');
-  function update(t) {
-    if (!R) return;
-    var tt = Math.min(t, R.T), groups = [];
-    R.stones.forEach(function (st, i) {
-      var m = stoneMeshes[i], e = R.stoneAt(st, tt);
-      if (e.k === 'home') { var h = m.userData.home; m.position.set(h.x, h.y, h.z); m.rotation.set(0, h.ry, 0); return; }
-      if (e.k === 'free') {
-        if (!e._p) { placeRobot(e.pose); fromGrip(m, e.f, 55, 110 * (e.l - 1), Math.PI / 2); e._p = m.position.clone(); e._q = m.quaternion.clone(); }
-        m.position.copy(e._p); m.quaternion.copy(e._q); return;
-      }
-      groups.push([m, e]);
-    });
-    var ge = graalAt(tt);
-    var c = checks(tt), p = c.p; placeRobot(p);
-    groups.forEach(function (g) { fromGrip(g[0], g[1].f, 55, 110 * (g[1].l - 1), Math.PI / 2); });
-    graalM.scale.setScalar(params.gs / 60);
-    if (ge.k === 'home') { var gw = W(params.gx, params.gy); graalM.position.set(gw[0], params.gs / 2, gw[1]); graalM.rotation.set(0, 0, 0); }
-    else if (ge.k === 'held') fromGrip(graalM, ge.f, params.gs / 2, -110, 0);
-    else { if (!ge._p) { placeRobot(ge.pose); fromGrip(graalM, ge.f, params.gs / 2, -110, 0); ge._p = graalM.position.clone(); ge._q = graalM.quaternion.clone(); placeRobot(p); } graalM.position.copy(ge._p); graalM.quaternion.copy(ge._q); }
-    ['A', 'B'].forEach(function (f) { for (var j = 0; j < 3; j++) { var on = p[f].vac[j]; MOD[f].mats[j].color.copy(on ? green : red); MOD[f].mats[j].emissive.copy(green).multiplyScalar(on ? 0.2 : 0); } });
-    var ba = R.balls.at, bw = ba ? W(ba[0], ba[1]) : [0, 0];
-    balls.forEach(function (bm, i) {
-      var ti = R.balls.t + (i + 0.5) * R.balls.d / 10;
-      if (tt < ti) bm.position.copy(new THREE.Vector3(-76 + (i % 5) * 18, 245, (Math.floor(i / 5) - 0.5) * 30).applyMatrix4(robot.matrixWorld));
-      else { var k = Math.min(1, (tt - ti) / 0.35); bm.position.set(bw[0] + BSEED[i][0] * 160 * k, 200 + (22.5 - 200) * k * k, bw[1] + BSEED[i][1] * 160 * k); }
-    });
-    var hR = $('hR'), hS = $('hS'), hP = $('hP'), hB = $('hBall');
-    hR.textContent = Math.round(c.robotH) + ' mm ' + (c.robotH <= 350.5 ? '✓' : '✗'); hR.className = c.robotH <= 350.5 ? 'ok' : 'bad';
-    if (c.n) { var okS = c.oTop <= c.oLim + 0.5; hS.textContent = Math.round(c.oTop) + ' / ' + c.oLim + ' mm ' + (okS ? '✓' : '✗'); hS.className = okS ? 'ok' : 'bad'; } else { hS.textContent = '-'; hS.className = ''; }
-    hP.textContent = Math.round(c.per) + ' / ' + c.plim + ' mm ' + (c.per <= c.plim + 0.5 ? '✓' : '✗'); hP.className = c.per <= c.plim + 0.5 ? 'ok' : 'bad';
-    $('hA').textContent = Math.round(p.A.hc) + ' / ' + Math.round(p.A.rot) + '°'; $('hB').textContent = Math.round(p.B.hc) + ' / ' + Math.round(p.B.rot) + '°';
-    if (tt < R.balls.t) { hB.textContent = 'à bord'; hB.className = ''; }
-    else { var nb = Math.min(10, Math.floor((tt - R.balls.t) / (R.balls.d / 10) + 0.5)), okB = R.balls.t >= 85 && R.balls.t + R.balls.d <= 100; hB.textContent = nb + ' / 10 ' + (okB ? '✓' : '✗'); hB.className = okB ? 'ok' : 'bad'; }
-    var clk = $('clk'); clk.textContent = fmt(Math.min(t, TEND)); clk.className = t > MATCH ? 'bad' : '';
-    var lab = 'Fin du programme', stepN = '-';
-    for (var i = 0; i < R.segs.length; i++) { var sg = R.segs[i]; if (tt >= sg.t0 && tt < sg.t1) { lab = sg.label; stepN = sg.step ? String(sg.step) : '-'; break; } }
-    if (tt >= R.T) lab = 'Programme terminé en ' + fmt(R.T) + ' s';
-    $('now').textContent = lab; $('hStep').textContent = stepN;
-    var lis = stepsEl.querySelectorAll('li.step');
-    lis.forEach(function (li, k) { var inf = R.stepInfo[k]; li.classList.toggle('on', !!inf && tt >= inf.t0 && tt < inf.t1); });
-    if (!dragging) scrub.value = String(Math.round(t / TEND * 1000));
-    if (trail) trail.geometry.setDrawRange(0, Math.max(2, Math.floor(tt / 0.1)));
-  }
-
-  /* ---------- JSON ---------- */
-  function exportObj() { return { format: 'camelot-strategie', version: 1, params: params, program: prog }; }
-  function setMsg(t, ok) { var m = $('jMsg'); m.textContent = t; m.className = 'msg ' + (ok ? 'ok' : 'bad'); }
-  function importObj(o) {
-    if (!o || !Array.isArray(o.program)) throw new Error('Le JSON doit contenir une liste « program ».');
-    var valid = ACTIONS.map(function (a) { return a[0]; });
-    var p2 = o.program.filter(function (s) { return s && valid.indexOf(s.a) >= 0; }).map(function (s) { var d = defaults(s.a); for (var k in d) if (s[k] !== undefined) d[k] = s[k]; return d; });
-    prog = p2; params = Object.assign({}, DEF, o.params || {}); writeParams(); changed(true);
-    return p2.length;
-  }
-  $('bExport').addEventListener('click', function () {
-    var txt = JSON.stringify(exportObj(), null, 2); $('tJson').value = txt;
-    var c = window.claude && window.claude.use ? window.claude.use('downloads') : Promise.resolve(null);
-    c.then(function (dl) {
-      if (!dl) { setMsg('Texte JSON affiché ci-dessous : copie-le pour le garder.', true); return; }
-      return dl.save({ filename: 'strategie-camelot.json', data: txt }).then(function () { setMsg('Fichier proposé à l\'enregistrement.', true); }, function (e) { setMsg(e && e.code === 'declined' ? 'Enregistrement annulé. Le texte reste ci-dessous.' : 'Enregistrement indisponible ici. Le texte JSON est ci-dessous.', false); });
-    }).catch(function () { setMsg('Texte JSON affiché ci-dessous : copie-le pour le garder.', true); });
-  });
-  $('bCopy').addEventListener('click', function () {
-    var ta = $('tJson'); if (!ta.value) ta.value = JSON.stringify(exportObj(), null, 2);
-    var done = function () { setMsg('Texte copié.', true); };
-    try { navigator.clipboard.writeText(ta.value).then(done, function () { ta.select(); setMsg('Sélectionné : copie-le avec Ctrl+C.', true); }); } catch (e) { ta.select(); setMsg('Sélectionné : copie-le avec Ctrl+C.', true); }
-  });
-  $('bLoadText').addEventListener('click', function () { try { var n = importObj(JSON.parse($('tJson').value)); setMsg(n + ' étapes chargées.', true); } catch (e) { setMsg('JSON illisible : ' + e.message, false); } });
-  $('fImport').addEventListener('change', function (ev) {
-    var f = ev.target.files && ev.target.files[0]; if (!f) return;
-    var rd = new FileReader(); rd.onload = function () { try { var n = importObj(JSON.parse(rd.result)); $('tJson').value = rd.result; setMsg(n + ' étapes chargées depuis ' + f.name + '.', true); } catch (e) { setMsg('Fichier illisible : ' + e.message, false); } ev.target.value = ''; };
-    rd.readAsText(f);
-  });
-
-  /* ---------- stratégies enregistrées sur le serveur ---------- */
-  var API = '../api/strategies', current = '', strats = [], pendingName = '', delArm = '';
-  try { current = localStorage.getItem('icamlot-strat-name') || ''; } catch (e) {}
-  $('sName').value = current;
-  function slugify(s) { return s.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64); }
-  function setCurrent(n) { current = n; try { localStorage.setItem('icamlot-strat-name', n); } catch (e) {} }
-  function sMsg(t, ok) { var m = $('sMsg'); m.textContent = t; m.className = 'msg ' + (ok ? 'ok' : 'bad'); }
-  function getKey() { try { return localStorage.getItem('icamlot-team-key') || ''; } catch (e) { return ''; } }
-  function askKey() {
-    var k = window.prompt('Clé d\'équipe (demandée une seule fois sur cet appareil) :') || '';
-    try { if (k) localStorage.setItem('icamlot-team-key', k); else localStorage.removeItem('icamlot-team-key'); } catch (e) {}
-    return k;
-  }
-  function api(method, url, body, retried) {
-    var h = { 'Content-Type': 'application/json' }, k = getKey(); if (k) h['X-Team-Key'] = k;
-    return fetch(url, { method: method, headers: h, body: body ? JSON.stringify(body) : undefined, cache: 'no-store' }).then(function (r) {
-      return r.json().catch(function () { return {}; }).then(function (j) {
-        if (r.status === 403 && !retried && askKey()) return api(method, url, body, true);
-        if (!r.ok) throw new Error(j.error || ('erreur ' + r.status));
-        return j;
-      });
-    });
-  }
-  function fmtDate(s) { return new Date(s * 1000).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }); }
-  function renderStrats() {
-    var ul = $('strats'); ul.innerHTML = '';
-    if (!strats.length) { ul.innerHTML = '<li class="empty note">Aucune stratégie enregistrée pour l\'instant.</li>'; return; }
-    strats.forEach(function (s) {
-      var li = document.createElement('li'); if (s.slug === slugify(current)) li.className = 'cur';
-      var nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = s.name; nm.title = s.name;
-      var meta = document.createElement('span'); meta.className = 'meta'; meta.textContent = s.steps + ' étape' + (s.steps > 1 ? 's' : '') + ' · ' + fmtDate(s.updated);
-      nm.appendChild(meta); li.appendChild(nm);
-      var act = document.createElement('span'); act.className = 'act';
-      var bl = document.createElement('button'); bl.type = 'button'; bl.textContent = 'Charger'; bl.setAttribute('aria-label', 'Charger ' + s.name);
-      bl.addEventListener('click', function () { loadStrat(s.slug); });
-      var bd = document.createElement('button'); bd.type = 'button'; bd.className = 'danger';
-      bd.textContent = delArm === s.slug ? 'Confirmer' : '✕'; bd.setAttribute('aria-label', 'Supprimer ' + s.name);
-      bd.addEventListener('click', function () { if (delArm === s.slug) delStrat(s.slug, s.name); else { delArm = s.slug; renderStrats(); } });
-      act.appendChild(bl); act.appendChild(bd); li.appendChild(act); ul.appendChild(li);
-    });
-  }
-  function refreshStrats() {
-    return api('GET', API).then(function (j) { strats = j.strategies || []; renderStrats(); }, function () {
-      strats = []; $('strats').innerHTML = '<li class="empty note bad">Serveur des stratégies injoignable. L\'import / export JSON reste disponible.</li>';
-    });
-  }
-  function doSave(name) {
-    sMsg('Enregistrement…', true);
-    api('PUT', API + '/' + slugify(name), { name: name, params: params, program: prog }).then(function () {
-      setCurrent(name); sMsg('« ' + name + ' » enregistrée sur le serveur.', true); refreshStrats();
-    }, function (e) { sMsg('Échec de l\'enregistrement : ' + e.message, false); });
-  }
-  function loadStrat(slug) {
-    delArm = '';
-    api('GET', API + '/' + slug).then(function (j) {
-      var n = importObj(j); setCurrent(j.name); $('sName').value = j.name; renderStrats();
-      sMsg('« ' + j.name + ' » chargée (' + n + ' étapes).', true);
-    }, function (e) { sMsg('Impossible de charger : ' + e.message, false); });
-  }
-  function delStrat(slug, name) {
-    delArm = '';
-    api('DELETE', API + '/' + slug).then(function () {
-      if (slug === slugify(current)) setCurrent('');
-      sMsg('« ' + name + ' » supprimée.', true); refreshStrats();
-    }, function (e) { sMsg('Suppression impossible : ' + e.message, false); renderStrats(); });
-  }
-  $('fSave').addEventListener('submit', function (ev) {
-    ev.preventDefault(); $('confirmOver').hidden = true;
-    var name = $('sName').value.trim(), slug = slugify(name);
-    if (!slug) { sMsg('Donne un nom avec au moins une lettre ou un chiffre.', false); return; }
-    var clash = strats.filter(function (s) { return s.slug === slug; })[0];
-    if (clash && slug !== slugify(current)) { pendingName = name; $('overName').textContent = clash.name; $('confirmOver').hidden = false; return; }
-    doSave(name);
-  });
-  $('bOverYes').addEventListener('click', function () { $('confirmOver').hidden = true; doSave(pendingName); });
-  $('bOverNo').addEventListener('click', function () { $('confirmOver').hidden = true; });
-  refreshStrats();
-
-  /* ---------- repères ---------- */
-  (function () {
-    var h = '<div class="idgrid"><div><h3>Paquets (3 pierres, .1 en bas, .3 en haut)</h3><ul>';
-    ENGINE.PK.forEach(function (p) { h += '<li><b>' + p.id + '</b> x ' + p.x + ', y ' + p.y + (p.tan ? ' (long côté selon y)' : '') + '</li>'; });
-    h += '</ul></div><div><h3>Zones de mur (400 x 200 mm)</h3><ul>';
-    ENGINE.ZM.forEach(function (z) { h += '<li><b>' + z.id + '</b> ' + esc(z.name) + '</li>'; });
-    h += '</ul><h3>Tours (Ø200 mm)</h3><ul>';
-    ENGINE.ZT.forEach(function (z) { h += '<li><b>' + z.id + '</b> x ' + z.c[0] + ', y ' + z.c[1] + (parseInt(z.id.slice(1), 10) > 4 ? ' (adverse)' : '') + '</li>'; });
-    h += '</ul><p class="note">M1 à M5 et T1 à T4 : château jaune. M6 à M10 et T5 à T8 : château adverse. Salle du trône jaune : x 0 à 500, y 750 à 1250.</p></div></div>';
-    $('ids').innerHTML = h;
-  })();
-
-  /* ---------- commandes ---------- */
-  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  var playing = !reduce, speed = 2, last = performance.now(), camMode = 'table', dragging = false, bPlay = $('bPlay');
-  function setPlaying(v) { playing = v; bPlay.textContent = v ? 'Pause' : 'Lecture'; }
-  setPlaying(playing);
-  bPlay.addEventListener('click', function () { if (time >= TEND) time = 0; setPlaying(!playing); });
-  $('bRestart').addEventListener('click', function () { time = 0; setPlaying(true); });
-  $('sSpeed').addEventListener('change', function (e) { speed = parseFloat(e.target.value) || 1; });
-  $('sCam').addEventListener('change', function (e) { camMode = e.target.value; setCam(camMode); });
-  $('cLab').addEventListener('change', function (e) { labels.visible = e.target.checked; });
-  $('cPer').addEventListener('change', function (e) { countPer = e.target.checked; if (R) { computeBad(); drawStrip(); } });
-  scrub.addEventListener('input', function () { time = parseInt(scrub.value, 10) / 1000 * TEND; dragging = true; });
-  scrub.addEventListener('change', function () { dragging = false; });
-  for (var k in PIDS) $(PIDS[k]).addEventListener('change', function () { readParams(); changed(); });
-  $('bReset').addEventListener('click', function () { params = Object.assign({}, DEF); writeParams(); changed(); });
-  $('bAdd').addEventListener('click', function () { prog.push(defaults('prendre')); changed(true); var l = stepsEl.lastElementChild; if (l && l.scrollIntoView) l.scrollIntoView({ block: 'nearest' }); });
-  $('bExample').addEventListener('click', function () { prog = JSON.parse(JSON.stringify(EXAMPLE)); changed(true); });
-  $('bClear').addEventListener('click', function () { $('confirmClear').hidden = false; });
-  $('bClearNo').addEventListener('click', function () { $('confirmClear').hidden = true; });
-  $('bClearYes').addEventListener('click', function () { prog = []; $('confirmClear').hidden = true; changed(true); });
-
-  function resize() { if (!gl) return; var w = canvas.clientWidth, h = canvas.clientHeight; if (!w || !h) return; gl.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); drawStrip(); }
-  if (window.ResizeObserver) new ResizeObserver(resize).observe(canvas); else window.addEventListener('resize', resize);
-
-  var saved = loadLocal();
-  params = Object.assign({}, DEF, saved && saved.params ? saved.params : {});
-  prog = saved ? saved.program : JSON.parse(JSON.stringify(EXAMPLE));
-  writeParams(); renderSteps(); applyStage(); resize(); recompute();
-
-  var followOff = new THREE.Vector3(-800, 1000, 800), vT = new THREE.Vector3(), vC = new THREE.Vector3();
-  function frame(now) {
-    var dt = Math.min(0.1, (now - last) / 1000); last = now;
-    if (R && playing && !dragging) { time += dt * speed; if (time >= TEND) { time = TEND; setPlaying(false); } }
-    update(time);
-    if (gl) {
-      if (camMode === 'follow') { controls.target.lerp(vT.set(robot.position.x, 150, robot.position.z), 0.1); camera.position.lerp(vC.set(robot.position.x + followOff.x, followOff.y, robot.position.z + followOff.z), 0.05); }
-      controls.update(); gl.render(scene, camera);
-    }
-    requestAnimationFrame(frame);
-  }
-  requestAnimationFrame(frame);
-})();
-</script>
-
-</body></html>
+<script src="app.js"></script>
+</body>
+</html>

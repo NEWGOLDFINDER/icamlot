@@ -4,12 +4,17 @@ Le site est servi par Nginx (HTTP, port 80) dans le LXC 105 du nœud Proxmox
 pve1. Le HTTPS est assuré par un tunnel Cloudflare (`cloudflared`) qui tourne
 dans le même LXC.
 
-| Chemin            | Contenu                                                     |
-|-------------------|-------------------------------------------------------------|
-| `/`               | intro tronçonneuse puis accueil (`index.html`)              |
-| `/point-counter/` | compteur de points                                          |
-| `/plateau/`       | simulation du plateau (programmeur de match, table 3D)      |
-| `/api/strategies` | API des stratégies (`api/server.py`, service `icamlot-api`) |
+| Chemin            | Contenu                                                          |
+|-------------------|------------------------------------------------------------------|
+| `/`               | intro tronçonneuse puis accueil (`index.html`)                   |
+| `/point-counter/` | compteur de points (public)                                      |
+| `/connexion/`     | page de mot de passe du simulateur                               |
+| `/plateau/`       | simulation du plateau, réservée aux personnes connectées         |
+| `/api/`           | connexion et stratégies (`api/server.py`, service `icamlot-api`) |
+
+Le mot de passe du simulateur n'est jamais dans le dépôt : il est passé à
+l'installation et rangé dans `/etc/icamlot/api.env`. Une connexion reste
+valable 30 jours ; changer le mot de passe déconnecte tout le monde.
 
 Les stratégies sont des fichiers JSON dans `/var/lib/icamlot/strategies`
 (un fichier par nom). Pour les sauvegarder, il suffit de copier ce dossier.
@@ -29,12 +34,8 @@ Onglet *Public Hostname* du tunnel :
 ```bash
 apt-get update && apt-get install -y git
 git clone https://github.com/NEWGOLDFINDER/icamlot.git /opt/icamlot
-CF_TUNNEL_TOKEN='eyJ...' ICAMLOT_TOKEN='clé-d-équipe' bash /opt/icamlot/deploy/install.sh
+CF_TUNNEL_TOKEN='eyJ...' ICAMLOT_PASSWORD='mot-de-passe' bash /opt/icamlot/deploy/install.sh
 ```
-
-`ICAMLOT_TOKEN` est facultatif mais conseillé : le site est public, et sans
-clé n'importe qui peut enregistrer ou supprimer une stratégie. Avec une clé,
-le navigateur la demande une fois au premier enregistrement.
 
 ## Mettre à jour
 
@@ -43,12 +44,13 @@ git -C /opt/icamlot pull
 bash /opt/icamlot/deploy/install.sh
 ```
 
-La clé d'équipe déjà installée est conservée (`/etc/icamlot/api.env`).
+Le mot de passe déjà installé est conservé. Pour le changer, relancer avec
+`ICAMLOT_PASSWORD='nouveau' bash /opt/icamlot/deploy/install.sh`.
 
 ## Tester en local
 
 ```bash
-python api/server.py --static . --data .data/strategies
+ICAMLOT_PASSWORD=test python api/server.py --static . --data .data/strategies
 ```
 
-puis ouvrir http://127.0.0.1:8081/ (ajouter `?intro` pour rejouer l'intro).
+puis ouvrir http://127.0.0.1:8081/ (l'intro se rejoue à chaque chargement).

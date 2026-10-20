@@ -4,7 +4,8 @@
 #   bash /opt/icamlot/deploy/install.sh
 # Options :
 #   CF_TUNNEL_TOKEN=<jeton>  installe aussi cloudflared et le connecte au tunnel Cloudflare.
-#   ICAMLOT_TOKEN=<clé>      exige cette clé d'équipe pour enregistrer / supprimer une stratégie.
+#   ICAMLOT_PASSWORD=<mdp>   mot de passe d'accès au simulateur (obligatoire à la première
+#                            installation, conservé ensuite dans /etc/icamlot/api.env).
 set -euo pipefail
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -20,23 +21,28 @@ if [ "$SRC" != /opt/icamlot ]; then
   exit 1
 fi
 
+if [ -z "${ICAMLOT_PASSWORD:-}" ] && ! grep -qs '^ICAMLOT_PASSWORD=.' /etc/icamlot/api.env; then
+  echo "Donne le mot de passe du simulateur : ICAMLOT_PASSWORD='...' bash $0" >&2
+  exit 1
+fi
+
 apt-get update
 apt-get install -y nginx curl python3
 
 # Pages du site
-install -d "$WEB" "$WEB/point-counter" "$WEB/plateau"
+install -d "$WEB" "$WEB/point-counter" "$WEB/plateau" "$WEB/connexion"
 install -m 644 "$SRC/index.html" "$WEB/index.html"
 install -m 644 "$SRC/point-counter/index.html" "$WEB/point-counter/index.html"
-install -m 644 "$SRC/plateau/index.html" "$WEB/plateau/index.html"
-install -m 644 "$SRC/plateau/table.jpg" "$WEB/plateau/table.jpg"
+install -m 644 "$SRC/connexion/index.html" "$WEB/connexion/index.html"
+install -m 644 "$SRC/plateau/index.html" "$SRC/plateau/app.js" "$SRC/plateau/table.jpg" "$WEB/plateau/"
 rm -rf /var/www/point-counter
 
-# API des stratégies
+# API (connexion + stratégies)
 id icamlot >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin icamlot
 install -d -o icamlot -g icamlot -m 750 /var/lib/icamlot /var/lib/icamlot/strategies
-if [ -n "${ICAMLOT_TOKEN:-}" ]; then
+if [ -n "${ICAMLOT_PASSWORD:-}" ]; then
   install -d -m 750 /etc/icamlot
-  (umask 077; printf 'ICAMLOT_TOKEN=%s\n' "$ICAMLOT_TOKEN" > /etc/icamlot/api.env)
+  (umask 077; printf 'ICAMLOT_PASSWORD=%s\n' "$ICAMLOT_PASSWORD" > /etc/icamlot/api.env)
   chgrp icamlot /etc/icamlot /etc/icamlot/api.env
   chmod 640 /etc/icamlot/api.env
 fi

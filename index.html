@@ -101,7 +101,7 @@
           <span class="ico"><i class="fa-solid fa-chess-rook"></i></span>
           <h2>Simulation du plateau</h2>
           <p>Écris la stratégie du robot étape par étape et regarde le match se jouer sur la table 3D. Les stratégies sont enregistrées sur le serveur sous un nom.</p>
-          <span class="go">Ouvrir <i class="fa-solid fa-arrow-right"></i></span>
+          <span class="go"><i class="fa-solid fa-lock"></i> Réservé à l'équipe <i class="fa-solid fa-arrow-right"></i></span>
         </a>
       </nav>
     </main>
@@ -134,8 +134,6 @@
   var loader = $('loader'), h1 = $('h1'), h2 = $('h2'), fx = $('fx'), cv = $('sparks'), cx2 = cv.getContext('2d');
   var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  function seen() { try { return sessionStorage.getItem('icamlot-intro') === '1'; } catch (e) { return false; } }
-  function markSeen() { try { sessionStorage.setItem('icamlot-intro', '1'); } catch (e) {} }
 
   function el(tag, attrs, parent) {
     var e = document.createElementNS(SVGNS, tag);
@@ -413,7 +411,6 @@
   function finish() {
     running = false; cancelAnimationFrame(raf);
     if (engine) { engine.stop(); engine = null; }
-    markSeen();
     loader.hidden = true; parts = [];
     document.removeEventListener('keydown', onKey);
   }
@@ -436,8 +433,9 @@
   $('replay').addEventListener('click', function () { (document.fonts ? document.fonts.ready : Promise.resolve()).then(show); });
   window.addEventListener('resize', function () { if (!loader.hidden) layout(); });
 
+  /* l'intro se joue à chaque chargement de la page (sauf « mouvement réduit », sauf ?intro) */
   var force = /[?&]intro\b/.test(location.search);
-  if (force || (!seen() && !reduce)) {
+  if (force || !reduce) {
     loader.hidden = false;
     (document.fonts ? document.fonts.ready : Promise.resolve()).then(show);
   }
