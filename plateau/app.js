@@ -285,8 +285,25 @@
     gl.outputEncoding = THREE.sRGBEncoding; gl.shadowMap.enabled = true; gl.shadowMap.type = THREE.PCFSoftShadowMap; gl.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     controls = new THREE.OrbitControls(camera, canvas); controls.enableDamping = true; controls.maxPolarAngle = Math.PI * 0.495; controls.minDistance = 300; controls.maxDistance = 9000;
   }
-  var CAMS = { table: { pos: [0, 2800, 2700], tgt: [0, 0, 300] }, top: { pos: [0, 4300, 1], tgt: [0, 0, 0] } };
-  function setCam(name) { if (name === 'follow' || !controls) return; var c = CAMS[name]; camera.position.set(c.pos[0], c.pos[1], c.pos[2]); controls.target.set(c.tgt[0], c.tgt[1], c.tgt[2]); controls.update(); }
+  /* cadre la table selon la forme de l'écran : en hauteur (téléphone), son long côté passe à la verticale, notre côté (jaune) en bas */
+  var camPortrait = null, camMoved = false;
+  if (controls) controls.addEventListener('start', function () { camMoved = true; });
+  function setCam(name) {
+    if (name === 'follow' || !controls) return;
+    camMoved = false;
+    var a = camera.aspect || 1.6, portrait = a < 1, tv = Math.tan(camera.fov * Math.PI / 360), th = tv * a;
+    var ew = portrait ? 2300 : 3300, eh = portrait ? 3300 : 2300, d = Math.max(eh / 2 / tv, ew / 2 / th);
+    camPortrait = portrait;
+    if (name === 'top') { camera.position.set(portrait ? -1 : 0, d, portrait ? 0 : 1); controls.target.set(0, 0, 0); }
+    else {
+      /* vue inclinée : la profondeur de la table est vue raccourcie, plus la hauteur des pierres */
+      var el = 46 * Math.PI / 180, depth = portrait ? 3300 : 2300;
+      var D = Math.max((depth * Math.sin(el) + 500 * Math.cos(el)) / 2 / tv, ew / 2 / th) * 1.2, h = Math.cos(el) * D;
+      if (portrait) { controls.target.set(-300, 0, 0); camera.position.set(-300 - h, Math.sin(el) * D, 0); }
+      else { controls.target.set(0, 0, 300); camera.position.set(0, Math.sin(el) * D, 300 + h); }
+    }
+    controls.update();
+  }
   setCam('table');
   scene.background = new THREE.Color(getComputedStyle(document.documentElement).getPropertyValue('--stage').trim() || '#13151c');
   scene.add(new THREE.HemisphereLight(0xffffff, 0x606a78, 0.9));
@@ -466,11 +483,12 @@
     var g = $('segs'); g.innerHTML = '';
     $('m100').style.left = (MATCH / TEND * 100) + '%';
     if (!R) return;
+    var tw = $('track').clientWidth || 600;
     prog.forEach(function (st, i) {
       var inf = R.stepInfo[i]; if (!inf || inf.t1 == null) return;
       var d = document.createElement('div'); d.className = 'sg' + (i === sel ? ' sel' : '') + (inf.err || inf.t1 > MATCH ? ' err' : '');
       d.style.left = (inf.t0 / TEND * 100) + '%'; d.style.width = 'calc(' + ((inf.t1 - inf.t0) / TEND * 100) + '% - 2px)';
-      d.textContent = String(i + 1); d.title = (i + 1) + '. ' + describe(st) + ' (' + fmt(inf.t0) + '–' + fmt(inf.t1) + ' s)';
+      d.textContent = (inf.t1 - inf.t0) / TEND * tw >= 15 ? String(i + 1) : ''; d.title = (i + 1) + '. ' + describe(st) + ' (' + fmt(inf.t0) + '–' + fmt(inf.t1) + ' s)';
       g.appendChild(d);
     });
   }
@@ -842,8 +860,8 @@
   });
   window.addEventListener('beforeunload', function (e) { if (current && savedSnap && isDirty()) { e.preventDefault(); e.returnValue = ''; } });
 
-  function resize() { drawStrip(); if (!gl) return; var w = canvas.clientWidth, h = canvas.clientHeight; if (!w || !h) return; gl.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
-  if (window.ResizeObserver) { new ResizeObserver(resize).observe(canvas); new ResizeObserver(drawStrip).observe($('track')); } else window.addEventListener('resize', resize);
+  function resize() { drawStrip(); if (!gl) return; var w = canvas.clientWidth, h = canvas.clientHeight; if (!w || !h) return; gl.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); if (!camMoved || (w < h) !== camPortrait) setCam(camMode); }
+  if (window.ResizeObserver) { new ResizeObserver(resize).observe(canvas); new ResizeObserver(function () { drawStrip(); renderTimeline(); }).observe($('track')); } else window.addEventListener('resize', resize);
 
   var saved = loadLocal();
   params = Object.assign({}, DEF, saved && saved.params ? saved.params : {});

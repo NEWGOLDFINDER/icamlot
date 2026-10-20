@@ -212,11 +212,37 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
   .clock { font-size: 20px; }
   .cams { bottom: 12px; }
   .now { bottom: 56px; font-size: 12.5px; }
-  .tl { flex-wrap: wrap; gap: 8px; }
-  .track { order: -1; flex-basis: 100%; }
-  .tl .clk2 { margin-left: auto; }
+  .tl { gap: 8px; }
   .palette .grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
   .pick { top: auto; bottom: 100px; white-space: normal; text-align: center; width: max-content; max-width: calc(100% - 24px); }
+  /* palette sur une seule ligne qui défile, pour laisser la place au programme */
+  .palette { padding: 7px 0 8px; }
+  .palette .lab { padding: 0 10px; margin-bottom: 5px; }
+  .palette .grid { display: flex; overflow-x: auto; gap: 5px; padding: 0 10px; scrollbar-width: none; }
+  .palette .grid::-webkit-scrollbar { display: none; }
+  .palette button { flex: 0 0 68px; }
+}
+/* téléphone à l'horizontale : barres plus basses pour garder de la hauteur à la table */
+@media (max-width: 900px) and (max-height: 500px) {
+  :root { --top: 46px; }
+  .views { padding: 4px 8px; }
+  .views button { padding: 3px 8px; font-size: 13px; }
+  .tl { padding: 5px 10px 6px; }
+  .tl .clk2 { display: none; }
+  .now { bottom: 50px; }
+}
+@media (max-width: 600px) {
+  .tl { flex-wrap: wrap; }
+  .track { order: -1; flex-basis: 100%; }
+  .tl .clk2 { margin-left: auto; }
+  /* l'état devient une pastille : le nom de la stratégie garde la place */
+  .top { gap: 6px; padding: 0 8px; }
+  .state { font-size: 0; width: 10px; height: 10px; padding: 0; flex: 0 0 10px; background: var(--muted); border: none; }
+  .state.dirty { background: var(--accent); }
+  .state.saved { background: var(--ok); }
+  .tbtns { gap: 4px; }
+  .tbtns button { padding: 6px 9px; }
+  .hud { min-width: 0; max-width: calc(100% - 150px); }
 }
 </style>
 </head>
