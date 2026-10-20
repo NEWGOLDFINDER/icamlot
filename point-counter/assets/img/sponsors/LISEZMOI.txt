@@ -1,0 +1,2 @@
+Mets ici les logos de vos partenaires : sponsor1.png, sponsor2.png, etc.
+(PNG de préférence, fond transparent). Puis mets à jour les liens dans index.html.

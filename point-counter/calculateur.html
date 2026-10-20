@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Calculateur de points 2027 — Team Opossum</title>
+  <meta name="description" content="Calculateur de points rapide pour la Coupe de France de Robotique / Eurobot 2027 (Camelot) : construction, Graal, retour du roi et assaut." />
+  <link rel="icon" href="opossum-logo.ico" sizes="any" />
+  <link rel="icon" href="opossum-logo.svg" type="image/svg+xml" />
+  <link rel="icon" type="image/png" sizes="96x96" href="opossum-logo-96.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="opossum-logo-180.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+
+  <style>
+    :root {
+      --jaune: #f5c518; --fond: #0e0f13; --fond-2: #171922; --fond-3: #20232e;
+      --texte: #f2f3f5; --texte-doux: #a9adba; --radius: 14px; --max: 1100px;
+      --ok: #3ccf7a; --warn: #ff9f43;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body { font-family: 'Poppins', system-ui, sans-serif; background: var(--fond); color: var(--texte); line-height: 1.6; }
+    a { color: inherit; text-decoration: none; }
+    button { font-family: inherit; }
+
+    /* En-tête (identique à la fiche technique) */
+    header {
+      position: sticky; top: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between;
+      padding: 0.9rem 1.5rem; background: rgba(14,15,19,0.85); backdrop-filter: blur(10px);
+      border-bottom: 1px solid rgba(255,255,255,0.06); height: 62px;
+    }
+    .logo { font-weight: 800; letter-spacing: 0.04em; }
+    .logo span { color: var(--jaune); }
+    header a.back { color: var(--texte-doux); font-weight: 500; font-size: 0.95rem; }
+    header a.back:hover { color: var(--jaune); }
+    .header-right { display: flex; align-items: center; gap: 1rem; }
+    .lang-switch { display: inline-flex; border: 1px solid rgba(255,255,255,0.16); border-radius: 999px; overflow: hidden; }
+    .lang-switch button { background: transparent; color: var(--texte-doux); border: none; padding: 0.3rem 0.68rem; font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: background 0.2s, color 0.2s; }
+    .lang-switch button.active { background: var(--jaune); color: #17130a; }
+    @media (max-width: 520px) { header a.back span { display: none; } }
+
+    .wrap { max-width: var(--max); margin: 0 auto; padding: 0 1rem; }
+    section { padding: 2.6rem 0 1.4rem; }
+    h1 { font-size: clamp(1.8rem, 5vw, 2.8rem); font-weight: 800; text-align: center; }
+    h1 span { color: var(--jaune); }
+    .sub { text-align: center; color: var(--texte-doux); max-width: 640px; margin: 0.6rem auto 0; }
+    .badge {
+      display: inline-block; background: var(--fond-2); border: 1px solid rgba(255,255,255,0.12); color: var(--jaune);
+      font-size: 0.8rem; font-weight: 600; padding: 0.35rem 0.95rem; border-radius: 999px;
+    }
+
+    /* ---------- Barre de score (collante) ---------- */
+    .scorebar {
+      position: sticky; top: 62px; z-index: 50; margin: 1.6rem 0 1.4rem;
+      background: rgba(23,25,34,0.94); backdrop-filter: blur(10px);
+      border: 1px solid rgba(245,197,24,0.35); border-radius: var(--radius);
+      padding: 0.8rem 1rem; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+    }
+    .total { display: flex; align-items: baseline; gap: 0.4rem; min-width: 150px; }
+    .total .val { font-size: 2.6rem; font-weight: 800; color: var(--jaune); line-height: 1; font-variant-numeric: tabular-nums; transition: transform 0.15s; }
+    .total .val.bump { transform: scale(1.12); }
+    .total .unit { color: var(--texte-doux); font-weight: 600; }
+    .chips { display: flex; gap: 0.5rem; flex-wrap: wrap; flex: 1; }
+    .chip {
+      background: var(--fond); border: 1px solid rgba(255,255,255,0.08); border-radius: 999px;
+      padding: 0.25rem 0.75rem; font-size: 0.82rem; color: var(--texte-doux); white-space: nowrap;
+    }
+    .chip b { color: var(--texte); font-variant-numeric: tabular-nums; }
+    .btn-reset {
+      background: transparent; color: var(--texte-doux); border: 1px solid rgba(255,255,255,0.16);
+      border-radius: 999px; padding: 0.45rem 1rem; cursor: pointer; font-weight: 600; font-size: 0.85rem;
+    }
+    .btn-reset:hover { border-color: var(--jaune); color: var(--jaune); }
+    @media (max-width: 600px) {
+      .scorebar { padding: 0.6rem 0.8rem; gap: 0.5rem; }
+      .total .val { font-size: 2.1rem; }
+      .chip { font-size: 0.75rem; padding: 0.2rem 0.6rem; }
+    }
+
+    /* ---------- Cartes d'action ---------- */
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+    @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+    .card { background: var(--fond-2); border: 1px solid rgba(255,255,255,0.06); border-radius: var(--radius); padding: 1.1rem 1.1rem 0.9rem; }
+    .card-h { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; margin-bottom: 0.7rem; }
+    .card-h h2 { font-size: 1.02rem; font-weight: 700; display: flex; align-items: center; gap: 0.55rem; }
+    .card-h h2 i { color: var(--jaune); width: 1.3rem; text-align: center; }
+    .card-h .sub-tot { font-weight: 800; color: var(--jaune); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+    .row {
+      display: flex; align-items: center; justify-content: space-between; gap: 0.8rem;
+      padding: 0.55rem 0; border-top: 1px solid rgba(255,255,255,0.05);
+    }
+    .row:first-of-type { border-top: none; }
+    .row.stack { flex-direction: column; align-items: stretch; gap: 0.6rem; }
+    .row.stack .seg { align-self: flex-start; }
+    .lbl { font-size: 0.92rem; font-weight: 500; }
+    .lbl small { display: block; color: var(--texte-doux); font-size: 0.75rem; font-weight: 400; line-height: 1.35; }
+
+    /* Compteur − n + */
+    .stepper { display: inline-flex; align-items: center; background: var(--fond); border: 1px solid rgba(255,255,255,0.08); border-radius: 999px; flex-shrink: 0; }
+    .stepper button {
+      width: 40px; height: 40px; border: none; background: transparent; color: var(--texte);
+      font-size: 1.35rem; font-weight: 600; line-height: 1; cursor: pointer; border-radius: 50%; transition: background 0.15s, color 0.15s;
+      touch-action: manipulation;
+    }
+    .stepper button:hover:not(:disabled) { background: var(--jaune); color: #17130a; }
+    .stepper button:disabled { opacity: 0.25; cursor: default; }
+    .stepper .n { min-width: 2.2rem; text-align: center; font-weight: 700; font-size: 1.1rem; font-variant-numeric: tabular-nums; }
+
+    /* Interrupteur oui / non */
+    .toggle { position: relative; width: 54px; height: 30px; flex-shrink: 0; border: none; cursor: pointer; background: var(--fond-3); border-radius: 999px; transition: background 0.2s; }
+    .toggle::after { content: ''; position: absolute; top: 4px; left: 4px; width: 22px; height: 22px; border-radius: 50%; background: var(--texte-doux); transition: transform 0.2s, background 0.2s; }
+    .toggle[aria-pressed="true"] { background: var(--jaune); }
+    .toggle[aria-pressed="true"]::after { transform: translateX(24px); background: #17130a; }
+
+    /* Choix segmenté */
+    .seg { display: inline-flex; background: var(--fond); border: 1px solid rgba(255,255,255,0.08); border-radius: 999px; padding: 3px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+    .seg button { border: none; background: transparent; color: var(--texte-doux); padding: 0.4rem 0.75rem; border-radius: 999px; cursor: pointer; font-weight: 600; font-size: 0.85rem; min-width: 36px; }
+    .seg button.on { background: var(--jaune); color: #17130a; }
+
+    .hint { font-size: 0.78rem; color: var(--texte-doux); margin-top: 0.45rem; display: flex; gap: 0.4rem; align-items: flex-start; }
+    .hint i { color: var(--jaune); margin-top: 0.2rem; }
+    .hint.warn i, .hint.warn { color: var(--warn); }
+
+    /* Rappel du barème */
+    details.rules { margin-top: 1.6rem; background: var(--fond-2); border: 1px solid rgba(255,255,255,0.06); border-radius: var(--radius); padding: 0.9rem 1.1rem; }
+    details.rules summary { cursor: pointer; font-weight: 600; }
+    details.rules summary i { color: var(--jaune); margin-right: 0.4rem; }
+    details.rules ul { margin: 0.8rem 0 0.2rem 1.1rem; color: #d6d9e0; font-size: 0.9rem; }
+    details.rules li { margin-bottom: 0.3rem; }
+    .note { color: var(--texte-doux); font-size: 0.8rem; text-align: center; margin-top: 1.2rem; }
+
+    footer { text-align: center; padding: 2.5rem 1.5rem; color: var(--texte-doux); border-top: 1px solid rgba(255,255,255,0.06); margin-top: 2rem; }
+  </style>
+</head>
+
+<body>
+  <header>
+    <a class="logo" href="index.html">TEAM <span>OPOSSUM</span></a>
+    <div class="header-right">
+      <div class="lang-switch" id="lang-switch">
+        <button type="button" data-lang="fr">FR</button>
+        <button type="button" data-lang="en">EN</button>
+      </div>
+      <a class="back" href="index.html"><i class="fa-solid fa-arrow-left"></i> <span data-i18n="calc.back">Retour au site</span></a>
+    </div>
+  </header>
+
+  <section>
+    <div class="wrap">
+      <h1 data-i18n="calc.title">Calculateur <span>de points</span></h1>
+      <p class="sub" data-i18n="calc.sub">Comptez un match en quelques touches : renseignez ce qui est sur la table en fin de match, le score se met à jour tout seul.</p>
+      <p style="text-align:center; margin-top:0.7rem;">
+        <span class="badge" data-i18n="calc.badge"><i class="fa-solid fa-chess-rook"></i> Règlement Eurobot 2027 « Camelot » · version officielle 1.0</span>
+      </p>
+
+      <!-- Score total + détail par action -->
+      <div class="scorebar" id="scorebar">
+        <div class="total"><span class="val" id="total">0</span><span class="unit">pts</span></div>
+        <div class="chips" id="chips"></div>
+        <button class="btn-reset" id="reset"><i class="fa-solid fa-rotate-left"></i> <span data-i18n="calc.reset">Remise à zéro</span></button>
+      </div>
+
+      <div class="grid" id="grid"></div>
+
+      <details class="rules">
+        <summary><i class="fa-solid fa-scroll"></i><span data-i18n="calc.rulesTitle">Rappel du barème 2027</span></summary>
+        <ul id="rules-list"></ul>
+      </details>
+      <p class="note" data-i18n="calc.note">Hors bonus et pénalités du règlement général. Les maximums (zones de mur, tours, douves) sont lus sur le plan de la table : à vérifier sur les cotes officielles.</p>
+    </div>
+  </section>
+
+  <footer data-i18n="calc.footer">© 2026 Team Opossum — Calculateur de points 2027</footer>
+
+  <!-- ==================== LANGUES (FR / EN) ==================== -->
+  <script>
+    const I18N = {
+      fr: {
+        'calc.back': `Retour au site`,
+        'calc.title': `Calculateur <span>de points</span>`,
+        'calc.sub': `Comptez un match en quelques touches : renseignez ce qui est sur la table en fin de match, le score se met à jour tout seul.`,
+        'calc.badge': `<i class="fa-solid fa-chess-rook"></i> Règlement Eurobot 2027 « Camelot » · version officielle 1.0`,
+        'calc.reset': `Remise à zéro`,
+        'calc.rulesTitle': `Rappel du barème 2027`,
+        'calc.note': `Hors bonus et pénalités du règlement général. Les maximums (zones de mur, tours, douves) sont lus sur le plan de la table : à vérifier sur les cotes officielles.`,
+        'calc.footer': `© 2026 Team Opossum — Calculateur de points 2027`,
+        'yes': `Oui`, 'no': `Non`
+      },
+      en: {
+        'calc.back': `Back to site`,
+        'calc.title': `Points <span>calculator</span>`,
+        'calc.sub': `Score a match in a few taps: enter what is on the table at the end of the match and the score updates by itself.`,
+        'calc.badge': `<i class="fa-solid fa-chess-rook"></i> Eurobot 2027 “Camelot” rules · official version 1.0`,
+        'calc.reset': `Reset`,
+        'calc.rulesTitle': `2027 scoring reminder`,
+        'calc.note': `Excludes bonuses and penalties from the general rules. Maximums (wall zones, towers, moats) are read from the table plan: check them against the official dimensions.`,
+        'calc.footer': `© 2026 Team Opossum — 2027 points calculator`,
+        'yes': `Yes`, 'no': `No`
+      }
+    };
+    let LANG = new URLSearchParams(location.search).get('lang');
+    try { LANG = LANG || localStorage.getItem('lang'); } catch (e) {}
+    LANG = LANG || (navigator.language || 'fr').slice(0, 2).toLowerCase();
+    if (LANG !== 'en') LANG = 'fr';
+    try { localStorage.setItem('lang', LANG); } catch (e) {}
+    function T(key) { return (I18N[LANG] && I18N[LANG][key] != null) ? I18N[LANG][key] : (I18N.fr[key] != null ? I18N.fr[key] : ''); }
+    /* Propage la langue dans les liens vers les autres pages */
+    function withLang(href) {
+      const [path, hash] = href.split('#');
+      const [base, qs] = path.split('?');
+      const p = new URLSearchParams(qs || ''); p.set('lang', LANG);
+      return base + '?' + p.toString() + (hash ? '#' + hash : '');
+    }
+    function syncCrossLinks() {
+      document.querySelectorAll('a[href]').forEach(a => {
+        const h = a.getAttribute('href');
+        if (/^(index\.html|technique\.html|calculateur\.html)(\?|#|$)/.test(h)) a.setAttribute('href', withLang(h));
+      });
+    }
+    function applyStaticI18n() {
+      document.documentElement.lang = LANG;
+      document.querySelectorAll('[data-i18n]').forEach(el => { const v = T(el.getAttribute('data-i18n')); if (v) el.innerHTML = v; });
+      document.querySelectorAll('#lang-switch button').forEach(b => b.classList.toggle('active', b.dataset.lang === LANG));
+      syncCrossLinks();
+    }
+    function setLang(lang) {
+      LANG = (lang === 'en') ? 'en' : 'fr';
+      try { localStorage.setItem('lang', LANG); } catch (e) {}
+      applyStaticI18n();
+      document.dispatchEvent(new CustomEvent('langchange', { detail: LANG }));
+    }
+    document.querySelectorAll('#lang-switch button').forEach(b => b.addEventListener('click', () => setLang(b.dataset.lang)));
+    applyStaticI18n();
+  </script>
+
+  <!-- ==================================================================== -->
+  <!--  BARÈME  —  Pour mettre à jour les points (FAQ, nouvelle version du   -->
+  <!--  règlement...), modifie uniquement BAREME et LIMITES ci-dessous.      -->
+  <!-- ==================================================================== -->
+  <script>
+    /* Points du règlement Eurobot 2027 — version OFFICIELLE 1.0 (§E et §F) */
+    const BAREME = {
+      pierre: 1,          /* par pierre dans une zone de construction */
+      mur: 5,             /* par mur (3 pierres horizontales empilées, zone rectangulaire) */
+      tour: 5,            /* par tour (1 pierre verticale, zone circulaire) */
+      porte: 20,          /* par porte (2 verticales + 1 linteau) — 1 seule par château */
+      graalPresent: 5,    /* Graal présent dans le château */
+      graalNiveau: 5,     /* par niveau d'élévation du Graal (1 à 4) */
+      retourPartiel: 5,   /* robot principal partiellement dans la salle du trône */
+      retourComplet: 10,  /* robot principal complètement dans la salle du trône */
+      douve: 5,           /* par douve adverse occupée par un PAMI */
+      attaque: 5,         /* au moins un PAMI attaque un PAMI adverse */
+      boulet1: 5,         /* au moins 1 boulet dans la cour adverse */
+      boulet3: 15         /* bonus si au moins 3 boulets dans la cour adverse */
+    };
+    /* Limites (lecture du plan G.1 — à confirmer sur les cotes) */
+    const LIMITES = {
+      pierres: 30,        /* pierres sur la table */
+      zonesMur: 5,        /* zones rectangulaires par château (murs + porte) */
+      tours: 4,           /* zones circulaires par château */
+      douves: 3,          /* douves par château */
+      boulets: 10,        /* boulets par équipe */
+      niveauMax: 4        /* niveau d'élévation max du Graal */
+    };
+
+    /* ---------- Textes des contrôles (FR / EN) ---------- */
+    const TXT = {
+      fr: {
+        camelot: 'Construction de Camelot', graal: "Il n'y en a qu'un, et c'est le mien !", roi: 'Le retour du roi', assaut: "À l'assaut !",
+        pierres: ['Pierres en zone de construction', `${BAREME.pierre} pt / pierre`],
+        murs: ['Murs', `+${BAREME.mur} · 3 pierres horizontales empilées`],
+        tours: ['Tours', `+${BAREME.tour} · 1 pierre verticale`],
+        porte: ['Porte', `+${BAREME.porte} · 2 verticales + 1 linteau, 1 seule`],
+        graalPresent: ['Graal dans le château', `+${BAREME.graalPresent}`],
+        niveau: ["Niveau d'élévation", `+${BAREME.graalNiveau} / niveau · 4 = toit du robot (> 30 cm)`],
+        retour: ['Robot principal en fin de match', 'Dans la salle du trône'],
+        retourOpts: ['Dehors', 'Partiel', 'Complet'],
+        douves: ['Douves adverses occupées', `${BAREME.douve} pts / douve`],
+        attaque: ['Un PAMI attaque un PAMI adverse', `+${BAREME.attaque} (une seule fois)`],
+        boulets: ['Boulets dans la cour adverse', `${BAREME.boulet1} si ≥ 1 · +${BAREME.boulet3} si ≥ 3`],
+        minStones: n => `Il faut au moins ${n} pierre${n > 1 ? 's' : ''} pour ces constructions : compteur ajusté automatiquement.`,
+        stonesHint: 'Les pierres des constructions comptent aussi en « pierres en zone ».',
+        graalAuto: 'Un Graal surélevé est forcément dans le château.',
+        bouletsHint: n => n >= 3 ? 'Bonus des 3 boulets atteint : un boulet de plus ne rapporte rien.' : `Encore ${3 - n} boulet${3 - n > 1 ? 's' : ''} pour le bonus de +${BAREME.boulet3}.`,
+        chip: { camelot: 'Camelot', graal: 'Graal', roi: 'Roi', assaut: 'Assaut' },
+        rules: [
+          `Pierre dans une zone de construction : ${BAREME.pierre} pt. Mur : +${BAREME.mur}. Tour : +${BAREME.tour}. Porte : +${BAREME.porte} (une seule par château).`,
+          `Une pierre ne compte que pour une seule construction ; une construction en trop ne rapporte que ses points de pierre.`,
+          `Graal dans le château : +${BAREME.graalPresent}, puis +${BAREME.graalNiveau} par niveau (1 = 1 pierre horiz., 2 = 2, 3 = 3 horiz. ou 1 verticale, 4 = toit du robot > 30 cm sans fixation).`,
+          `Retour du roi : ${BAREME.retourPartiel} pts en partie dans la salle du trône, ${BAREME.retourComplet} pts complètement.`,
+          `Assaut (à partir de 85 s) : ${BAREME.douve} pts par douve adverse, +${BAREME.attaque} si un PAMI attaque un PAMI adverse, ${BAREME.boulet1} pts si ≥ 1 boulet, +${BAREME.boulet3} si ≥ 3.`,
+          `Un élément encore tenu par un robot ou un actionneur en fin de match ne compte pas.`
+        ]
+      },
+      en: {
+        camelot: 'Building Camelot', graal: "There can be only one, and it's mine!", roi: 'Return of the King', assaut: 'Charge!',
+        pierres: ['Stones in a building zone', `${BAREME.pierre} pt / stone`],
+        murs: ['Walls', `+${BAREME.mur} · 3 horizontal stacked stones`],
+        tours: ['Towers', `+${BAREME.tour} · 1 vertical stone`],
+        porte: ['Gate', `+${BAREME.porte} · 2 vertical + 1 lintel, only one`],
+        graalPresent: ['Grail in the castle', `+${BAREME.graalPresent}`],
+        niveau: ['Elevation level', `+${BAREME.graalNiveau} / level · 4 = robot roof (> 30 cm)`],
+        retour: ['Main robot at end of match', 'In the throne room'],
+        retourOpts: ['Out', 'Partly', 'Fully'],
+        douves: ['Opponent moats occupied', `${BAREME.douve} pts / moat`],
+        attaque: ['A SIMA attacks an opponent SIMA', `+${BAREME.attaque} (once)`],
+        boulets: ["Cannonballs in the opponent's courtyard", `${BAREME.boulet1} if ≥ 1 · +${BAREME.boulet3} if ≥ 3`],
+        minStones: n => `These buildings need at least ${n} stone${n > 1 ? 's' : ''}: counter adjusted automatically.`,
+        stonesHint: 'Stones in buildings also count as “stones in zone”.',
+        graalAuto: 'An elevated Grail is necessarily inside the castle.',
+        bouletsHint: n => n >= 3 ? '3-ball bonus reached: one more ball adds nothing.' : `${3 - n} more ball${3 - n > 1 ? 's' : ''} for the +${BAREME.boulet3} bonus.`,
+        chip: { camelot: 'Camelot', graal: 'Grail', roi: 'King', assaut: 'Charge' },
+        rules: [
+          `Stone in a building zone: ${BAREME.pierre} pt. Wall: +${BAREME.mur}. Tower: +${BAREME.tour}. Gate: +${BAREME.porte} (only one per castle).`,
+          `A stone counts for one building only; an extra building only scores its stone points.`,
+          `Grail in the castle: +${BAREME.graalPresent}, then +${BAREME.graalNiveau} per level (1 = 1 horizontal stone, 2 = 2, 3 = 3 horizontal or 1 vertical, 4 = robot roof > 30 cm, no fixing).`,
+          `Return of the King: ${BAREME.retourPartiel} pts partly in the throne room, ${BAREME.retourComplet} pts fully.`,
+          `Charge (from 85 s): ${BAREME.douve} pts per opponent moat, +${BAREME.attaque} if a SIMA attacks an opponent SIMA, ${BAREME.boulet1} pts if ≥ 1 ball, +${BAREME.boulet3} if ≥ 3.`,
+          `An element still held by a robot or an actuator at the end of the match does not count.`
+        ]
+      }
+    };
+    const X = () => TXT[LANG] || TXT.fr;
+
+    /* ---------- État du match (mémorisé dans le navigateur) ---------- */
+    const VIDE = { pierres: 0, murs: 0, tours: 0, porte: false, graalPresent: false, niveau: 0, retour: 0, douves: 0, attaque: false, boulets: 0 };
+    let S = { ...VIDE };
+    try { const s = JSON.parse(localStorage.getItem('calc2027') || 'null'); if (s) S = { ...VIDE, ...s }; } catch (e) {}
+    const save = () => { try { localStorage.setItem('calc2027', JSON.stringify(S)); } catch (e) {} };
+
+    /* ---------- Règles de cohérence ---------- */
+    const pierresMin = () => 3 * S.murs + S.tours + (S.porte ? 3 : 0);
+    const mursMax = () => LIMITES.zonesMur - (S.porte ? 1 : 0);
+    let ajustePierres = false;
+    function normaliser() {
+      S.murs = Math.min(S.murs, mursMax());
+      ajustePierres = S.pierres < pierresMin();
+      if (ajustePierres) S.pierres = pierresMin();
+      if (S.niveau > 0) S.graalPresent = true;
+    }
+
+    /* ---------- Calcul des points ---------- */
+    function points() {
+      const camelot = S.pierres * BAREME.pierre + S.murs * BAREME.mur + S.tours * BAREME.tour + (S.porte ? BAREME.porte : 0);
+      const graal = (S.graalPresent ? BAREME.graalPresent : 0) + S.niveau * BAREME.graalNiveau;
+      const roi = S.retour === 2 ? BAREME.retourComplet : (S.retour === 1 ? BAREME.retourPartiel : 0);
+      const assaut = S.douves * BAREME.douve + (S.attaque ? BAREME.attaque : 0)
+        + (S.boulets >= 1 ? BAREME.boulet1 : 0) + (S.boulets >= 3 ? BAREME.boulet3 : 0);
+      return { camelot, graal, roi, assaut, total: camelot + graal + roi + assaut };
+    }
+
+    /* ---------- Construction de l'interface (inutile de modifier en dessous) ---------- */
+    const grid = document.getElementById('grid');
+    function lbl(k) { const [t, s] = X()[k]; return `<span class="lbl">${t}<small>${s}</small></span>`; }
+    function stepper(k, max, min = 0) {
+      return `<div class="stepper" data-k="${k}">
+        <button type="button" data-d="-1" aria-label="−" ${S[k] <= min ? 'disabled' : ''}>−</button>
+        <span class="n">${S[k]}</span>
+        <button type="button" data-d="1" aria-label="+" ${S[k] >= max ? 'disabled' : ''}>+</button></div>`;
+    }
+    function toggle(k) { return `<button type="button" class="toggle" data-t="${k}" aria-pressed="${S[k]}" aria-label="${X()[k][0]}"></button>`; }
+    function seg(k, labels) {
+      return `<div class="seg" data-s="${k}">${labels.map((l, i) => `<button type="button" data-v="${i}" class="${S[k] === i ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+    }
+    function card(id, icon, body, tot) {
+      return `<div class="card"><div class="card-h"><h2><i class="${icon}"></i>${X()[id]}</h2><span class="sub-tot">${tot} pts</span></div>${body}</div>`;
+    }
+
+    const MIN = { pierres: pierresMin };
+    const MAX = { pierres: () => LIMITES.pierres, murs: mursMax, tours: () => LIMITES.tours, douves: () => LIMITES.douves, boulets: () => LIMITES.boulets };
+    let lastTotal = null;
+
+    function render() {
+      normaliser();
+      const p = points(), x = X();
+      const niveaux = Array.from({ length: LIMITES.niveauMax + 1 }, (_, i) => String(i));
+
+      grid.innerHTML =
+        card('camelot', 'fa-solid fa-chess-rook',
+          `<div class="row">${lbl('murs')}${stepper('murs', mursMax())}</div>
+           <div class="row">${lbl('tours')}${stepper('tours', LIMITES.tours)}</div>
+           <div class="row">${lbl('porte')}${toggle('porte')}</div>
+           <div class="row">${lbl('pierres')}${stepper('pierres', LIMITES.pierres, pierresMin())}</div>
+           <p class="hint ${ajustePierres ? 'warn' : ''}"><i class="fa-solid fa-circle-info"></i><span>${ajustePierres ? x.minStones(pierresMin()) : x.stonesHint}</span></p>`, p.camelot) +
+        card('graal', 'fa-solid fa-trophy',
+          `<div class="row">${lbl('graalPresent')}${toggle('graalPresent')}</div>
+           <div class="row">${lbl('niveau')}${seg('niveau', niveaux)}</div>
+           <p class="hint"><i class="fa-solid fa-circle-info"></i><span>${x.graalAuto}</span></p>`, p.graal) +
+        card('roi', 'fa-solid fa-crown',
+          `<div class="row stack">${lbl('retour')}${seg('retour', x.retourOpts)}</div>`, p.roi) +
+        card('assaut', 'fa-solid fa-horse-head',
+          `<div class="row">${lbl('douves')}${stepper('douves', LIMITES.douves)}</div>
+           <div class="row">${lbl('attaque')}${toggle('attaque')}</div>
+           <div class="row">${lbl('boulets')}${stepper('boulets', LIMITES.boulets)}</div>
+           <p class="hint"><i class="fa-solid fa-circle-info"></i><span>${x.bouletsHint(S.boulets)}</span></p>`, p.assaut);
+
+      /* barre de score */
+      const tot = document.getElementById('total');
+      tot.textContent = p.total;
+      if (lastTotal !== null && lastTotal !== p.total) { tot.classList.add('bump'); setTimeout(() => tot.classList.remove('bump'), 150); }
+      lastTotal = p.total;
+      document.getElementById('chips').innerHTML = ['camelot', 'graal', 'roi', 'assaut']
+        .map(k => `<span class="chip">${x.chip[k]} <b>${p[k]}</b></span>`).join('');
+      document.getElementById('rules-list').innerHTML = x.rules.map(r => `<li>${r}</li>`).join('');
+      save();
+    }
+
+    /* Un seul écouteur pour tous les contrôles */
+    grid.addEventListener('click', e => {
+      const b = e.target.closest('button'); if (!b) return;
+      const st = b.closest('.stepper'), sg = b.closest('.seg');
+      if (st) {
+        const k = st.dataset.k;
+        S[k] = Math.max(MIN[k] ? MIN[k]() : 0, Math.min(MAX[k](), S[k] + Number(b.dataset.d)));
+      } else if (sg) {
+        S[sg.dataset.s] = Number(b.dataset.v);
+      } else if (b.dataset.t) {
+        const k = b.dataset.t;
+        S[k] = !S[k];
+        if (k === 'graalPresent' && !S[k]) S.niveau = 0;   /* Graal absent => pas d'élévation */
+      }
+      render();
+    });
+    document.getElementById('reset').addEventListener('click', () => { S = { ...VIDE }; render(); });
+    document.addEventListener('langchange', render);
+
+    render();
+  </script>
+</body>
+</html>

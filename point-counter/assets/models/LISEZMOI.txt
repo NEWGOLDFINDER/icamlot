@@ -1,0 +1,23 @@
+=========================================================
+  MODÈLES 3D (page Technique)
+=========================================================
+
+Dépose ici les modèles 3D des robots au format .glb :
+
+  - robot.glb   -> le robot principal
+  - pami.glb    -> le PAMI
+
+COMMENT OBTENIR UN .glb DEPUIS SOLIDWORKS
+  1. Ouvre l'assemblage, masque les pièces inutiles (visserie, câbles).
+  2. Fichier -> Enregistrer sous -> type "glTF Binary (*.glb)".
+     (SolidWorks 2020 et +. Sinon : enregistre en STEP ou STL puis
+      convertis en .glb avec Blender - Importer, puis Exporter en glTF 2.0.)
+  3. Garde le fichier léger (< 10 Mo) pour que la page reste fluide.
+
+PLACER LES POINTS CLIQUABLES SUR LE MODÈLE
+  Dans technique.html, chaque composant a un champ "pos" ("x y z" en mètres)
+  qui positionne son point sur le modèle 3D. Les valeurs actuelles sont
+  approximatives : ajuste-les après avoir mis ton .glb.
+  Astuce pour trouver une position : ouvre la page, fais un clic droit sur
+  le modèle -> selon l'outil, ou demande-moi de t'activer un petit mode
+  "clic = coordonnées" pour relever facilement les positions.

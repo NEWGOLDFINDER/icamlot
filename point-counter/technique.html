@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fiche technique — Team Opossum</title>
+  <meta name="description" content="Présentation technique des robots de la Team Opossum : modèle 3D interactif et architecture des composants." />
+  <link rel="icon" href="opossum-logo.ico" sizes="any" />
+  <link rel="icon" href="opossum-logo.svg" type="image/svg+xml" />
+  <link rel="icon" type="image/png" sizes="96x96" href="opossum-logo-96.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="opossum-logo-180.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <!-- Visionneuse 3D (modèle .glb manipulable) -->
+  <script type="module" src="https://cdn.jsdelivr.net/npm/@google/model-viewer@3.5.0/dist/model-viewer.min.js"></script>
+
+  <style>
+    :root {
+      --jaune: #f5c518; --fond: #0e0f13; --fond-2: #171922;
+      --texte: #f2f3f5; --texte-doux: #a9adba; --radius: 14px; --max: 1100px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body { font-family: 'Poppins', system-ui, sans-serif; background: var(--fond); color: var(--texte); line-height: 1.6; }
+    a { color: inherit; text-decoration: none; }
+
+    header {
+      position: sticky; top: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between;
+      padding: 0.9rem 1.5rem; background: rgba(14,15,19,0.85); backdrop-filter: blur(10px);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .logo { font-weight: 800; letter-spacing: 0.04em; }
+    .logo span { color: var(--jaune); }
+    header a.back { color: var(--texte-doux); font-weight: 500; font-size: 0.95rem; }
+    header a.back:hover { color: var(--jaune); }
+    .header-right { display: flex; align-items: center; gap: 1rem; }
+    .lang-switch { display: inline-flex; border: 1px solid rgba(255,255,255,0.16); border-radius: 999px; overflow: hidden; }
+    .lang-switch button { background: transparent; color: var(--texte-doux); border: none; padding: 0.3rem 0.68rem; font-family: inherit; font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: background 0.2s, color 0.2s; }
+    .lang-switch button.active { background: var(--jaune); color: #17130a; }
+
+    .wrap { max-width: var(--max); margin: 0 auto; padding: 0 1.5rem; }
+    section { padding: 3.5rem 0; }
+    h1 { font-size: clamp(1.8rem, 5vw, 2.8rem); font-weight: 800; text-align: center; }
+    h1 span { color: var(--jaune); }
+    .sub { text-align: center; color: var(--texte-doux); max-width: 640px; margin: 0.6rem auto 0; }
+    h2.titre { font-size: clamp(1.5rem, 4vw, 2.1rem); font-weight: 800; margin-bottom: 0.4rem; }
+    h2.titre span { color: var(--jaune); }
+    .titre-sub { color: var(--texte-doux); margin-bottom: 1.8rem; }
+
+    /* Sélecteur robot / PAMI */
+    .switch { display: flex; gap: 0.6rem; justify-content: center; margin: 1.6rem 0 0; }
+    .switch button {
+      background: var(--fond-2); color: var(--texte); border: 1px solid rgba(255,255,255,0.1);
+      padding: 0.6rem 1.4rem; border-radius: 999px; cursor: pointer; font-weight: 600; font-family: inherit;
+    }
+    .switch button.active { background: var(--jaune); color: #17130a; border-color: var(--jaune); }
+
+    /* Visionneuse 3D */
+    model-viewer {
+      width: 100%; height: 65vh; min-height: 380px; background: radial-gradient(circle at 50% 40%, #1c1f2a, #0e0f13 70%);
+      border-radius: var(--radius); border: 1px solid rgba(255,255,255,0.06); --poster-color: transparent;
+    }
+    .viewer-note { text-align: center; color: var(--texte-doux); font-size: 0.85rem; margin-top: 0.7rem; }
+    /* Points cliquables sur le modèle 3D */
+    .hotspot {
+      width: 26px; height: 26px; border-radius: 50%; border: 2px solid #fff; background: var(--jaune);
+      color: #17130a; font-weight: 800; font-size: 0.8rem; display: flex; align-items: center; justify-content: center;
+      cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.5); transition: transform 0.15s;
+    }
+    .hotspot:hover { transform: scale(1.2); }
+
+    /* Schéma 2D : flux Perception -> Cerveau -> Actionneurs */
+    .schema { display: flex; flex-wrap: wrap; gap: 1rem; align-items: stretch; justify-content: center; }
+    .schema-col { background: var(--fond-2); border: 1px solid rgba(255,255,255,0.06); border-radius: var(--radius); padding: 1.1rem; flex: 1 1 240px; min-width: 220px; }
+    .schema-col h3 { font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--jaune); margin-bottom: 0.9rem; text-align: center; }
+    .blk {
+      display: flex; align-items: center; gap: 0.7rem; width: 100%; text-align: left;
+      background: var(--fond); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px;
+      padding: 0.8rem 0.9rem; margin-bottom: 0.7rem; cursor: pointer; color: var(--texte); font-family: inherit;
+      transition: border-color 0.15s, transform 0.15s;
+    }
+    .blk:last-child { margin-bottom: 0; }
+    .blk:hover { border-color: var(--jaune); transform: translateY(-2px); }
+    .blk i { color: var(--jaune); font-size: 1.2rem; width: 1.4rem; text-align: center; }
+    .blk .blk-t { font-weight: 600; font-size: 0.95rem; }
+    .blk .blk-s { color: var(--texte-doux); font-size: 0.8rem; }
+    .schema-arrow { display: flex; align-items: center; color: var(--texte-doux); font-size: 1.5rem; }
+    @media (max-width: 760px) { .schema-arrow { transform: rotate(90deg); } }
+
+    /* Panneau détail composant */
+    .panel-modal { position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center; padding: 1rem; opacity: 0; visibility: hidden; transition: opacity 0.25s; }
+    .panel-modal.open { opacity: 1; visibility: visible; }
+    .panel-back { position: fixed; inset: 0; background: rgba(4,5,8,0.75); backdrop-filter: blur(3px); }
+    .panel-box { position: relative; width: min(520px, 100%); background: var(--fond-2); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 1.6rem 1.7rem 2rem; transform: scale(0.9); transition: transform 0.25s; }
+    .panel-modal.open .panel-box { transform: scale(1); }
+    .panel-box .cat { color: var(--jaune); font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+    .panel-box h3 { font-size: 1.5rem; margin: 0.2rem 0 0.8rem; }
+    .panel-box p { color: #d6d9e0; margin-bottom: 1.2rem; }
+    .panel-box .btn-git { display: inline-flex; align-items: center; gap: 0.5rem; background: #24292e; color: #fff; padding: 0.7rem 1.3rem; border-radius: 999px; font-weight: 600; }
+    .panel-box .btn-git:hover { background: #000; }
+    .panel-close { position: absolute; top: 12px; right: 12px; width: 38px; height: 38px; border-radius: 50%; border: none; cursor: pointer; background: rgba(0,0,0,0.5); color: #fff; font-size: 1.1rem; }
+    .panel-close:hover { background: var(--jaune); color: #000; }
+
+    footer { text-align: center; padding: 2.5rem 1.5rem; color: var(--texte-doux); border-top: 1px solid rgba(255,255,255,0.06); }
+    body.no-scroll { overflow: hidden; }
+  </style>
+</head>
+
+<body>
+  <header>
+    <a class="logo" href="index.html">TEAM <span>OPOSSUM</span></a>
+    <div class="header-right">
+      <div class="lang-switch" id="lang-switch">
+        <button type="button" data-lang="fr">FR</button>
+        <button type="button" data-lang="en">EN</button>
+      </div>
+      <a class="back" href="index.html#explore3d"><i class="fa-solid fa-arrow-left"></i> <span data-i18n="tech.back">Retour au site</span></a>
+    </div>
+  </header>
+
+  <section>
+    <div class="wrap">
+      <h1 data-i18n="tech.title">Fiche <span>technique</span></h1>
+      <p class="sub" data-i18n="tech.sub">Explorez nos robots en 3D et découvrez chaque composant : cliquez sur les points du modèle ou sur les blocs du schéma.</p>
+      <p style="text-align:center; margin-top:0.7rem;">
+        <span data-i18n="tech.badge" style="display:inline-block; background:var(--fond-2); border:1px solid rgba(255,255,255,0.12); color:var(--jaune); font-size:0.8rem; font-weight:600; padding:0.35rem 0.95rem; border-radius:999px;">
+          <i class="fa-solid fa-trophy"></i> Robots conçus pour le règlement Coupe de France de Robotique 2026
+        </span>
+      </p>
+      <div class="switch" id="switch">
+        <button data-robot="robot" class="active" data-i18n="tech.robotMain">Robot principal</button>
+        <button data-robot="pami" data-i18n="tech.pami">PAMI</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= MODÈLE 3D ======================= -->
+  <section style="padding-top:0">
+    <div class="wrap">
+      <model-viewer id="viewer" camera-controls touch-action="pan-y" auto-rotate
+        shadow-intensity="1" exposure="1" ar
+        alt="Modèle 3D du robot">
+      </model-viewer>
+      <p class="viewer-note" data-i18n="tech.viewerNote">Glissez pour tourner autour · molette/pincement pour zoomer · cliquez sur un point jaune pour les détails</p>
+    </div>
+  </section>
+
+  <!-- ======================= SCHÉMA 2D ======================= -->
+  <section style="padding-top:0">
+    <div class="wrap">
+      <h2 class="titre" data-i18n="tech.archTitle">Architecture <span>du robot</span></h2>
+      <p class="titre-sub" data-i18n="tech.archSub">Cliquez sur un bloc pour sa fiche et le dépôt de code associé.</p>
+      <div class="schema" id="schema"></div>
+    </div>
+  </section>
+
+  <footer data-i18n="tech.footer">© 2026 Team Opossum — Fiche technique</footer>
+
+  <!-- Panneau détail -->
+  <div class="panel-modal" id="panel">
+    <div class="panel-back" data-close></div>
+    <div class="panel-box" role="dialog" aria-modal="true">
+      <button class="panel-close" data-close aria-label="Fermer"><i class="fa-solid fa-xmark"></i></button>
+      <div class="cat" id="p-cat"></div>
+      <h3 id="p-nom"></h3>
+      <p id="p-desc"></p>
+      <a class="btn-git" id="p-git" href="#" target="_blank" rel="noopener"><i class="fa-brands fa-github"></i> <span data-i18n="tech.gitBtn">Voir le dépôt Git</span></a>
+    </div>
+  </div>
+
+  <!-- ==================== LANGUES (FR / EN) ==================== -->
+  <script>
+    const I18N = {
+      fr: {
+        'tech.back': `Retour au site`,
+        'tech.title': `Fiche <span>technique</span>`,
+        'tech.sub': `Explorez nos robots en 3D et découvrez chaque composant : cliquez sur les points du modèle ou sur les blocs du schéma.`,
+        'tech.badge': `<i class="fa-solid fa-trophy"></i> Robots conçus pour le règlement Coupe de France de Robotique 2026`,
+        'tech.robotMain': `Robot principal`, 'tech.pami': `PAMI`,
+        'tech.viewerNote': `Glissez pour tourner autour · molette/pincement pour zoomer · cliquez sur un point jaune pour les détails`,
+        'tech.archTitle': `Architecture <span>du robot</span>`,
+        'tech.archSub': `Cliquez sur un bloc pour sa fiche et le dépôt de code associé.`,
+        'tech.footer': `© 2026 Team Opossum — Fiche technique`,
+        'tech.gitBtn': `Voir le dépôt Git`,
+        'cat.Perception': `Perception`, 'cat.Cerveau': `Cerveau`, 'cat.Actionneurs': `Actionneurs`,
+        'blk.full': `Fiche + dépôt Git`, 'blk.sheet': `Fiche`
+      },
+      en: {
+        'tech.back': `Back to site`,
+        'tech.title': `Technical <span>sheet</span>`,
+        'tech.sub': `Explore our robots in 3D and discover every component: click the points on the model or the blocks in the diagram.`,
+        'tech.badge': `<i class="fa-solid fa-trophy"></i> Robots designed for the 2026 French Robotics Cup rules`,
+        'tech.robotMain': `Main robot`, 'tech.pami': `SIMA`,
+        'tech.viewerNote': `Drag to orbit · scroll/pinch to zoom · click a yellow point for details`,
+        'tech.archTitle': `Robot <span>architecture</span>`,
+        'tech.archSub': `Click a block for its sheet and the related code repository.`,
+        'tech.footer': `© 2026 Team Opossum — Technical sheet`,
+        'tech.gitBtn': `View Git repository`,
+        'cat.Perception': `Perception`, 'cat.Cerveau': `Brain`, 'cat.Actionneurs': `Actuators`,
+        'blk.full': `Sheet + Git repo`, 'blk.sheet': `Sheet`
+      }
+    };
+    let LANG = new URLSearchParams(location.search).get('lang') || localStorage.getItem('lang') || (navigator.language || 'fr').slice(0, 2).toLowerCase();
+    if (LANG !== 'en') LANG = 'fr';
+    localStorage.setItem('lang', LANG);
+    function T(key) { return (I18N[LANG] && I18N[LANG][key] != null) ? I18N[LANG][key] : (I18N.fr[key] != null ? I18N.fr[key] : ''); }
+    /* Propage la langue dans les liens vers l'autre page (robuste en local file:// et en ligne) */
+    function withLang(href) {
+      const [path, hash] = href.split('#');
+      const [base, qs] = path.split('?');
+      const p = new URLSearchParams(qs || ''); p.set('lang', LANG);
+      return base + '?' + p.toString() + (hash ? '#' + hash : '');
+    }
+    function syncCrossLinks() {
+      document.querySelectorAll('a[href]').forEach(a => {
+        const h = a.getAttribute('href');
+        if (/^(index\.html|technique\.html|calculateur\.html)(\?|#|$)/.test(h)) a.setAttribute('href', withLang(h));
+      });
+    }
+    function applyStaticI18n() {
+      document.documentElement.lang = LANG;
+      document.querySelectorAll('[data-i18n]').forEach(el => { const v = T(el.getAttribute('data-i18n')); if (v) el.innerHTML = v; });
+      document.querySelectorAll('#lang-switch button').forEach(b => b.classList.toggle('active', b.dataset.lang === LANG));
+      syncCrossLinks();
+    }
+    function setLang(lang) {
+      LANG = (lang === 'en') ? 'en' : 'fr';
+      localStorage.setItem('lang', LANG);
+      applyStaticI18n();
+      document.dispatchEvent(new CustomEvent('langchange', { detail: LANG }));
+    }
+    document.querySelectorAll('#lang-switch button').forEach(b => b.addEventListener('click', () => setLang(b.dataset.lang)));
+    applyStaticI18n();
+  </script>
+
+  <!-- ==================================================================== -->
+  <!--  COMPOSANTS  —  Pour AJOUTER/MODIFIER un composant : édite la liste.  -->
+  <!--  cat   : catégorie (Perception / Cerveau / Actionneurs)              -->
+  <!--  icon  : icône Font Awesome                                          -->
+  <!--  repo  : lien du dépôt GitHub (laisse '' si aucun)                   -->
+  <!--  pos   : position du point sur le modèle 3D "x y z" (voir aide)      -->
+  <!-- ==================================================================== -->
+  <script>
+    const DATA = {
+      robot: {
+        model: 'assets/models/robot.glb',
+        orbit: '-40deg 70deg auto',              /* vue 3/4 face (ajuste le 1er angle si besoin) */
+        composants: [
+          { id: 'lidar', cat: 'Perception', nom: 'Lidar A2M12', icon: 'fa-solid fa-satellite-dish',
+            desc: "Lidar 360° : portée jusqu'à ~12 m, environ 16 000 mesures par seconde à 10 Hz. Il assure l'évitement de l'adversaire et la localisation du robot par triangulation sur les balises fixes.",
+            repo: 'https://github.com/Les-opossums',
+            pos: '-0.017359488023426187m 0.38766075189213134m -0.028040596659818395m' },
+          { id: 'cameras', cat: 'Perception', nom: '3× caméras JeVois Pro', icon: 'fa-solid fa-camera',
+            desc: "Trois caméras intelligentes qui détectent les tags ArUco des objets de jeu à 30 Hz et jusqu'à 1,50 m du robot. Elles servent aussi à localiser le robot sur la table et communiquent directement avec le Raspberry Pi.",
+            repo: 'https://github.com/Les-opossums',
+            pos: [
+              '0.0012976540564503336m 0.29190883634180237m 0.09762071536188119m',
+              '-0.07793439092239424m 0.28915654960159726m -0.02448986519256828m',
+              '-0.025285858420689415m 0.3098647823735045m -0.0838721937928556m'
+            ] },
+          { id: 'rpi', cat: 'Cerveau', nom: 'Raspberry Pi 4', icon: 'fa-brands fa-raspberry-pi',
+            desc: "Cerveau haut niveau, sous ROS 2 Humble : il gère la triangulation du lidar, la stratégie de match dynamique et l'IHM avec écran tactile.",
+            repo: 'https://github.com/Les-opossums/Ros2_base_cdf',
+            pos: '0.06298947334289562m 0.21285403129993438m 0.004977466864431457m' },
+          { id: 'zynq', cat: 'Cerveau', nom: 'Zynq-7000', icon: 'fa-solid fa-microchip',
+            desc: "SoC FPGA qui gère l'asservissement, le filtre de Kalman et tous les actionneurs du robot. Il communique avec le Raspberry Pi via Ethernet.",
+            repo: 'https://github.com/Les-opossums/Zynq_SW_Eurobot',
+            pos: '-0.052485398948192596m 0.16126308296607378m -0.003106963605519833m' },
+          { id: 'moteurs', cat: 'Actionneurs', nom: '4× moteurs M2006 P36', icon: 'fa-solid fa-gears',
+            desc: "Quatre moteurs M2006 P36 entraînent une base holonome à 4 roues, jusqu'à 1,5 m/s. L'holonomie permet au robot de translater et de tourner dans toutes les directions indépendamment : trajectoires fluides, repositionnements rapides et grande agilité face à l'adversaire.",
+            repo: '',
+            pos: '0.0634976810992094m 0.022805601017329202m -0.048914333117163526m' },
+          { id: 'pinces', cat: 'Actionneurs', nom: '8 pinces à ventouse', icon: 'fa-solid fa-hand',
+            desc: "Huit pinces à ventouses pour attraper et retourner les « jenga » du règlement. Une carte électronique custom pilote les pompes et les électrovannes en émulant un bus Feetech, ce qui simplifie fortement le câblage.",
+            repo: 'https://github.com/Les-opossums',
+            pos: '-0.1301072736619231m 0.14611532961293916m 0.057259789039257165m' }
+        ]
+      },
+      pami: {
+        model: 'assets/models/pami.glb',
+        orbit: '-140deg 72deg auto',            /* vue 3/4 face (ajuste le 1er angle si besoin) */
+        composants: [
+          { id: 'lidar-pami', cat: 'Perception', nom: 'Lidar LD06', icon: 'fa-solid fa-satellite-dish',
+            desc: "Localisation absolue sur les bordures de la table et évitement des obstacles.",
+            repo: '',
+            pos: '-0.005705401289243914m 0.029323593942832026m 0.016414065037096574m' },
+          { id: 'pico', cat: 'Cerveau', nom: 'Raspberry Pi Pico 2W', icon: 'fa-solid fa-microchip',
+            desc: "Cerveau du PAMI : il gère l'œil (affichage), la localisation par le lidar, l'évitement, la stratégie de match et un client TCP.",
+            repo: 'https://github.com/Les-opossums/SW_PAMI_2026',
+            pos: '-0.006006042863164868m 0.07265708986216m -0.048162855348893564m' },
+          { id: 'roues-pami', cat: 'Actionneurs', nom: 'Base holonome 3 roues', icon: 'fa-solid fa-gears',
+            desc: "Trois roues omnidirectionnelles imprimées en 3D pour se déplacer librement dans toutes les directions.",
+            repo: '', pos: '0m 0.01m 0.06m' }
+        ]
+      }
+    };
+
+    /* Traductions EN des composants (nom + description), par id */
+    const TR = {
+      'lidar': { nomEn: 'A2M12 Lidar', descEn: "360° lidar: range up to ~12 m, about 16,000 measurements per second at 10 Hz. It handles opponent avoidance and locates the robot by triangulation on the fixed beacons." },
+      'cameras': { nomEn: '3× JeVois Pro cameras', descEn: "Three smart cameras that detect the ArUco tags of the game elements at 30 Hz and up to 1.50 m from the robot. They also locate the robot on the table and communicate directly with the Raspberry Pi." },
+      'rpi': { nomEn: 'Raspberry Pi 4', descEn: "High-level brain running ROS 2 Humble: it handles lidar triangulation, the dynamic match strategy and the touchscreen HMI." },
+      'zynq': { nomEn: 'Zynq-7000', descEn: "FPGA SoC handling motor control, the Kalman filter and all the robot's actuators. It communicates with the Raspberry Pi over Ethernet." },
+      'moteurs': { nomEn: '4× M2006 P36 motors', descEn: "Four M2006 P36 motors drive a 4-wheel holonomic base, up to 1.5 m/s. Holonomy lets the robot translate and rotate in any direction independently: smooth trajectories, fast repositioning and great agility against the opponent." },
+      'pinces': { nomEn: '8 suction grippers', descEn: "Eight suction grippers to grab and flip the game's jenga pieces. A custom board drives the pumps and solenoid valves by emulating a Feetech bus, which greatly simplifies the wiring." },
+      'lidar-pami': { nomEn: 'LD06 Lidar', descEn: "Absolute localization on the table borders and obstacle avoidance." },
+      'pico': { nomEn: 'Raspberry Pi Pico 2W', descEn: "The SIMA's brain: it drives the eye (display), lidar localization, avoidance, match strategy and a TCP client." },
+      'roues-pami': { nomEn: '3-wheel holonomic base', descEn: "Three 3D-printed omnidirectional wheels to move freely in any direction." }
+    };
+    const cnom = c => (LANG === 'en' && TR[c.id] && TR[c.id].nomEn) ? TR[c.id].nomEn : c.nom;
+    const cdesc = c => (LANG === 'en' && TR[c.id] && TR[c.id].descEn) ? TR[c.id].descEn : c.desc;
+    const catLabel = cat => T('cat.' + cat);
+    let currentRobot = 'robot';
+
+    /* ---------- Rendu (inutile de modifier en dessous) ---------- */
+    const viewer = document.getElementById('viewer');
+    const schema = document.getElementById('schema');
+    const panel = document.getElementById('panel');
+    const CATS = ['Perception', 'Cerveau', 'Actionneurs'];
+    const ARROW = '<div class="schema-arrow"><i class="fa-solid fa-arrow-right-long"></i></div>';
+
+    function openPanel(c) {
+      document.getElementById('p-cat').textContent = catLabel(c.cat);
+      document.getElementById('p-nom').textContent = cnom(c);
+      document.getElementById('p-desc').textContent = cdesc(c);
+      const git = document.getElementById('p-git');
+      if (c.repo) { git.href = c.repo; git.style.display = 'inline-flex'; }
+      else { git.style.display = 'none'; }
+      panel.classList.add('open');
+      document.body.classList.add('no-scroll');
+    }
+    function closePanel() { panel.classList.remove('open'); document.body.classList.remove('no-scroll'); }
+    panel.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', closePanel));
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closePanel(); });
+
+    function render(robot) {
+      const d = DATA[robot];
+      /* modèle 3D */
+      viewer.src = d.model;
+      /* angle de vue de départ (3/4 face) */
+      if (d.orbit) viewer.setAttribute('camera-orbit', d.orbit);
+      else viewer.removeAttribute('camera-orbit');
+      /* points cliquables (hotspots) sur le modèle */
+      viewer.querySelectorAll('.hotspot').forEach(h => h.remove());
+      d.composants.forEach((c, i) => {
+        const positions = Array.isArray(c.pos) ? c.pos : (c.pos ? [c.pos] : []);
+        positions.forEach((pos, k) => {
+          const btn = document.createElement('button');
+          btn.className = 'hotspot';
+          btn.slot = 'hotspot-' + c.id + '-' + k;
+          btn.setAttribute('data-position', pos);
+          btn.setAttribute('data-normal', '0m 1m 0m');
+          btn.textContent = (i + 1);
+          btn.addEventListener('click', () => openPanel(c));
+          viewer.appendChild(btn);
+        });
+      });
+      /* schéma 2D en colonnes par catégorie */
+      schema.innerHTML = '';
+      CATS.forEach((cat, idx) => {
+        const list = d.composants.filter(c => c.cat === cat);
+        if (!list.length) return;
+        const col = document.createElement('div');
+        col.className = 'schema-col';
+        col.innerHTML = '<h3>' + catLabel(cat) + '</h3>';
+        list.forEach(c => {
+          const b = document.createElement('button');
+          b.className = 'blk';
+          b.innerHTML = `<i class="${c.icon}"></i><span><span class="blk-t">${cnom(c)}</span><br><span class="blk-s">${c.repo ? T('blk.full') : T('blk.sheet')}</span></span>`;
+          b.addEventListener('click', () => openPanel(c));
+          col.appendChild(b);
+        });
+        schema.appendChild(col);
+        if (idx < CATS.length - 1) schema.insertAdjacentHTML('beforeend', ARROW);
+      });
+    }
+
+    /* Applique l'angle de départ une fois le modèle chargé (fiable) */
+    viewer.addEventListener('load', () => {
+      const d = DATA[currentRobot];
+      if (d && d.orbit) viewer.cameraOrbit = d.orbit;
+    });
+
+    /* sélecteur robot / pami */
+    document.getElementById('switch').addEventListener('click', e => {
+      const b = e.target.closest('button'); if (!b) return;
+      document.querySelectorAll('#switch button').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      currentRobot = b.dataset.robot;
+      render(currentRobot);
+    });
+    /* Re-rendu au changement de langue (fiches, schéma) */
+    document.addEventListener('langchange', () => render(currentRobot));
+
+    render(currentRobot);
+  </script>
+</body>
+</html>

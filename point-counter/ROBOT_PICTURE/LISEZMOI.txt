@@ -1,0 +1,31 @@
+=========================================================
+  PHOTOS DU CARROUSEL « NOS ROBOTS »
+=========================================================
+
+Toutes les images déposées dans CE dossier apparaissent
+automatiquement dans le carrousel « Nos robots » du site,
+par ordre alphabétique du nom de fichier.
+
+POUR AJOUTER DES PHOTOS :
+  1) copie tes images ici (formats : .jpg .jpeg .png .webp .gif)
+  2) envoie sur GitHub (commit + push)
+  C'est tout !
+
+Conseils :
+  - Nomme tes fichiers pour contrôler l'ordre, par ex. :
+      01-robot-principal.jpg
+      02-pami.jpg
+      03-vue-atelier.jpg
+  - Garde des images pas trop lourdes (< 500 Ko) pour un site rapide.
+  - Idéalement des photos au format paysage (plus large que haut).
+
+CRÉDITER L'AUTEUR D'UNE PHOTO :
+  Ajoute "@" suivi du nom dans le nom du fichier : ce qui suit le @
+  s'affiche en filigrane en bas à gauche de la photo.
+  Exemples :
+      01-robot@Jean Dupont.jpg     -> crédit : © Jean Dupont
+      02-pami@Marie.png            -> crédit : © Marie
+  (Sans @, aucun crédit n'est affiché.)
+
+Le fichier "liste.json" n'est qu'un secours : normalement les
+images sont détectées toutes seules. Tu n'as pas besoin d'y toucher.

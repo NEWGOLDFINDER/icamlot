@@ -1,0 +1,1106 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="google-site-verification" content="Q-BpDUeD9p_ZSKVZchPevNT5JSuOfhg1YgOAsRVqRVE" />
+  <title>Team Opossum — Équipe de robotique</title>
+  <meta name="description" content="Site officiel de la Team Opossum, équipe de robotique participant à la Coupe de France de Robotique : nos robots, nos bilans de compétition, nos vidéos de matchs et nos partenaires." />
+  <link rel="canonical" href="https://les-opossums.github.io/" />
+
+  <!-- Favicon -->
+  <link rel="icon" href="opossum-logo.ico" sizes="any" />
+  <link rel="icon" href="opossum-logo.svg" type="image/svg+xml" />
+  <link rel="icon" type="image/png" sizes="96x96" href="opossum-logo-96.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="opossum-logo-180.png" />
+  <meta name="theme-color" content="#0e0f13" />
+
+  <!-- Aperçu au partage (LinkedIn, Discord, WhatsApp, X...) -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Team Opossum" />
+  <meta property="og:title" content="Team Opossum — Équipe de robotique" />
+  <meta property="og:description" content="Équipe de robotique participant à la Coupe de France de Robotique. Nos robots, nos bilans, nos vidéos et nos partenaires." />
+  <meta property="og:url" content="https://les-opossums.github.io/" />
+  <meta property="og:image" content="https://les-opossums.github.io/assets/img/banner.jpg" />
+  <meta property="og:locale" content="fr_FR" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Team Opossum — Équipe de robotique" />
+  <meta name="twitter:description" content="Équipe de robotique participant à la Coupe de France de Robotique." />
+  <meta name="twitter:image" content="https://les-opossums.github.io/assets/img/banner.jpg" />
+
+  <!-- Police + icônes -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+
+  <style>
+    /* ======================================================================
+       COULEURS & RÉGLAGES  — modifie ici pour changer l'ambiance du site
+       ====================================================================== */
+    :root {
+      --jaune: #f5c518;          /* couleur d'accent (jaune Opossum) */
+      --fond: #0e0f13;           /* fond sombre */
+      --fond-2: #171922;         /* fond des cartes */
+      --texte: #f2f3f5;          /* texte clair */
+      --texte-doux: #a9adba;     /* texte secondaire */
+      --radius: 14px;
+      --max: 1200px;             /* largeur max du contenu */
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: 'Poppins', system-ui, sans-serif;
+      background: var(--fond);
+      color: var(--texte);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+    a { color: inherit; text-decoration: none; }
+    img { max-width: 100%; display: block; }
+    section { padding: 5.5rem 1.5rem; }
+    .wrap { max-width: var(--max); margin: 0 auto; }
+    /* Contenu réservé au référencement (présent pour les moteurs, invisible à l'écran) */
+    .seo-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+    /* ============================ À PROPOS ============================= */
+    .apropos-txt { max-width: 760px; margin: 0 auto; text-align: center; }
+    .apropos-txt p { color: var(--texte-doux); font-size: 1.05rem; margin-bottom: 1rem; }
+    .apropos-txt strong { color: var(--texte); font-weight: 600; }
+    .apropos-stats { display: flex; flex-wrap: wrap; gap: 1.25rem; justify-content: center; margin-top: 2.6rem; }
+    .apropos-stats .stat {
+      background: var(--fond-2); border: 1px solid rgba(255,255,255,0.06); border-radius: var(--radius);
+      padding: 1.2rem 1.6rem; text-align: center; min-width: 170px;
+    }
+    .apropos-stats .stat span { display: block; font-size: 2rem; font-weight: 800; color: var(--jaune); }
+    .apropos-stats .stat small { color: var(--texte-doux); font-size: 0.85rem; }
+
+    /* Apparition au défilement (les éléments montent en fondu) */
+    .reveal { opacity: 0; transform: translateY(42px); transition: opacity 0.7s ease, transform 0.7s cubic-bezier(0.22, 1, 0.36, 1); }
+    .reveal.visible { opacity: 1; transform: none; }
+    @media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; transition: none; } }
+    h2.titre {
+      font-size: clamp(1.8rem, 4vw, 2.6rem);
+      font-weight: 800;
+      text-align: center;
+      margin-bottom: 0.6rem;
+    }
+    h2.titre span { color: var(--jaune); }
+    .sous-titre {
+      text-align: center;
+      color: var(--texte-doux);
+      max-width: 620px;
+      margin: 0 auto 3rem;
+    }
+
+    /* ======================= BARRE DE NAVIGATION ========================= */
+    header {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.9rem 1.5rem;
+      background: rgba(14, 15, 19, 0.75);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      transition: background 0.3s;
+    }
+    .logo { font-weight: 800; font-size: 1.15rem; letter-spacing: 0.04em; }
+    .logo span { color: var(--jaune); }
+    nav.menu { display: flex; gap: 1.6rem; align-items: center; }
+    nav.menu a { color: var(--texte-doux); font-weight: 500; font-size: 0.95rem; transition: color 0.2s; white-space: nowrap; }
+    @media (min-width: 961px) and (max-width: 1150px) { nav.menu { gap: 1rem; } nav.menu a { font-size: 0.86rem; } .logo { white-space: nowrap; } }
+    nav.menu a:hover { color: var(--jaune); }
+    nav.menu a.active { color: var(--jaune); font-weight: 600; }
+    .burger { display: none; font-size: 1.5rem; background: none; border: none; color: var(--texte); cursor: pointer; }
+    .header-right { display: flex; align-items: center; gap: 0.8rem; }
+    .lang-switch { display: inline-flex; border: 1px solid rgba(255,255,255,0.16); border-radius: 999px; overflow: hidden; }
+    .lang-switch button { background: transparent; color: var(--texte-doux); border: none; padding: 0.3rem 0.68rem; font-family: inherit; font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: background 0.2s, color 0.2s; }
+    .lang-switch button.active { background: var(--jaune); color: #17130a; }
+
+    @media (max-width: 960px) {
+      nav.menu {
+        position: fixed; top: 60px; right: 0; flex-direction: column;
+        background: var(--fond-2); padding: 1.5rem 2rem; gap: 1.1rem;
+        transform: translateX(110%); transition: transform 0.3s;
+        border-left: 1px solid rgba(255,255,255,0.07); height: 100vh;
+      }
+      nav.menu.open { transform: translateX(0); }
+      .burger { display: block; }
+    }
+
+    /* ===================== CALCULATEUR 2027 (encart d'appel) ===================== */
+    .hero-new {
+      display: inline-flex; align-items: center; gap: 0.55rem; margin-top: 1.4rem;
+      background: rgba(14,15,19,0.7); border: 1px solid rgba(245,197,24,0.55); color: var(--texte);
+      padding: 0.45rem 1rem 0.45rem 0.5rem; border-radius: 999px; font-size: 0.9rem; font-weight: 500;
+      backdrop-filter: blur(6px); transition: border-color 0.2s, transform 0.15s;
+    }
+    .hero-new:hover { border-color: var(--jaune); transform: translateY(-2px); }
+    .hero-new .tag { background: var(--jaune); color: #17130a; font-weight: 700; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.15rem 0.55rem; border-radius: 999px; }
+    .hero-new i { color: var(--jaune); font-size: 0.8rem; }
+    @media (max-width: 420px) { .hero-new { font-size: 0.78rem; gap: 0.4rem; } .hero-new .tag { font-size: 0.65rem; } }
+
+    #calculateur { padding-top: 1rem; }
+    .calc-promo {
+      display: grid; grid-template-columns: 1.25fr 1fr; gap: 2rem; align-items: center;
+      background: radial-gradient(circle at 85% 30%, rgba(245,197,24,0.16), transparent 55%), var(--fond-2);
+      border: 1px solid rgba(245,197,24,0.45); border-radius: var(--radius); padding: 2.4rem 2.2rem;
+      box-shadow: 0 18px 40px rgba(0,0,0,0.35);
+    }
+    .calc-kicker { color: var(--jaune); font-weight: 700; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; }
+    .calc-promo h3 { font-size: clamp(1.5rem, 3.6vw, 2.1rem); font-weight: 800; line-height: 1.2; margin: 0.35rem 0 0.8rem; }
+    .calc-promo h3 span { color: var(--jaune); }
+    .calc-promo p { color: var(--texte-doux); margin-bottom: 1.5rem; max-width: 520px; }
+    .calc-promo .btn { font-size: 1.05rem; padding: 0.95rem 2rem; }
+    .calc-preview {
+      display: block; background: var(--fond); border: 1px solid rgba(255,255,255,0.08); border-radius: var(--radius);
+      padding: 1.3rem; transform: rotate(-1.5deg); transition: transform 0.2s;
+    }
+    .calc-preview:hover { transform: rotate(0) scale(1.02); }
+    .calc-preview .pv-total { display: flex; align-items: baseline; gap: 0.4rem; }
+    .calc-preview .pv-total b { font-size: 3.2rem; font-weight: 800; color: var(--jaune); line-height: 1; }
+    .calc-preview .pv-total small { color: var(--texte-doux); font-weight: 600; }
+    .calc-preview .pv-rows { margin-top: 1rem; display: grid; gap: 0.5rem; }
+    .calc-preview .pv-row { display: flex; justify-content: space-between; align-items: center; background: var(--fond-2); border-radius: 10px; padding: 0.5rem 0.8rem; font-size: 0.9rem; }
+    .calc-preview .pv-row i { color: var(--jaune); width: 1.3rem; }
+    .calc-preview .pv-row b { font-variant-numeric: tabular-nums; }
+    @media (max-width: 760px) {
+      .calc-promo { grid-template-columns: 1fr; padding: 1.8rem 1.3rem; text-align: center; }
+      .calc-promo p { margin-left: auto; margin-right: auto; }
+      .calc-preview { max-width: 320px; margin: 0 auto; width: 100%; text-align: left; }
+    }
+
+    /* ============================== HERO ================================= */
+    .hero {
+      min-height: 100vh;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      text-align: center; padding: 6rem 1.5rem 3rem;
+      position: relative;
+      background: linear-gradient(rgba(14,15,19,0.55), rgba(14,15,19,0.75)),
+                  url('assets/img/banner.jpg') center center / cover no-repeat;
+    }
+    /* Sur mobile : recadre la bannière sur le 3e robot (base « 2 »).
+       0% = robot de gauche, 100% = robot de droite — ajuste ce % si besoin. */
+    @media (max-width: 700px) {
+      .hero { background-position: 63% center; }
+    }
+    .hero h1 {
+      font-size: clamp(2.6rem, 9vw, 6rem); font-weight: 800; letter-spacing: 0.06em;
+      text-shadow: 0 4px 24px rgba(0,0,0,0.6);
+    }
+    .hero p { color: #e7e9ee; font-size: clamp(1rem, 2.5vw, 1.35rem); margin-top: 0.6rem; }
+    .hero .cta { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; margin-top: 2rem; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 0.55rem;
+      padding: 0.8rem 1.7rem; border-radius: 999px; font-weight: 600; font-size: 1rem;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .btn:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(0,0,0,0.4); }
+    .btn i { font-size: 1.25rem; }
+    .btn-jaune { background: var(--jaune); color: #17130a; }
+    .btn-gh { background: #24292e; color: #fff; }
+    .btn-ig { background: linear-gradient(45deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888); color: #fff; }
+    .btn-li { background: #0a66c2; color: #fff; }
+    .scroll-down {
+      position: absolute; bottom: 1.6rem; left: 50%; transform: translateX(-50%);
+      color: #fff; font-size: 1.5rem; opacity: 0.8; animation: bob 1.6s infinite;
+    }
+    @keyframes bob { 0%,100%{ transform: translate(-50%,0);} 50%{ transform: translate(-50%,10px);} }
+
+    /* ========================= CARROUSEL ROBOTS ========================= */
+    .carousel {
+      position: relative; max-width: var(--max); margin: 0 auto; border-radius: var(--radius);
+      overflow: hidden; aspect-ratio: 16 / 9; background: #0a0b0f;
+    }
+    .slides { display: flex; height: 100%; transition: transform 0.6s ease; }
+    .slides .slide { position: relative; min-width: 100%; width: 100%; height: 100%; }
+    .slides .slide img { width: 100%; height: 100%; object-fit: contain; }
+    .slides .credit {
+      position: absolute; left: 14px; bottom: 12px; z-index: 2; pointer-events: none;
+      font-size: 0.78rem; color: rgba(255,255,255,0.92); letter-spacing: 0.02em;
+      background: rgba(0,0,0,0.4); padding: 3px 11px; border-radius: 999px;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+    }
+    .car-btn {
+      position: absolute; top: 50%; transform: translateY(-50%);
+      background: rgba(0,0,0,0.45); color: #fff; border: none; cursor: pointer;
+      width: 46px; height: 46px; border-radius: 50%; font-size: 1.2rem;
+    }
+    .car-btn:hover { background: var(--jaune); color: #000; }
+    .car-btn.prev { left: 12px; } .car-btn.next { right: 12px; }
+    .dots { display: flex; gap: 8px; justify-content: center; margin-top: 1rem; }
+    .dots button { width: 11px; height: 11px; border-radius: 50%; border: none; background: #3a3d49; cursor: pointer; }
+    .dots button.active { background: var(--jaune); }
+
+    /* ========================= CARTES BILANS =========================== */
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; }
+    .card {
+      background: var(--fond-2); border-radius: var(--radius); overflow: hidden; cursor: pointer;
+      border: 1px solid rgba(255,255,255,0.06); transition: transform 0.2s, border-color 0.2s;
+    }
+    .card:hover { transform: translateY(-5px); border-color: var(--jaune); }
+    .card img { height: 190px; width: 100%; object-fit: cover; }
+    .card .body { padding: 1.2rem 1.3rem 1.5rem; }
+    .card .date { color: var(--jaune); font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+    .card h3 { margin: 0.4rem 0 0.6rem; font-size: 1.2rem; }
+    .card p { color: var(--texte-doux); font-size: 0.95rem; }
+    .card .lire { display: inline-block; margin-top: 0.8rem; color: var(--jaune); font-weight: 600; font-size: 0.88rem; }
+
+    /* Carrousel de bilans : 3 visibles, on fait défiler vers les plus anciens */
+    .bilans-carousel { position: relative; }
+    .bilans-track {
+      position: relative;
+      display: flex; gap: 1.5rem; overflow-x: auto; padding: 2rem 0.3rem; scrollbar-width: none;
+      perspective: 1100px;                 /* profondeur 3D pour l'effet coverflow */
+      overscroll-behavior-x: contain;
+    }
+    .bilans-track::-webkit-scrollbar { display: none; }
+    .bilans-track .card {
+      flex: 0 0 320px;
+      transform-origin: center center;
+      backface-visibility: hidden;
+    }
+    @media (max-width: 700px) { .bilans-track .card { flex: 0 0 78%; } }
+    #bilans-prev { left: -6px; } #bilans-next { right: -6px; }
+    .bilans-carousel .car-btn[hidden] { display: none; }
+
+    /* ===================== FENÊTRE ARTICLE (plongeon) ================== */
+    .article-modal {
+      position: fixed; inset: 0; z-index: 200; display: flex; align-items: flex-start; justify-content: center;
+      padding: 4vh 1rem; overflow-y: auto; opacity: 0; visibility: hidden; transition: opacity 0.3s;
+    }
+    .article-modal.open { opacity: 1; visibility: visible; }
+    .article-backdrop { position: fixed; inset: 0; background: rgba(4,5,8,0.8); backdrop-filter: blur(4px); }
+    .article-box {
+      position: relative; width: min(760px, 100%); background: var(--fond-2); border-radius: 18px;
+      overflow: hidden; border: 1px solid rgba(255,255,255,0.08);
+      transform: scale(0.6) translateY(-40px); opacity: 0;
+      transition: transform 0.45s cubic-bezier(0.2,0.8,0.2,1.15), opacity 0.35s;
+    }
+    .article-modal.open .article-box { transform: scale(1) translateY(0); opacity: 1; }
+    .article-box > img { width: 100%; height: 300px; object-fit: cover; }
+    .article-content { padding: 1.6rem 1.8rem 2.2rem; }
+    .article-content .date { color: var(--jaune); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.85rem; }
+    .article-content h2 { font-size: 1.8rem; margin: 0.4rem 0 1rem; }
+    .article-content p { color: #d6d9e0; margin-bottom: 1rem; }
+    .article-content ul { list-style: none; margin: 0 0 1.3rem; padding: 0; }
+    .article-content li { position: relative; padding-left: 1.4em; margin-bottom: 0.55rem; color: #d6d9e0; }
+    .article-content li::before { content: "•"; color: var(--jaune); font-weight: 700; position: absolute; left: 0; top: -0.02em; }
+    .article-content img { display: block; max-width: 100%; margin: 1.5rem auto; border-radius: 10px; }
+    .article-content h3 { font-size: 1.15rem; color: var(--texte); margin: 1.6rem 0 0.6rem; }
+    .article-content a { color: var(--jaune); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+    .article-content em { color: var(--texte-doux); }
+    .article-close {
+      position: absolute; top: 12px; right: 12px; z-index: 2; width: 42px; height: 42px; border-radius: 50%;
+      border: none; cursor: pointer; font-size: 1.2rem; background: rgba(0,0,0,0.55); color: #fff;
+    }
+    .article-close:hover { background: var(--jaune); color: #000; }
+    body.no-scroll { overflow: hidden; }
+
+    /* ============================ VIDÉOS =============================== */
+    .videos { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; }
+    .video-embed { position: relative; padding-top: 56.25%; border-radius: var(--radius); overflow: hidden; background: #000; }
+    .video-embed iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+    .videos figure { margin: 0; }
+    .videos figcaption { margin-top: 0.8rem; text-align: center; font-weight: 600; color: var(--texte); }
+    .videos figcaption span { display: block; color: var(--texte-doux); font-weight: 400; font-size: 0.9rem; }
+
+    /* =========================== SPONSORS ============================== */
+    #sponsors { background: var(--fond-2); }
+    .sponsor-grid { display: flex; flex-wrap: wrap; gap: 1.5rem; justify-content: center; }
+    .sponsor-grid a {
+      background: #fff; border-radius: var(--radius); padding: 1.5rem; display: flex;
+      align-items: center; justify-content: center; width: 230px; height: 170px; transition: transform 0.2s;
+    }
+    .sponsor-grid a:hover { transform: scale(1.05); }
+    .sponsor-grid img { max-height: 120px; max-width: 90%; object-fit: contain; }
+    .sponsor-cta {
+      text-align: center; margin-top: 3rem; background: var(--fond);
+      border: 1px dashed var(--jaune); border-radius: var(--radius); padding: 2.5rem 1.5rem;
+    }
+    .sponsor-cta h3 { font-size: 1.5rem; margin-bottom: 0.6rem; }
+    .sponsor-cta p { color: var(--texte-doux); max-width: 560px; margin: 0 auto 1.5rem; }
+    .sponsor-cta .sponsor-mail { margin: 1.1rem auto 0; font-size: 0.9rem; }
+    .sponsor-cta .sponsor-mail a { color: var(--jaune); font-weight: 600; }
+
+    /* Plaquette sponsors téléchargeable (fichier : assets/docs/) */
+    .plaquette {
+      display: grid; grid-template-columns: 260px 1fr; gap: 2.5rem; align-items: center;
+      max-width: 860px; margin: 0 auto 2.5rem; text-align: left;
+    }
+    .plaquette-apercu {
+      display: block; border-radius: 8px; overflow: hidden; background: #fff;
+      box-shadow: 0 18px 40px rgba(0,0,0,0.5); transform: rotate(-2deg); transition: transform 0.2s;
+    }
+    .plaquette-apercu:hover { transform: rotate(0deg) scale(1.03); }
+    .plaquette-apercu img { display: block; width: 100%; height: auto; }
+    .plaquette h3 { font-size: 1.5rem; margin-bottom: 0.6rem; }
+    .plaquette p { color: var(--texte-doux); margin: 0 0 1.2rem; max-width: none; }
+    .plaquette ul { list-style: none; margin: 0 0 1.5rem; color: var(--texte); }
+    .plaquette li { margin: 0.35rem 0; }
+    .plaquette li i { color: var(--jaune); width: 1.4rem; }
+    .plaquette .actions { display: flex; flex-wrap: wrap; gap: 0.8rem; align-items: center; }
+    .plaquette .meta { color: var(--texte-doux); font-size: 0.8rem; margin-top: 0.8rem; }
+    .btn-contour { border: 2px solid var(--jaune); color: var(--jaune); background: transparent; cursor: pointer; font-family: inherit; }
+
+    /* ===================== FENÊTRE CONTACT SPONSOR ===================== */
+    /* Un lien mailto: seul ne fait rien si aucune messagerie n'est configurée sur l'ordinateur :
+       cette fenêtre propose de copier l'adresse ou d'écrire depuis Gmail / Outlook en ligne. */
+    .contact-modal {
+      position: fixed; inset: 0; z-index: 210; display: flex; align-items: center; justify-content: center;
+      padding: 1rem; opacity: 0; visibility: hidden; transition: opacity 0.25s;
+    }
+    .contact-modal.open { opacity: 1; visibility: visible; }
+    .contact-backdrop { position: absolute; inset: 0; background: rgba(4,5,8,0.8); backdrop-filter: blur(4px); }
+    .contact-box {
+      position: relative; width: min(520px, 100%); background: var(--fond-2); border-radius: 18px;
+      border: 1px solid rgba(255,255,255,0.08); padding: 2rem 1.8rem; text-align: center;
+      transform: translateY(20px); transition: transform 0.3s;
+    }
+    .contact-modal.open .contact-box { transform: translateY(0); }
+    .contact-box h3 { font-size: 1.4rem; margin-bottom: 0.5rem; }
+    .contact-box p { color: var(--texte-doux); margin-bottom: 1.2rem; }
+    .contact-close {
+      position: absolute; top: 0.8rem; right: 0.9rem; background: none; border: 0; color: var(--texte-doux);
+      font-size: 1.6rem; line-height: 1; cursor: pointer;
+    }
+    .contact-close:hover { color: var(--jaune); }
+    .contact-mail {
+      display: flex; align-items: center; gap: 0.6rem; flex-wrap: nowrap;
+      background: var(--fond); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px;
+      padding: 0.45rem 0.45rem 0.45rem 1rem; margin-bottom: 1.2rem;
+    }
+    .contact-mail > i { color: var(--texte-doux); }
+    .contact-mail > span {
+      flex: 1; min-width: 0; text-align: left; font-weight: 600; color: var(--texte);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: all;
+    }
+    .contact-copy {
+      flex: none; display: inline-flex; align-items: center; gap: 0.45rem; border: 0; cursor: pointer;
+      font: 600 0.9rem 'Poppins', system-ui, sans-serif; color: #17130a; background: var(--jaune);
+      border-radius: 8px; padding: 0.55rem 0.9rem; transition: background 0.15s;
+    }
+    .contact-copy:hover { background: #ffd84a; }
+    .contact-copy.copied { background: #3ecf8e; }
+    .contact-links { display: flex; flex-wrap: wrap; gap: 0.6rem; justify-content: center; }
+    .contact-links .btn { padding: 0.6rem 1.1rem; font-size: 0.92rem; }
+    @media (max-width: 420px) { .contact-mail > i { display: none; } .contact-copy span { display: none; } }
+    @media (max-width: 700px) {
+      .plaquette { grid-template-columns: 1fr; text-align: center; gap: 1.8rem; }
+      .plaquette-apercu { max-width: 220px; margin: 0 auto; }
+      .plaquette .actions { justify-content: center; }
+    }
+
+    /* ============================ FOOTER ============================== */
+    footer { background: #090a0d; padding: 3rem 1.5rem; text-align: center; }
+    .socials { display: flex; gap: 1.2rem; justify-content: center; margin-bottom: 1.2rem; }
+    .socials a {
+      width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      background: var(--fond-2); color: var(--texte); font-size: 1.3rem; transition: background 0.2s, color 0.2s, transform 0.2s;
+    }
+    .socials a:hover { background: var(--jaune); color: #000; transform: translateY(-3px); }
+    footer small { color: var(--texte-doux); }
+  </style>
+</head>
+
+<body>
+
+  <!-- ============================ NAVIGATION ============================ -->
+  <header>
+    <div class="logo">TEAM <span>OPOSSUM</span></div>
+    <nav class="menu" id="menu">
+      <a href="#accueil" data-i18n="nav.home">Accueil</a>
+      <a href="#apropos" data-i18n="nav.about">À propos</a>
+      <a href="#robots" data-i18n="nav.robots">Robots</a>
+      <a href="technique.html" data-i18n="nav.tech">Technique</a>
+      <a href="calculateur.html" data-i18n="nav.calc">Points 2027</a>
+      <a href="#bilans" data-i18n="nav.reports">Bilans</a>
+      <a href="#videos" data-i18n="nav.videos">Vidéos</a>
+      <a href="#sponsors" data-i18n="nav.sponsors">Sponsors</a>
+      <a href="#contact" data-i18n="nav.contact">Contact</a>
+    </nav>
+    <div class="header-right">
+      <div class="lang-switch" id="lang-switch">
+        <button type="button" data-lang="fr">FR</button>
+        <button type="button" data-lang="en">EN</button>
+      </div>
+      <button class="burger" id="burger" aria-label="Menu"><i class="fa-solid fa-bars"></i></button>
+    </div>
+  </header>
+
+  <!-- =============================== HERO ============================== -->
+  <section class="hero" id="accueil">
+    <h1>TEAM OPOSSUM</h1>
+    <p data-i18n="hero.tagline">Équipe de robotique — Coupe de France de Robotique</p>
+    <div class="cta">
+      <a class="btn btn-gh" href="https://github.com/Les-opossums" target="_blank" rel="noopener"><i class="fa-brands fa-github"></i> GitHub</a>
+      <a class="btn btn-ig" href="https://www.instagram.com/scrat_opossums/" target="_blank" rel="noopener"><i class="fa-brands fa-instagram"></i> Instagram</a>
+      <a class="btn btn-li" href="https://www.linkedin.com/company/team-opossum-robotique/" target="_blank" rel="noopener"><i class="fa-brands fa-linkedin-in"></i> LinkedIn</a>
+    </div>
+    <!-- Pastille « Nouveau » : lien vers le calculateur de points 2027 -->
+    <a class="hero-new" href="calculateur.html"><span class="tag" data-i18n="hero.newTag">Nouveau</span><span data-i18n="hero.newCalc">Calculateur de points Eurobot 2027</span><i class="fa-solid fa-arrow-right"></i></a>
+    <a href="#apropos" class="scroll-down" aria-label="Défiler"><i class="fa-solid fa-chevron-down"></i></a>
+  </section>
+
+  <!-- ============================== À PROPOS =========================== -->
+  <section id="apropos">
+    <div class="wrap">
+      <h2 class="titre" data-i18n="about.title">À <span>propos</span></h2>
+      <p class="sous-titre" data-i18n="about.subtitle">Une jeune équipe de passionnés de robotique.</p>
+
+      <div class="apropos-txt">
+        <p data-i18n="about.p1">Fondée en <strong>2025</strong>, l'association <strong>Team Opossum</strong> réunit des passionnés autour d'un même objectif : concevoir, fabriquer et programmer des robots autonomes, puis les faire s'affronter sur le terrain.</p>
+        <p data-i18n="about.p2">Notre grand rendez-vous chaque année, c'est la <strong>Coupe de France de Robotique</strong> — mais nous participons aussi à d'autres événements et rencontres autour de la robotique, pour apprendre, partager et repousser nos limites.</p>
+      </div>
+
+      <div class="apropos-stats">
+        <div class="stat"><span>42ᵉ</span><small data-i18n="about.stat1">Coupe de France 2025</small></div>
+        <div class="stat"><span>5ᵉ</span><small data-i18n="about.stat2">Coupe de France 2026</small></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== ROBOTS ============================= -->
+  <section id="robots">
+    <div class="wrap">
+      <h2 class="titre" data-i18n="robots.title">Nos <span>robots</span></h2>
+      <p class="sous-titre" data-i18n="robots.subtitle">Découvrez les machines conçues, fabriquées et programmées par l'équipe.</p>
+
+      <!-- CARROUSEL : les photos sont chargées automatiquement depuis le dossier
+           ROBOT_PICTURE/. Pour en ajouter, dépose simplement tes images dedans. -->
+      <div class="carousel">
+        <div class="slides" id="slides"></div>
+        <button class="car-btn prev" id="prev" aria-label="Précédent"><i class="fa-solid fa-chevron-left"></i></button>
+        <button class="car-btn next" id="next" aria-label="Suivant"><i class="fa-solid fa-chevron-right"></i></button>
+      </div>
+      <div class="dots" id="dots"></div>
+      <div id="explore3d" style="text-align:center; margin-top:2.2rem; scroll-margin-top:80px;">
+        <a class="btn btn-jaune" href="technique.html"><i class="fa-solid fa-cube"></i> <span data-i18n="robots.techbtn">Explorer nos robots en 3D — fiches techniques (règlement 2026)</span></a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= CALCULATEUR 2027 (encart) ======================= -->
+  <section id="calculateur">
+    <div class="wrap">
+      <div class="calc-promo">
+        <div>
+          <div class="calc-kicker" data-i18n="calcPromo.kicker"><i class="fa-solid fa-chess-rook"></i> Saison 2027 · Camelot</div>
+          <h3 data-i18n="calcPromo.title">Combien vaut <span>votre match ?</span></h3>
+          <p data-i18n="calcPromo.text">Notre calculateur de points gratuit, à jour du règlement officiel 2027 : murs, tours, porte, Graal, retour du roi et assaut. Quelques touches suffisent pour connaître votre score, idéal pour préparer votre stratégie ou vérifier un match.</p>
+          <a class="btn btn-jaune" href="calculateur.html"><i class="fa-solid fa-calculator"></i> <span data-i18n="calcPromo.btn">Calculer mes points</span></a>
+        </div>
+        <a class="calc-preview" href="calculateur.html" aria-hidden="true" tabindex="-1">
+          <div class="pv-total"><b>127</b><small>pts</small></div>
+          <div class="pv-rows">
+            <div class="pv-row"><span><i class="fa-solid fa-chess-rook"></i> Camelot</span><b>57</b></div>
+            <div class="pv-row"><span><i class="fa-solid fa-trophy"></i> <span data-i18n="calcPromo.graal">Graal</span></span><b>25</b></div>
+            <div class="pv-row"><span><i class="fa-solid fa-crown"></i> <span data-i18n="calcPromo.roi">Retour du roi</span></span><b>10</b></div>
+            <div class="pv-row"><span><i class="fa-solid fa-horse-head"></i> <span data-i18n="calcPromo.assaut">Assaut</span></span><b>35</b></div>
+          </div>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== BILANS ============================= -->
+  <section id="bilans">
+    <div class="wrap">
+      <h2 class="titre" data-i18n="reports.title">Nos <span>bilans</span></h2>
+      <p class="sous-titre" data-i18n="reports.subtitle">Retour sur nos compétitions et les temps forts de la saison.</p>
+
+      <!-- Carrousel : les bilans sont générés automatiquement depuis la liste
+           en bas de page, du plus récent au plus ancien. -->
+      <div class="bilans-carousel" id="bilans-carousel">
+        <div class="bilans-track" id="bilans-grid"></div>
+        <button class="car-btn prev" id="bilans-prev" aria-label="Bilans plus récents"><i class="fa-solid fa-chevron-left"></i></button>
+        <button class="car-btn next" id="bilans-next" aria-label="Bilans plus anciens"><i class="fa-solid fa-chevron-right"></i></button>
+      </div>
+      <!-- Copie texte des articles pour le référencement (invisible à l'écran) -->
+      <div id="seo-articles" class="seo-only" aria-hidden="true"></div>
+    </div>
+  </section>
+
+  <!-- Fenêtre article (effet plongeon) -->
+  <div class="article-modal" id="article-modal" aria-hidden="true">
+    <div class="article-backdrop" data-close></div>
+    <article class="article-box" role="dialog" aria-modal="true" aria-label="Article">
+      <button class="article-close" data-close aria-label="Fermer"><i class="fa-solid fa-xmark"></i></button>
+      <img id="art-img" src="" alt="" />
+      <div class="article-content">
+        <div class="date" id="art-date"></div>
+        <h2 id="art-titre"></h2>
+        <div id="art-corps"></div>
+      </div>
+    </article>
+  </div>
+
+  <!-- ============================== VIDÉOS ============================= -->
+  <section id="videos">
+    <div class="wrap">
+      <h2 class="titre" data-i18n="videos.title">Nos <span>matchs</span> en vidéo</h2>
+      <p class="sous-titre" data-i18n="videos.subtitle">Quelques temps forts de nos matchs en compétition.</p>
+
+      <!-- Pour intégrer une vidéo YouTube : remplace l'identifiant après /embed/
+           par celui de ta vidéo (la partie après "v=" dans l'URL YouTube) -->
+      <div class="videos">
+        <figure>
+          <div class="video-embed"><iframe src="https://www.youtube.com/embed/pMh3wY4uUH4" title="Série 5 — Opossum vs TDS-TEAM72" allowfullscreen loading="lazy"></iframe></div>
+          <figcaption data-i18n="videos.cap1">Série 5 vs TDS-TEAM72<span>Match de poule</span></figcaption>
+        </figure>
+        <figure>
+          <div class="video-embed"><iframe src="https://www.youtube.com/embed/gtVpHhMgYpY" title="8e de finale — Opossum vs Sudriabotik" allowfullscreen loading="lazy"></iframe></div>
+          <figcaption data-i18n="videos.cap2">8ᵉ de finale vs Sudriabotik<span>Phase finale</span></figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================= SPONSORS ============================ -->
+  <section id="sponsors">
+    <div class="wrap">
+      <h2 class="titre" data-i18n="sponsors.title">Nos <span>partenaires</span></h2>
+      <p class="sous-titre" data-i18n="sponsors.subtitle">Merci à ceux qui soutiennent l'équipe et rendent nos projets possibles.</p>
+
+      <!-- Logos : mets-les dans assets/img/sponsors/ puis remplace les liens/images -->
+      <div class="sponsor-grid">
+        <a href="https://www.defense.gouv.fr/dga" target="_blank" rel="noopener"><img src="assets/img/sponsors/dga.jpg" alt="DGA — Direction générale de l'armement" onerror="this.parentElement.style.display='none'" /></a>
+        <a href="https://www.robot-maker.com/shop/" target="_blank" rel="noopener"><img src="assets/img/sponsors/robot-maker.png" alt="Robot-Maker" onerror="this.parentElement.style.display='none'" /></a>
+        <a href="https://jlcpcb.com/fr?from=LesOpossums" target="_blank" rel="noopener"><img src="assets/img/sponsors/jlcpcb.png" alt="JLCPCB" onerror="this.parentElement.style.display='none'" /></a>
+        <a href="#" target="_blank" rel="noopener"><img src="assets/img/sponsors/sponsor4.png" alt="Sponsor 4" onerror="this.parentElement.style.display='none'" /></a>
+      </div>
+
+      <div class="sponsor-cta">
+        <!-- Plaquette sponsors : remplacer le PDF et l'aperçu dans assets/docs/ à chaque mise à jour -->
+        <div class="plaquette" id="plaquette">
+          <a class="plaquette-apercu" href="assets/docs/plaquette-team-opossum-2027.pdf" data-href-fr="assets/docs/plaquette-team-opossum-2027.pdf" data-href-en="assets/docs/brochure-team-opossum-2027-en.pdf" target="_blank" rel="noopener" aria-label="Ouvrir la plaquette">
+            <img src="assets/docs/plaquette-apercu.jpg" data-src-fr="assets/docs/plaquette-apercu.jpg" data-src-en="assets/docs/brochure-preview-en.jpg" alt="Première page de la plaquette Team Opossum 2027" data-alt-fr="Première page de la plaquette Team Opossum 2027" data-alt-en="First page of the Team Opossum 2027 brochure" width="640" height="828" loading="lazy" />
+          </a>
+          <div>
+            <h3 data-i18n="sponsors.ctaTitle">Envie de nous soutenir ?</h3>
+            <p data-i18n="sponsors.plaqText">Découvrez l'équipe, nos robots et nos ambitions pour 2027 dans notre plaquette de présentation, pensée pour nos futurs partenaires.</p>
+            <ul>
+              <li><i class="fa-solid fa-robot"></i> <span data-i18n="sponsors.plaq1">L'équipe, nos robots et notre parcours</span></li>
+              <li><i class="fa-solid fa-chart-line"></i> <span data-i18n="sponsors.plaq2">Notre audience et ce que nous offrons à nos partenaires</span></li>
+              <li><i class="fa-solid fa-microchip"></i> <span data-i18n="sponsors.plaq3">Nos technologies et nos projets pour 2027</span></li>
+            </ul>
+            <div class="actions">
+              <a class="btn btn-jaune" href="assets/docs/plaquette-team-opossum-2027.pdf" data-href-fr="assets/docs/plaquette-team-opossum-2027.pdf" data-href-en="assets/docs/brochure-team-opossum-2027-en.pdf" download="Plaquette-Team-Opossum-2027.pdf" data-download-fr="Plaquette-Team-Opossum-2027.pdf" data-download-en="Brochure-Team-Opossum-2027-EN.pdf"><i class="fa-solid fa-file-arrow-down"></i> <span data-i18n="sponsors.plaqBtn">Télécharger la plaquette</span></a>
+              <button type="button" class="btn btn-contour js-contact"><i class="fa-solid fa-handshake"></i> <span data-i18n="sponsors.ctaBtn">Devenir sponsor</span></button>
+            </div>
+            <p class="meta" data-i18n="sponsors.plaqMeta">PDF · 3 pages · 190 Ko</p>
+          </div>
+        </div>
+        <p class="sponsor-mail" data-i18n="sponsors.mail">ou écrivez-nous à <a href="mailto:scrat.opossum@gmail.com?subject=Devenir%20sponsor%20de%20la%20Team%20Opossum">scrat.opossum@gmail.com</a></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Fenêtre « Devenir sponsor » (ouverte par les éléments .js-contact) -->
+  <div class="contact-modal" id="contact-modal" aria-hidden="true">
+    <div class="contact-backdrop" data-contact-close></div>
+    <div class="contact-box" role="dialog" aria-modal="true" aria-labelledby="contact-title">
+      <button type="button" class="contact-close" data-contact-close aria-label="Fermer">&times;</button>
+      <h3 id="contact-title" data-i18n="contact.title">Devenir sponsor</h3>
+      <p data-i18n="contact.text">Écrivez-nous à cette adresse, nous vous répondrons rapidement.</p>
+      <div class="contact-mail">
+        <i class="fa-regular fa-envelope"></i>
+        <span>scrat.opossum@gmail.com</span>
+        <button type="button" class="contact-copy" id="contact-copy" aria-label="Copier l'adresse"><i class="fa-regular fa-copy"></i> <span data-i18n="contact.copy">Copier</span></button>
+      </div>
+      <div class="contact-links">
+        <a class="btn btn-contour" id="contact-gmail" target="_blank" rel="noopener" href="#"><i class="fa-brands fa-google"></i> Gmail</a>
+        <a class="btn btn-contour" id="contact-outlook" target="_blank" rel="noopener" href="#"><i class="fa-brands fa-microsoft"></i> Outlook</a>
+        <a class="btn btn-contour" id="contact-app" href="#"><i class="fa-solid fa-envelope"></i> <span data-i18n="contact.app">Ma messagerie</span></a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================= CONTACT ============================= -->
+  <footer id="contact">
+    <div class="socials">
+      <a href="https://github.com/Les-opossums" target="_blank" rel="noopener" aria-label="GitHub"><i class="fa-brands fa-github"></i></a>
+      <a href="https://www.instagram.com/scrat_opossums/" target="_blank" rel="noopener" aria-label="Instagram"><i class="fa-brands fa-instagram"></i></a>
+      <a href="https://www.linkedin.com/company/team-opossum-robotique/" target="_blank" rel="noopener" aria-label="LinkedIn"><i class="fa-brands fa-linkedin-in"></i></a>
+      <a href="mailto:scrat.opossum@gmail.com" aria-label="E-mail"><i class="fa-solid fa-envelope"></i></a>
+    </div>
+    <small data-i18n="footer.copy">© 2026 Team Opossum — Équipe de robotique.</small>
+  </footer>
+
+  <!-- ==================== LANGUES (FR / EN) ==================== -->
+  <script>
+    const I18N = {
+      fr: {
+        'nav.home': `Accueil`, 'nav.about': `À propos`, 'nav.robots': `Robots`, 'nav.tech': `Technique`, 'nav.calc': `Points 2027`,
+        'nav.reports': `Bilans`, 'nav.videos': `Vidéos`, 'nav.sponsors': `Sponsors`, 'nav.contact': `Contact`,
+        'hero.tagline': `Équipe de robotique — Coupe de France de Robotique`,
+        'about.title': `À <span>propos</span>`,
+        'about.subtitle': `Une jeune équipe de passionnés de robotique.`,
+        'about.p1': `Fondée en <strong>2025</strong>, l'association <strong>Team Opossum</strong> réunit des passionnés autour d'un même objectif : concevoir, fabriquer et programmer des robots autonomes, puis les faire s'affronter sur le terrain.`,
+        'about.p2': `Notre grand rendez-vous chaque année, c'est la <strong>Coupe de France de Robotique</strong> — mais nous participons aussi à d'autres événements et rencontres autour de la robotique, pour apprendre, partager et repousser nos limites.`,
+        'about.stat1': `Coupe de France 2025`, 'about.stat2': `Coupe de France 2026`,
+        'robots.title': `Nos <span>robots</span>`,
+        'robots.subtitle': `Découvrez les machines conçues, fabriquées et programmées par l'équipe.`,
+        'robots.techbtn': `Explorer nos robots en 3D — fiches techniques (règlement 2026)`,
+        'hero.newTag': `Nouveau`, 'hero.newCalc': `Calculateur de points Eurobot 2027`,
+        'calcPromo.kicker': `<i class="fa-solid fa-chess-rook"></i> Saison 2027 · Camelot`,
+        'calcPromo.title': `Combien vaut <span>votre match ?</span>`,
+        'calcPromo.text': `Notre calculateur de points gratuit, à jour du règlement officiel 2027 : murs, tours, porte, Graal, retour du roi et assaut. Quelques touches suffisent pour connaître votre score, idéal pour préparer votre stratégie ou vérifier un match.`,
+        'calcPromo.btn': `Calculer mes points`,
+        'calcPromo.graal': `Graal`, 'calcPromo.roi': `Retour du roi`, 'calcPromo.assaut': `Assaut`,
+        'reports.title': `Nos <span>bilans</span>`,
+        'reports.subtitle': `Retour sur nos compétitions et les temps forts de la saison.`,
+        'videos.title': `Nos <span>matchs</span> en vidéo`,
+        'videos.subtitle': `Quelques temps forts de nos matchs en compétition.`,
+        'videos.cap1': `Série 5 vs TDS-TEAM72<span>Match de poule</span>`,
+        'videos.cap2': `8ᵉ de finale vs Sudriabotik<span>Phase finale</span>`,
+        'sponsors.title': `Nos <span>partenaires</span>`,
+        'sponsors.subtitle': `Merci à ceux qui soutiennent l'équipe et rendent nos projets possibles.`,
+        'sponsors.ctaTitle': `Envie de nous soutenir ?`,
+        'sponsors.ctaText': `Matériel, financement, savoir-faire : chaque coup de main compte. Rejoignez l'aventure Opossum et gagnez en visibilité auprès de la communauté robotique.`,
+        'sponsors.ctaBtn': `Devenir sponsor`,
+        'contact.title': `Devenir sponsor`,
+        'contact.text': `Écrivez-nous à cette adresse, nous vous répondrons rapidement.`,
+        'contact.copy': `Copier`,
+        'contact.copied': `Copié !`,
+        'contact.app': `Ma messagerie`,
+        'contact.subject': `Devenir sponsor de la Team Opossum`,
+        'sponsors.plaqText': `Découvrez l'équipe, nos robots et nos ambitions pour 2027 dans notre plaquette de présentation, pensée pour nos futurs partenaires.`,
+        'sponsors.plaq1': `L'équipe, nos robots et notre parcours`,
+        'sponsors.plaq2': `Notre audience et ce que nous offrons à nos partenaires`,
+        'sponsors.plaq3': `Nos technologies et nos projets pour 2027`,
+        'sponsors.plaqBtn': `Télécharger la plaquette`,
+        'sponsors.plaqMeta': `PDF · 3 pages · 190 Ko`,
+        'sponsors.mail': `ou écrivez-nous à <a href="mailto:scrat.opossum@gmail.com?subject=Devenir%20sponsor%20de%20la%20Team%20Opossum">scrat.opossum@gmail.com</a>`,
+        'footer.copy': `© 2026 Team Opossum — Équipe de robotique.`,
+        'card.read': `Lire l'article`
+      },
+      en: {
+        'nav.home': `Home`, 'nav.about': `About`, 'nav.robots': `Robots`, 'nav.tech': `Technical`, 'nav.calc': `2027 points`,
+        'nav.reports': `Reports`, 'nav.videos': `Videos`, 'nav.sponsors': `Sponsors`, 'nav.contact': `Contact`,
+        'hero.tagline': `Robotics team — French Robotics Cup`,
+        'about.title': `About <span>us</span>`,
+        'about.subtitle': `A young team of robotics enthusiasts.`,
+        'about.p1': `Founded in <strong>2025</strong>, the <strong>Team Opossum</strong> association brings together enthusiasts around one goal: to design, build and program autonomous robots, then pit them against each other on the field.`,
+        'about.p2': `Our biggest event every year is the <strong>French Robotics Cup</strong> — but we also take part in other robotics events and meet-ups, to learn, share and push our limits.`,
+        'about.stat1': `French Robotics Cup 2025`, 'about.stat2': `French Robotics Cup 2026`,
+        'robots.title': `Our <span>robots</span>`,
+        'robots.subtitle': `Discover the machines designed, built and programmed by the team.`,
+        'robots.techbtn': `Explore our robots in 3D — technical sheets (2026 rules)`,
+        'hero.newTag': `New`, 'hero.newCalc': `Eurobot 2027 points calculator`,
+        'calcPromo.kicker': `<i class="fa-solid fa-chess-rook"></i> 2027 season · Camelot`,
+        'calcPromo.title': `What is <span>your match worth?</span>`,
+        'calcPromo.text': `Our free points calculator, up to date with the official 2027 rules: walls, towers, gate, Grail, return of the king and charge. A few taps give you your score, ideal to plan your strategy or check a match.`,
+        'calcPromo.btn': `Calculate my points`,
+        'calcPromo.graal': `Grail`, 'calcPromo.roi': `Return of the King`, 'calcPromo.assaut': `Charge`,
+        'reports.title': `Our <span>reports</span>`,
+        'reports.subtitle': `A look back at our competitions and the season's highlights.`,
+        'videos.title': `Our <span>matches</span> on video`,
+        'videos.subtitle': `A few highlights from our competition matches.`,
+        'videos.cap1': `Round 5 vs TDS-TEAM72<span>Group stage</span>`,
+        'videos.cap2': `Round of 16 vs Sudriabotik<span>Knockout stage</span>`,
+        'sponsors.title': `Our <span>partners</span>`,
+        'sponsors.subtitle': `Thanks to those who support the team and make our projects possible.`,
+        'sponsors.ctaTitle': `Want to support us?`,
+        'sponsors.ctaText': `Equipment, funding, expertise: every bit of help counts. Join the Opossum adventure and gain visibility within the robotics community.`,
+        'sponsors.ctaBtn': `Become a sponsor`,
+        'contact.title': `Become a sponsor`,
+        'contact.text': `Write to us at this address, we will get back to you quickly.`,
+        'contact.copy': `Copy`,
+        'contact.copied': `Copied!`,
+        'contact.app': `My mail app`,
+        'contact.subject': `Becoming a Team Opossum sponsor`,
+        'sponsors.plaqText': `Get to know the team, our robots and our ambitions for 2027 in our presentation brochure, written for our future partners.`,
+        'sponsors.plaq1': `The team, our robots and our track record`,
+        'sponsors.plaq2': `Our audience and what we offer our partners`,
+        'sponsors.plaq3': `Our technologies and our plans for 2027`,
+        'sponsors.plaqBtn': `Download the brochure`,
+        'sponsors.plaqMeta': `PDF · 3 pages · 190 KB`,
+        'sponsors.mail': `or email us at <a href="mailto:scrat.opossum@gmail.com?subject=Become%20a%20Team%20Opossum%20sponsor">scrat.opossum@gmail.com</a>`,
+        'footer.copy': `© 2026 Team Opossum — Robotics team.`,
+        'card.read': `Read the article`
+      }
+    };
+    let LANG = new URLSearchParams(location.search).get('lang') || localStorage.getItem('lang') || (navigator.language || 'fr').slice(0, 2).toLowerCase();
+    if (LANG !== 'en') LANG = 'fr';
+    localStorage.setItem('lang', LANG);
+    function T(key) { return (I18N[LANG] && I18N[LANG][key] != null) ? I18N[LANG][key] : (I18N.fr[key] != null ? I18N.fr[key] : ''); }
+    /* Propage la langue dans les liens vers l'autre page (robuste en local file:// et en ligne) */
+    function withLang(href) {
+      const [path, hash] = href.split('#');
+      const [base, qs] = path.split('?');
+      const p = new URLSearchParams(qs || ''); p.set('lang', LANG);
+      return base + '?' + p.toString() + (hash ? '#' + hash : '');
+    }
+    function syncCrossLinks() {
+      document.querySelectorAll('a[href]').forEach(a => {
+        const h = a.getAttribute('href');
+        if (/^(index\.html|technique\.html|calculateur\.html)(\?|#|$)/.test(h)) a.setAttribute('href', withLang(h));
+      });
+    }
+    function applyStaticI18n() {
+      document.documentElement.lang = LANG;
+      document.querySelectorAll('[data-i18n]').forEach(el => { const v = T(el.getAttribute('data-i18n')); if (v) el.innerHTML = v; });
+      // Attributs dépendant de la langue (ex. plaquette FR / brochure EN) : data-href-fr / data-href-en, etc.
+      ['href', 'src', 'alt', 'download'].forEach(attr => {
+        document.querySelectorAll(`[data-${attr}-${LANG}]`).forEach(el => el.setAttribute(attr, el.getAttribute(`data-${attr}-${LANG}`)));
+      });
+      document.querySelectorAll('#lang-switch button').forEach(b => b.classList.toggle('active', b.dataset.lang === LANG));
+      syncCrossLinks();
+    }
+    function setLang(lang) {
+      LANG = (lang === 'en') ? 'en' : 'fr';
+      localStorage.setItem('lang', LANG);
+      applyStaticI18n();
+      document.dispatchEvent(new CustomEvent('langchange', { detail: LANG }));
+    }
+    document.querySelectorAll('#lang-switch button').forEach(b => b.addEventListener('click', () => setLang(b.dataset.lang)));
+    applyStaticI18n();
+  </script>
+
+  <script>
+    /* --------- Menu mobile --------- */
+    const burger = document.getElementById('burger');
+    const menu = document.getElementById('menu');
+    burger.addEventListener('click', () => menu.classList.toggle('open'));
+    menu.querySelectorAll('a').forEach(a => a.addEventListener('click', () => menu.classList.remove('open')));
+
+    /* --------- Apparition au défilement (fondu + montée) --------- */
+    (function () {
+      const sel = '.titre, .sous-titre, .apropos-txt, .apropos-stats .stat, #videos figure, .sponsor-grid a, .sponsor-cta, #robots .carousel, #robots .dots, .calc-promo';
+      const els = document.querySelectorAll(sel);
+      els.forEach(el => el.classList.add('reveal'));
+      /* léger décalage pour les éléments d'un même groupe (tuiles, sponsors, vidéos...) */
+      document.querySelectorAll('.apropos-stats .stat, .sponsor-grid a, #videos figure').forEach((el, i) => {
+        el.style.transitionDelay = ((i % 4) * 0.08) + 's';
+      });
+      if (!('IntersectionObserver' in window)) { els.forEach(el => el.classList.add('visible')); return; }
+      const io = new IntersectionObserver((entries) => {
+        entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); io.unobserve(e.target); } });
+      }, { threshold: 0.12 });
+      els.forEach(el => io.observe(el));
+    })();
+
+    /* --------- Surlignage du lien de menu de la section active --------- */
+    (function () {
+      /* uniquement les liens d'ancre (#...) : les liens de page (technique.html?lang=..) sont ignorés */
+      const links = [...document.querySelectorAll('nav.menu a')].filter(a => (a.getAttribute('href') || '').startsWith('#'));
+      const secs = links.map(a => document.querySelector(a.getAttribute('href'))).filter(Boolean);
+      if (!('IntersectionObserver' in window) || !secs.length) return;
+      const io = new IntersectionObserver((entries) => {
+        entries.forEach(e => {
+          if (e.isIntersecting) {
+            const id = '#' + e.target.id;
+            links.forEach(a => a.classList.toggle('active', a.getAttribute('href') === id));
+          }
+        });
+      }, { rootMargin: '-45% 0px -50% 0px', threshold: 0 });
+      secs.forEach(s => io.observe(s));
+    })();
+
+    /* --------- Carrousel « Nos robots » : photos chargées depuis ROBOT_PICTURE/ --------- */
+    (function () {
+      /* Si tu renommes le dépôt GitHub, mets à jour ces deux lignes : */
+      const GH_OWNER = 'Les-opossums', GH_REPO = 'les-opossums.github.io', DIR = 'ROBOT_PICTURE';
+      const slides = document.getElementById('slides');
+      const dotsBox = document.getElementById('dots');
+      const prevBtn = document.getElementById('prev');
+      const nextBtn = document.getElementById('next');
+      const isImg = n => /\.(jpe?g|png|webp|gif|avif)$/i.test(n);
+      const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+      /* Nom de fichier "photo@Prénom Nom.jpg" -> crédit "Prénom Nom" (filigrane) */
+      function toSlide(name) {
+        const base = name.replace(/\.[^.]+$/, '');
+        const at = base.indexOf('@');
+        return { url: `${DIR}/${encodeURIComponent(name)}`, credit: at > -1 ? base.slice(at + 1).trim() : '' };
+      }
+
+      async function listImages() {
+        try {                                   /* via l'API GitHub : il suffit de déposer des images dans le dossier */
+          const r = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${DIR}`);
+          if (r.ok) {
+            const files = (await r.json()).filter(x => x.type === 'file' && isImg(x.name)).map(x => x.name).sort();
+            if (files.length) return files.map(toSlide);
+          }
+        } catch (e) { /* ignore */ }
+        try {                                   /* secours : ROBOT_PICTURE/liste.json */
+          const r = await fetch(`${DIR}/liste.json`);
+          if (r.ok) { const a = await r.json(); if (a.length) return a.map(toSlide); }
+        } catch (e) { /* ignore */ }
+        return [{ url: 'assets/img/banner.jpg', credit: '' }];   /* dernier recours : la bannière */
+      }
+
+      function initCarousel() {
+        const total = slides.children.length;
+        let index = 0;
+        for (let i = 0; i < total; i++) {
+          const b = document.createElement('button');
+          if (i === 0) b.classList.add('active');
+          b.addEventListener('click', () => goTo(i));
+          dotsBox.appendChild(b);
+        }
+        const dots = dotsBox.children;
+        function goTo(i) {
+          index = (i + total) % total;
+          slides.style.transform = `translateX(-${index * 100}%)`;
+          for (const d of dots) d.classList.remove('active');
+          if (dots[index]) dots[index].classList.add('active');
+        }
+        nextBtn.addEventListener('click', () => goTo(index + 1));
+        prevBtn.addEventListener('click', () => goTo(index - 1));
+        if (total <= 1) { prevBtn.style.display = nextBtn.style.display = 'none'; return; }
+        let timer = setInterval(() => goTo(index + 1), 4000); /* défilement auto toutes les 4s */
+        slides.parentElement.addEventListener('mouseenter', () => clearInterval(timer));
+        slides.parentElement.addEventListener('mouseleave', () => timer = setInterval(() => goTo(index + 1), 4000));
+      }
+
+      (async function () {
+        const imgs = await listImages();
+        slides.innerHTML = imgs.map((im, i) => `
+          <div class="slide">
+            <img src="${im.url}" alt="Robot Opossum ${i + 1}" loading="lazy" />
+            ${im.credit ? `<span class="credit">© ${esc(im.credit)}</span>` : ''}
+          </div>`).join('');
+        initCarousel();
+      })();
+    })();
+  </script>
+
+  <!-- Rendu Markdown des articles -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+
+  <!-- ==================================================================== -->
+  <!--  BILANS / ARTICLES  (chargés automatiquement depuis le dossier bilans/) -->
+  <!--                                                                        -->
+  <!--  POUR AJOUTER UN ARTICLE, une seule chose à faire :                    -->
+  <!--   1) créer un sous-dossier dans "bilans/"  (ex. bilans/mon-article/)   -->
+  <!--   2) y mettre un fichier "article.md" et une image "cover.jpg"         -->
+  <!--  L'article apparaît tout seul, trié par date. (voir bilans/LISEZMOI)   -->
+  <!-- ==================================================================== -->
+  <script>
+    (function () {
+      /* Si tu renommes le depot GitHub, mets a jour ces deux lignes : */
+      const GH_OWNER = 'Les-opossums';
+      const GH_REPO  = 'les-opossums.github.io';
+      const DIR = 'bilans';
+
+      const grid  = document.getElementById('bilans-grid');
+      const prev  = document.getElementById('bilans-prev');
+      const next  = document.getElementById('bilans-next');
+      const modal = document.getElementById('article-modal');
+      const fmt = d => new Date(d).toLocaleDateString(LANG === 'en' ? 'en-GB' : 'fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+
+      /* --- Lister les dossiers d'articles --- */
+      async function listSlugs() {
+        try {                                   /* via l'API GitHub : rien a maintenir, on ajoute juste un dossier */
+          const r = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${DIR}`);
+          if (r.ok) {
+            const dirs = (await r.json()).filter(x => x.type === 'dir').map(x => x.name);
+            if (dirs.length) return dirs;
+          }
+        } catch (e) { /* ignore */ }
+        try {                                   /* secours : fichier bilans/liste.json */
+          const r = await fetch(`${DIR}/liste.json`);
+          if (r.ok) return await r.json();
+        } catch (e) { /* ignore */ }
+        return [];
+      }
+
+      /* --- Lire un article Markdown (en-tete --- ... --- puis texte) --- */
+      function parseArticle(md, slug) {
+        let meta = {}, body = md;
+        const m = md.match(/^\s*---\s*\r?\n([\s\S]*?)\r?\n---\s*\r?\n?([\s\S]*)$/);
+        if (m) {
+          m[1].split(/\r?\n/).forEach(line => {
+            const i = line.indexOf(':');
+            if (i > -1) meta[line.slice(0, i).trim().toLowerCase()] = line.slice(i + 1).trim();
+          });
+          body = m[2];
+        }
+        let html = window.marked ? marked.parse(body) : body;
+        html = html.replace(/(<img[^>]+src=")(?!https?:|\/)([^"]+)"/g, `$1${DIR}/${slug}/$2"`);
+        /* Vidéo locale (fichier .mp4/.webm/.ogg/.mov) écrite comme une image : ![](ma-video.mp4) */
+        const vidTag = src => `<video controls playsinline preload="metadata" style="width:100%;border-radius:10px;margin:1.2rem 0;background:#000;" src="${src}"></video>`;
+        html = html.replace(/<img[^>]*src="([^"]+\.(?:mp4|webm|ogg|mov))"[^>]*>/gi, (m, src) => vidTag(src));
+        html = html.replace(/<p>\s*<a [^>]*href="([^"]+\.(?:mp4|webm|ogg|mov))"[^>]*>.*?<\/a>\s*<\/p>/gi, (m, src) => vidTag(src));
+        /* Vidéo YouTube : un lien seul sur une ligne -> lecteur intégré */
+        const ytId = u => { const x = u.match(/(?:youtu\.be\/|[?&]v=|\/embed\/)([\w-]{11})/); return x ? x[1] : ''; };
+        const ytEmbed = id => `<div class="video-embed" style="margin:1.2rem 0;"><iframe src="https://www.youtube.com/embed/${id}" title="Vidéo" allowfullscreen loading="lazy"></iframe></div>`;
+        html = html.replace(/<p>\s*<a [^>]*href="([^"]*(?:youtube\.com|youtu\.be)[^"]*)"[^>]*>.*?<\/a>\s*<\/p>/gi, (m, u) => { const id = ytId(u); return id ? ytEmbed(id) : m; });
+        html = html.replace(/<p>\s*(https?:\/\/[^\s<]*(?:youtube\.com|youtu\.be)[^\s<]*)\s*<\/p>/gi, (m, u) => { const id = ytId(u); return id ? ytEmbed(id) : m; });
+        return {
+          slug,
+          titre:  meta.titre  || slug,
+          date:   meta.date   || '2000-01-01',
+          resume: meta.resume || '',
+          image:  `${DIR}/${slug}/cover.jpg`,
+          contenu: html
+        };
+      }
+      async function loadArticle(slug) {
+        if (LANG === 'en') {   /* version anglaise si elle existe (article.en.md) */
+          try { const re = await fetch(`${DIR}/${slug}/article.en.md`, { cache: 'no-cache' }); if (re.ok) return parseArticle(await re.text(), slug); } catch (e) { /* ignore */ }
+        }
+        const r = await fetch(`${DIR}/${slug}/article.md`, { cache: 'no-cache' });
+        if (!r.ok) throw new Error('404 ' + slug);
+        return parseArticle(await r.text(), slug);
+      }
+
+      /* --- Fenetre plongeon --- */
+      function openArticle(a) {
+        const img = document.getElementById('art-img');
+        img.onerror = () => { img.onerror = null; img.src = 'assets/img/banner.jpg'; };
+        img.src = a.image;
+        document.getElementById('art-date').textContent = fmt(a.date);
+        document.getElementById('art-titre').textContent = a.titre;
+        document.getElementById('art-corps').innerHTML = a.contenu;
+        modal.classList.add('open');
+        document.body.classList.add('no-scroll');
+        modal.scrollTop = 0;
+      }
+      function closeArticle() {
+        modal.classList.remove('open');
+        document.body.classList.remove('no-scroll');
+      }
+      modal.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', closeArticle));
+      document.addEventListener('keydown', e => { if (e.key === 'Escape') closeArticle(); });
+
+      /* --- Carte --- */
+      function makeCard(a) {
+        const el = document.createElement('article');
+        el.className = 'card';
+        el.innerHTML = `
+          <img src="${a.image}" alt="" onerror="this.onerror=null;this.src='assets/img/banner.jpg'" />
+          <div class="body">
+            <div class="date">${fmt(a.date)}</div>
+            <h3>${a.titre}</h3>
+            <p>${a.resume}</p>
+            <span class="lire">${T('card.read')} <i class="fa-solid fa-arrow-right"></i></span>
+          </div>`;
+        el.addEventListener('click', () => openArticle(a));
+        return el;
+      }
+
+      /* --- Fleches --- */
+      function cardStep() {
+        const c = grid.querySelector('.card');
+        return c ? c.offsetWidth + 24 : 340;   /* largeur réelle (non transformée) + gap */
+      }
+      prev.addEventListener('click', () => grid.scrollBy({ left: -cardStep(), behavior: 'smooth' }));
+      next.addEventListener('click', () => grid.scrollBy({ left:  cardStep(), behavior: 'smooth' }));
+      function updateArrows() {
+        const max = grid.scrollWidth - grid.clientWidth - 2;
+        prev.hidden = grid.scrollLeft <= 2;
+        next.hidden = grid.scrollLeft >= max;
+      }
+
+      /* --- Effet 3D : seulement sur les cartes coupées par un bord (celles
+             qui sortent du cadre). Une carte entièrement visible reste droite.
+             On mesure la position de mise en page (offsetLeft), donc l'effet
+             lui-même ne fausse pas la mesure. --- */
+      function coverflow() {
+        const viewLeft = grid.scrollLeft;
+        const viewRight = viewLeft + grid.clientWidth;
+        grid.querySelectorAll('.card').forEach(card => {
+          const cl = card.offsetLeft, cw = card.offsetWidth, crr = cl + cw;
+          /* Carte entièrement hors du cadre -> on la masque (rien à peindre) */
+          if (crr <= viewLeft - 40 || cl >= viewRight + 40) { card.style.visibility = 'hidden'; return; }
+          card.style.visibility = '';
+          const leftCut = Math.max(0, viewLeft - cl);      /* portion cachée à gauche */
+          const rightCut = Math.max(0, crr - viewRight);   /* portion cachée à droite */
+          let e = 0, s = 0;
+          if (leftCut >= rightCut && leftCut > 0) { e = leftCut / cw; s = -1; }   /* recule vers l'arrière-gauche */
+          else if (rightCut > 0) { e = rightCut / cw; s = 1; }                    /* recule vers l'arrière-droite */
+          e = Math.min(1, e * 1.3);
+          if (e <= 0.02) { card.style.transform = ''; card.style.opacity = ''; card.style.zIndex = ''; return; }
+          const rotY = s * e * 45;
+          const tz = -e * 180;
+          const tx = s * e * 22;
+          const scale = 1 - e * 0.14;
+          const opacity = 1 - e * 0.8;
+          card.style.transform = `translateX(${tx}px) translateZ(${tz}px) rotateY(${rotY}deg) scale(${scale})`;
+          card.style.opacity = opacity.toFixed(3);
+          card.style.zIndex = String(100 - Math.round(e * 100));
+        });
+      }
+      function refresh() { updateArrows(); coverflow(); }
+      /* Recalcul synchronisé avec l'affichage (fluide dans les deux sens) */
+      let ticking = false;
+      grid.addEventListener('scroll', () => {
+        if (!ticking) { ticking = true; requestAnimationFrame(() => { refresh(); ticking = false; }); }
+      }, { passive: true });
+      window.addEventListener('resize', refresh);
+      window.addEventListener('load', refresh);
+
+      /* --- Demarrage (rechargé aussi au changement de langue) --- */
+      async function loadBilans() {
+        grid.innerHTML = '';
+        const slugs = await listSlugs();
+        const results = await Promise.allSettled(slugs.map(loadArticle));
+        const items = results.filter(r => r.status === 'fulfilled').map(r => r.value)
+                             .sort((a, b) => new Date(b.date) - new Date(a.date));
+        grid.innerHTML = '';
+        items.forEach(a => grid.appendChild(makeCard(a)));
+        /* Copie texte des articles dans le bloc SEO invisible (référencement) */
+        const seo = document.getElementById('seo-articles');
+        if (seo) {
+          const strip = h => h.replace(/<[^>]+>/g, ' ');
+          seo.innerHTML = items.map(a => `<article><h2>${a.titre}</h2><p>${a.resume}</p><p>${strip(a.contenu)}</p></article>`).join('');
+        }
+        refresh();
+      }
+      loadBilans();
+      document.addEventListener('langchange', loadBilans);
+    })();
+  </script>
+
+  <script>
+    /* ====================== FENÊTRE « DEVENIR SPONSOR » ===================== */
+    (function () {
+      const MAIL = 'scrat.opossum@gmail.com';
+      const modal = document.getElementById('contact-modal');
+      if (!modal) return;
+      const copyBtn = document.getElementById('contact-copy');
+      const copyLabel = copyBtn.querySelector('span');
+      const t = k => (typeof T === 'function' ? T(k) : '');
+      function setLinks() {
+        const su = encodeURIComponent(t('contact.subject'));
+        document.getElementById('contact-gmail').href = `https://mail.google.com/mail/?view=cm&fs=1&to=${MAIL}&su=${su}`;
+        document.getElementById('contact-outlook').href = `https://outlook.office.com/mail/deeplink/compose?to=${MAIL}&subject=${su}`;
+        document.getElementById('contact-app').href = `mailto:${MAIL}?subject=${su}`;
+      }
+      function open() {
+        setLinks(); copyLabel.textContent = t('contact.copy');
+        modal.classList.add('open'); modal.setAttribute('aria-hidden', 'false');
+        document.body.style.overflow = 'hidden';
+        copyBtn.focus();
+      }
+      function close() {
+        modal.classList.remove('open'); modal.setAttribute('aria-hidden', 'true');
+        document.body.style.overflow = '';
+      }
+      async function copy() {
+        try { await navigator.clipboard.writeText(MAIL); }
+        catch (e) {
+          // Repli pour les navigateurs sans API presse-papiers (ou en file://)
+          const ta = document.createElement('textarea'); ta.value = MAIL; document.body.appendChild(ta);
+          ta.select(); try { document.execCommand('copy'); } catch (_) {} ta.remove();
+        }
+        const icon = copyBtn.querySelector('i');
+        copyLabel.textContent = t('contact.copied'); copyBtn.classList.add('copied');
+        if (icon) icon.className = 'fa-solid fa-check';
+        setTimeout(() => {
+          copyLabel.textContent = t('contact.copy'); copyBtn.classList.remove('copied');
+          if (icon) icon.className = 'fa-regular fa-copy';
+        }, 2000);
+      }
+      document.querySelectorAll('.js-contact').forEach(b => b.addEventListener('click', e => { e.preventDefault(); open(); }));
+      modal.querySelectorAll('[data-contact-close]').forEach(el => el.addEventListener('click', close));
+      document.addEventListener('keydown', e => { if (e.key === 'Escape' && modal.classList.contains('open')) close(); });
+      copyBtn.addEventListener('click', copy);
+      document.addEventListener('langchange', setLinks);
+    })();
+  </script>
+
+</body>
+</html>
