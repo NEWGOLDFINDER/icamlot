@@ -3,26 +3,32 @@
 (function () {
   var $ = function (id) { return document.getElementById(id); };
   var MATCH = 100;
-  var DEF = { v: 0.5, va: 0.2, w: 120, vz: 100, trot: 1.5, tvac: 0.5, trel: 0.4, tballs: 4, x0: 250, y0: 1000, h0: 0, gx: 100, gy: 1180, gs: 60, zmin: 140, zmax: 0 };
-  var PIDS = { v: 'pV', va: 'pVA', w: 'pW', vz: 'pVZ', trot: 'pTR', tvac: 'pTV', trel: 'pTL', tballs: 'pTB', x0: 'pX0', y0: 'pY0', h0: 'pH0', gx: 'pGX', gy: 'pGY', gs: 'pGS', zmin: 'pZmin', zmax: 'pZmax' };
+  var DEF = { v: 0.5, va: 0.2, w: 120, vz: 100, trot: 1.5, tvac: 0.5, trel: 0.4, x0: 250, y0: 1000, h0: 0, gx: 100, gy: 1180, gs: 60, zmin: 140, zmax: 0,
+    tx: 250, ty: 1000, cl: 80, cw: 60, bn: 10, brate: 2, bdep: 1, bspin: 0.5, bel: 35, bh: 250, btx: 2625, bmode: 'arret',
+    bm: 2, bcd: 0.47, be: 0.5, bmu: 0.3, bcr: 0.05, bdv: 5, bdaz: 2, bdel: 2, bseed: 1 };
+  var PIDS = { v: 'pV', va: 'pVA', w: 'pW', vz: 'pVZ', trot: 'pTR', tvac: 'pTV', trel: 'pTL', x0: 'pX0', y0: 'pY0', h0: 'pH0', gx: 'pGX', gy: 'pGY', gs: 'pGS', zmin: 'pZmin', zmax: 'pZmax',
+    tx: 'pTX', ty: 'pTY', cl: 'pCL', cw: 'pCW', bn: 'pBN', brate: 'pBRate', bdep: 'pBDep', bspin: 'pBSpin', bel: 'pBEl', bh: 'pBH', btx: 'pBTx', bmode: 'pBMode',
+    bm: 'pBM', bcd: 'pBCd', be: 'pBE', bmu: 'pBMu', bcr: 'pBCr', bdv: 'pBDv', bdaz: 'pBDaz', bdel: 'pBDel', bseed: 'pBSeed' };
+  /* paramètres qui peuvent valoir 0 */
+  var ZERO_OK = ['tvac', 'trel', 'x0', 'y0', 'h0', 'gx', 'gy', 'zmin', 'zmax', 'tx', 'ty', 'cl', 'cw', 'bn', 'bdep', 'bspin', 'bel', 'be', 'bmu', 'bcr', 'bdv', 'bdaz', 'bdel', 'bseed'];
   var EXAMPLE = [
     { a: 'prendre', f: 'A', p: 'P1' }, { a: 'prendre', f: 'B', p: 'P9' },
     { a: 'mur', f: 'A', z: 'M1', side: 'ext' }, { a: 'mur', f: 'B', z: 'M2', side: 'ext' },
     { a: 'prendre', f: 'A', p: 'P5' }, { a: 'prendre', f: 'B', p: 'P10' },
     { a: 'mur', f: 'A', z: 'M5', side: 'ext' }, { a: 'mur', f: 'B', z: 'M4', side: 'ext' },
-    { a: 'prendre', f: 'A', p: 'P4' }, { a: 'boulets' },
+    { a: 'prendre', f: 'A', p: 'P4' },
     { a: 'porte', f: 'A', z: 'M3', side: 'int' },
     { a: 'prendreGraal', f: 'B' }, { a: 'poserGraal', f: 'B', z: 'M3' },
-    { a: 'trone' }
+    { a: 'tir' }
   ];
   var ACTIONS = [
     ['prendre', 'Prendre (paquet ou pierre)'], ['deposer', 'Déposer en x, y, angle'], ['mur', 'Poser en mur'], ['tour', 'Faire une tour'], ['porte', 'Faire une porte'],
-    ['boulets', 'Lâcher les boulets (cour adverse)'], ['prendreGraal', 'Prendre le Graal'], ['poserGraal', 'Poser le Graal sur'],
+    ['tir', 'Commencer la séance de tir (canon, face C)'], ['prendreGraal', 'Prendre le Graal'], ['poserGraal', 'Poser le Graal sur'],
     ['tourner', 'Tourner la pince (0, 90, 180°)'], ['attendre', 'Attendre (s)'], ['attendreJusqua', 'Attendre jusqu\'à (s)'], ['trone', 'Aller dans la salle du trône']
   ];
-  var SHORT = { prendre: 'Prendre', deposer: 'Déposer', mur: 'Mur', tour: 'Tour', porte: 'Porte', boulets: 'Boulets', prendreGraal: 'Prendre Graal', poserGraal: 'Poser Graal', tourner: 'Tourner', attendre: 'Attendre', attendreJusqua: 'Attendre jusqu\'à', trone: 'Trône' };
-  var ICONS = { prendre: 'fa-hand', deposer: 'fa-location-crosshairs', mur: 'fa-grip-lines', tour: 'fa-chess-rook', porte: 'fa-archway', boulets: 'fa-bowling-ball', prendreGraal: 'fa-trophy', poserGraal: 'fa-award', tourner: 'fa-rotate-right', attendre: 'fa-hourglass-half', attendreJusqua: 'fa-clock', trone: 'fa-crown' };
-  var FIELDS = { prendre: ['f', 'mode', 'p', 's', 'v', 'tm'], deposer: ['f', 'q', 'xy', 'ang', 'r', 'drop', 'tm'], tourner: ['f', 'r', 'tm'], mur: ['f', 'zm', 'side'], tour: ['f', 'zt', 's', 'tm'], porte: ['f', 'zm', 'side', 'tm'], boulets: [], prendreGraal: ['f', 'tm'], poserGraal: ['f', 'gm', 'zmt', 'xy', 'tm'], attendre: ['sec'], attendreJusqua: ['sec'], trone: [] };
+  var SHORT = { prendre: 'Prendre', deposer: 'Déposer', mur: 'Mur', tour: 'Tour', porte: 'Porte', tir: 'Tir', prendreGraal: 'Prendre Graal', poserGraal: 'Poser Graal', tourner: 'Tourner', attendre: 'Attendre', attendreJusqua: 'Attendre jusqu\'à', trone: 'Trône' };
+  var ICONS = { prendre: 'fa-hand', deposer: 'fa-location-crosshairs', mur: 'fa-grip-lines', tour: 'fa-chess-rook', porte: 'fa-archway', tir: 'fa-bullseye', prendreGraal: 'fa-trophy', poserGraal: 'fa-award', tourner: 'fa-rotate-right', attendre: 'fa-hourglass-half', attendreJusqua: 'fa-clock', trone: 'fa-crown' };
+  var FIELDS = { prendre: ['f', 'mode', 'p', 's', 'v', 'tm'], deposer: ['f', 'q', 'xy', 'ang', 'r', 'drop', 'tm'], tourner: ['f', 'r', 'tm'], mur: ['f', 'zm', 'side'], tour: ['f', 'zt', 's', 'tm'], porte: ['f', 'zm', 'side', 'tm'], tir: [], prendreGraal: ['f', 'tm'], poserGraal: ['f', 'gm', 'zmt', 'xy', 'tm'], attendre: ['sec'], attendreJusqua: ['sec'], trone: [] };
   var PKIDS = ENGINE.PK.map(function (p) { return p.id; }), MIDS = ENGINE.ZM.map(function (z) { return z.id; }), TIDS = ENGINE.ZT.map(function (z) { return z.id; });
   var SIDS = []; PKIDS.forEach(function (p) { for (var l = 1; l <= 3; l++) SIDS.push(p + '.' + l); });
   var prog = [], params = {}, sel = -1;
@@ -49,14 +55,16 @@
 
   /* ---------- stockage navigateur (brouillon en cours) ---------- */
   function saveLocal() { lsSet('camelot-prog-v1', JSON.stringify({ params: params, program: prog })); }
-  function loadLocal() { try { var j = JSON.parse(lsGet('camelot-prog-v1') || 'null'); if (j && Array.isArray(j.program)) return j; } catch (e) {} return null; }
+  function loadLocal() { try { var j = JSON.parse(lsGet('camelot-prog-v1') || 'null'); if (j && Array.isArray(j.program)) { j.program.forEach(upgradeStep); return j; } } catch (e) {} return null; }
+  function upgradeStep(st) { if (st && st.a === 'boulets') st.a = 'tir'; return st; }
 
   /* ---------- paramètres ---------- */
   function writeParams() { for (var k in PIDS) $(PIDS[k]).value = params[k]; }
   function readParams() {
     for (var k in PIDS) {
-      var v = parseFloat($(PIDS[k]).value), zeroOk = (k === 'tvac' || k === 'trel' || k === 'x0' || k === 'y0' || k === 'h0' || k === 'gx' || k === 'gy' || k === 'zmin' || k === 'zmax');
-      params[k] = isFinite(v) && (zeroOk ? true : v > 0) ? v : DEF[k];
+      if (typeof DEF[k] === 'string') { params[k] = $(PIDS[k]).value || DEF[k]; continue; }
+      var v = parseFloat($(PIDS[k]).value), zeroOk = ZERO_OK.indexOf(k) >= 0;
+      params[k] = isFinite(v) && (zeroOk ? v >= 0 || k === 'h0' : v > 0) ? v : DEF[k];
     }
   }
 
@@ -96,7 +104,7 @@
       case 'mur': return 'Mur en ' + st.z + f + sideTxt(st.side);
       case 'tour': return 'Tour ' + st.z + ' avec ' + st.s + f;
       case 'porte': return 'Porte en ' + st.z + f + sideTxt(st.side);
-      case 'boulets': return 'Lâcher les boulets';
+      case 'tir': return 'Séance de tir : salle du trône, face C vers le camp adverse (à partir de 85 s)';
       case 'prendreGraal': return 'Prendre le Graal' + f;
       case 'poserGraal': return st.gm === 'xy' ? 'Poser le Graal en ' + Math.round(st.x) + ', ' + Math.round(st.y) + f : 'Poser le Graal sur ' + st.z + f;
       case 'attendre': return 'Attendre ' + fmt(st.sec) + ' s';
@@ -291,7 +299,7 @@
     var tot = $('tot'), nErr = R.errors.length;
     tot.textContent = 'Durée ' + fmt(R.T) + ' s' + (R.T <= MATCH ? '' : ' (+' + fmt(R.T - MATCH) + ' s)');
     tot.className = 'tot ' + (R.T <= MATCH && !nErr ? 'ok' : 'bad');
-    showStepInfo(); buildTrail(); computeBad(); drawStrip(); renderResults(); renderAlerts(); renderTimeline();
+    showStepInfo(); buildTrail(); buildShots(); updateCannon(); computeBad(); drawStrip(); renderResults(); renderAlerts(); renderTimeline();
     if (time > TEND) time = TEND;
   }
 
@@ -308,6 +316,9 @@
     for (var j = 0; j < H.length; j++) { var a = H[j], b = H[(j + 1) % H.length]; per += Math.hypot(a[0] - b[0], a[1] - b[1]); }
     return per;
   }
+  /* empreinte du robot : triangle, + canon de la face C une fois déployé (séance de tir) */
+  function canOut(t) { return R && R.balls.tDeploy != null && t >= R.balls.tDeploy; }
+  function robotFoot(p, t) { return canOut(t) ? triPoly(p).concat(cannonPoly(p, params.cl, params.cw) || []) : triPoly(p); }
   function inCastle(x, y) { return ENGINE.inPoly(x, y, ENGINE.CASTLE) || ENGINE.inPoly(x, y, ENGINE.CASTLE_B); }
   var countPer = true;
   function graalAt(t) { var e = R.graal.tl[0]; for (var i = 0; i < R.graal.tl.length; i++) if (R.graal.tl[i].t <= t) e = R.graal.tl[i]; return e; }
@@ -331,7 +342,7 @@
     return { c: c, top: fr.top + params.gs, ang: fr.ang, held: fr.e.k === 'held', zone: moved ? zoneAtXY(c) : ge.zone };
   }
   function checks(t) {
-    var p = R.poseAt(t), robotH = Math.max(345, gripTop(p.A), gripTop(p.B)), pts = triPoly(p), oTop = 0, oLim = 350, bad = false, objBad = false, n = 0;
+    var p = R.poseAt(t), robotH = Math.max(345, gripTop(p.A), gripTop(p.B)), pts = robotFoot(p, t), oTop = 0, oLim = 350, bad = false, objBad = false, n = 0;
     R.stones.forEach(function (st) {
       var e = R.stoneAt(st, t); if (e.k !== 'held') return; n++;
       var g = p[e.f], th = g.rot * Math.PI / 180, top = g.hc + 110 * (e.l - 1) * Math.cos(th) + 160 * Math.abs(Math.sin(th)) + 55 * Math.abs(Math.cos(th));
@@ -482,7 +493,30 @@
   var graalM = box(60, 60, 60, new THREE.MeshStandardMaterial({ color: 0xe8c547, roughness: 0.3, metalness: 0.6 })); scene.add(graalM);
   var ballMat = new THREE.MeshStandardMaterial({ color: 0xf2b600, roughness: 0.8 }), balls = [];
   for (var bi = 0; bi < 10; bi++) { var bm = new THREE.Mesh(new THREE.SphereGeometry(22.5, 16, 12), ballMat); bm.castShadow = true; scene.add(bm); balls.push(bm); }
-  var BSEED = []; for (var bj = 0; bj < 10; bj++) BSEED.push([((bj * 37) % 10) / 10 - 0.5, ((bj * 53) % 10) / 10 - 0.5]);
+  /* position d'un boulet tg secondes après son tir (points enregistrés toutes les 20 ms) */
+  function ballAt(b, tg) {
+    var P = b.pts; if (tg >= P[P.length - 1][0]) return P[P.length - 1].slice(1);
+    var lo = 0, hi = P.length - 1; while (hi - lo > 1) { var mid = (lo + hi) >> 1; if (P[mid][0] <= tg) lo = mid; else hi = mid; }
+    var a = P[lo], c = P[hi], u = c[0] > a[0] ? (tg - a[0]) / (c[0] - a[0]) : 0;
+    return [a[1] + (c[1] - a[1]) * u, a[2] + (c[2] - a[2]) * u, a[3] + (c[3] - a[3]) * u];
+  }
+  /* canon sur la face C (dimensions et élévation des paramètres) */
+  var canG = new THREE.Group(); canG.rotation.y = -240 * Math.PI / 180; robot.add(canG);
+  var canTube = cyl(1, 1, 1, mat(0x5a6170, 0.4, 0.6), 20); canG.add(canTube);
+  function updateCannon() {
+    var L = params.cl || 0, Wd = params.cw || 40, el = (params.bel || 0) * Math.PI / 180, len = Math.max(60, L + 120);
+    canTube.scale.set(Wd / 2, len, Wd / 2); canTube.rotation.set(0, 0, -(Math.PI / 2 - el));
+    canTube.position.set(GEO.rin + L - Math.cos(el) * len / 2, (params.bh || 250) - Math.sin(el) * len / 2, 0);
+  }
+  var shotLines = null;
+  function buildShots() {
+    if (shotLines) { scene.remove(shotLines); shotLines.children.forEach(function (l) { l.geometry.dispose(); }); }
+    shotLines = new THREE.Group(); shotLines.visible = showTrail; scene.add(shotLines);
+    (R.balls.shots || []).forEach(function (b) {
+      var pts = b.pts.map(function (q) { var w = W(q[1], q[2]); return new THREE.Vector3(w[0], q[3], w[1]); });
+      shotLines.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: b.cour ? 0xf2b600 : 0xff6b6b, transparent: true, opacity: 0.6 })));
+    });
+  }
   var trail = null, showTrail = true;
   function buildTrail() {
     if (trail) { scene.remove(trail); trail.geometry.dispose(); }
@@ -637,11 +671,12 @@
         if (d < 100) { inZ[k] = 1; if (own(z.id)) inOwn[k] = 1; if (fin[k].v && towers.indexOf(z.id) < 0) towers.push(z.id); }
       });
     });
-    var ge = graalAt(T), tri = triPoly(R.poseAt(T));
+    var ge = graalAt(T), tri = robotFoot(R.poseAt(T), T);
     var throneFull = tri.every(function (v) { return ENGINE.inPoly(v[0], v[1], ENGINE.THRONE); });
-    var thronePart = !throneFull && overlap(tri, ENGINE.THRONE, 0);
+    var thronePart = !throneFull && (overlap(triPoly(R.poseAt(T)), ENGINE.THRONE, 0) || tri.some(function (v) { return ENGINE.inPoly(v[0], v[1], ENGINE.THRONE); }));
+    /* boulets : arrêtés dans la cour adverse à la fin du match (100 s), tirés pendant la phase d'attaque */
     var nBalls = 0;
-    if (R.balls.t < Infinity) for (var i = 0; i < 10; i++) { var ti = R.balls.t + (i + 0.5) * R.balls.d / 10; if (ti >= 85 && ti <= T + 1e-6) nBalls++; }
+    (R.balls.shots || []).forEach(function (b) { if (b.cour && b.t >= 85 - 1e-6 && b.t + b.tStop <= MATCH + 1e-6) nBalls++; });
     return { T: T, fin: fin, walls: walls, doors: doors, towers: towers, inZ: inZ, inOwn: inOwn, ge: ge, gp: graalPos(T), throneFull: throneFull, thronePart: thronePart, nBalls: nBalls };
   }
   /* points de la stratégie avec le barème du compteur (bareme.js) ; douves et PAMI ne sont pas simulés */
@@ -671,7 +706,7 @@
       ['Salle du trône', o.throneFull ? 'complètement' : o.thronePart ? 'en partie' : 'dehors', roi]
     ]]);
     rows.push(['Assaut', [
-      ['Boulets dans la cour adverse', o.nBalls + ' tombés entre 85 et 100 s', bl],
+      ['Boulets dans la cour adverse', o.nBalls + ' arrêtés dans la cour à 100 s', bl],
       ['Douves et attaque de PAMI', 'non simulées', 0]
     ]]);
     var total = 0; rows.forEach(function (r) { r[1].forEach(function (x) { total += x[2]; }); });
@@ -695,7 +730,8 @@
     rows.push(['Pierres dans une zone', Object.keys(o.inZ).length + ' (dont ' + Object.keys(o.inOwn).length + ' chez nous)', null]);
     var adv = o.walls.concat(o.towers, o.doors).filter(function (z) { return !own(z); });
     rows.push(['Constructions côté adverse', adv.length ? adv.join(', ') + ' (non comptées)' : 'aucune', adv.length ? false : null]);
-    rows.push(['Boulets', R.balls.t < Infinity ? 'lâchés de ' + fmt(R.balls.t) + ' à ' + fmt(R.balls.t + R.balls.d) + ' s' : 'non lâchés', R.balls.t < Infinity ? o.nBalls === 10 : null]);
+    var sh = R.balls.shots;
+    rows.push(['Boulets', sh ? sh.length + ' tirés de ' + fmt(sh.length ? sh[0].t : R.balls.t0) + ' à ' + fmt(sh.length ? sh[sh.length - 1].t : R.balls.t0) + ' s, vitesse de sortie ' + R.balls.v0.toFixed(2).replace('.', ',') + ' m/s' :'pas de séance de tir', sh ? o.nBalls === sh.length : null]);
     var badT = badMap.filter(function (b, i) { return b.bad && i * 0.2 <= T; }).length * 0.2;
     rows.push(['Temps hors règlement', badT ? 'environ ' + fmt(badT) + ' s (voir Alertes)' : 'aucun', !badT]);
     rows.push(['Contacts robot-pierre', R.collisions.length ? R.collisions.length + ' (voir Alertes)' : 'aucun', !R.collisions.length]);
@@ -750,19 +786,22 @@
     else if (ge.k === 'ride') { var gp = graalPos(tt), gw2 = W(gp.c[0], gp.c[1]); graalM.position.set(gw2[0], gp.top - params.gs / 2, gw2[1]); graalM.rotation.set(0, -gp.ang * Math.PI / 180, 0); }
     else { if (!ge._p) { placeRobot(ge.pose); fromGrip(graalM, ge.f, params.gs / 2, -110, 0); ge._p = graalM.position.clone(); ge._q = graalM.quaternion.clone(); placeRobot(p); } graalM.position.copy(ge._p); graalM.quaternion.copy(ge._q); }
     ['A', 'B'].forEach(function (f) { for (var j = 0; j < 3; j++) { var on = p[f].vac[j]; MOD[f].mats[j].color.copy(on ? green : red); MOD[f].mats[j].emissive.copy(green).multiplyScalar(on ? 0.2 : 0); } });
-    var ba = R.balls.at, bw = ba ? W(ba[0], ba[1]) : [0, 0];
+    var shots = R.balls.shots || [], nOn = 0, nIn = 0;
+    canTube.visible = canOut(t);
     balls.forEach(function (bm, i) {
-      var ti = R.balls.t + (i + 0.5) * R.balls.d / 10;
-      if (tt < ti) bm.position.copy(new THREE.Vector3(-76 + (i % 5) * 18, 245, (Math.floor(i / 5) - 0.5) * 30).applyMatrix4(robot.matrixWorld));
-      else { var k = Math.min(1, (tt - ti) / 0.35); bm.position.set(bw[0] + BSEED[i][0] * 160 * k, 200 + (22.5 - 200) * k * k, bw[1] + BSEED[i][1] * 160 * k); }
+      var b = shots[i], tb = Math.min(t, TEND);
+      bm.visible = i < (shots.length || Math.min(10, Math.round(params.bn)));
+      if (!b || tb < b.t) { nOn++; bm.position.copy(new THREE.Vector3(-76 + (i % 5) * 18, 245, (Math.floor(i / 5) - 0.5) * 30).applyMatrix4(robot.matrixWorld)); return; }
+      var q = ballAt(b, tb - b.t), w = W(q[0], q[1]); bm.position.set(w[0], q[2], w[1]);
+      if (tb - b.t >= b.tStop && b.cour) nIn++;
     });
     var hR = $('hR'), hS = $('hS'), hP = $('hP'), hB = $('hBall');
     hR.textContent = Math.round(c.robotH) + ' mm ' + (c.robotH <= 350.5 ? '✓' : '✗'); hR.className = c.robotH <= 350.5 ? 'ok' : 'bad';
     if (c.n) { var okS = c.oTop <= c.oLim + 0.5; hS.textContent = Math.round(c.oTop) + ' / ' + c.oLim + ' mm ' + (okS ? '✓' : '✗'); hS.className = okS ? 'ok' : 'bad'; } else { hS.textContent = '-'; hS.className = ''; }
     hP.textContent = Math.round(c.per) + ' / ' + c.plim + ' mm ' + (c.per <= c.plim + 0.5 ? '✓' : '✗'); hP.className = c.per <= c.plim + 0.5 ? 'ok' : 'bad';
     $('hA').textContent = Math.round(p.A.hc) + ' / ' + Math.round(p.A.rot) + '°'; $('hB').textContent = Math.round(p.B.hc) + ' / ' + Math.round(p.B.rot) + '°';
-    if (tt < R.balls.t) { hB.textContent = 'à bord'; hB.className = ''; }
-    else { var nb = Math.min(10, Math.floor((tt - R.balls.t) / (R.balls.d / 10) + 0.5)), okB = R.balls.t >= 85 && R.balls.t + R.balls.d <= 100; hB.textContent = nb + ' / 10 ' + (okB ? '✓' : '✗'); hB.className = okB ? 'ok' : 'bad'; }
+    if (!shots.length || t < shots[0].t) { hB.textContent = 'à bord'; hB.className = ''; }
+    else { hB.textContent = (shots.length - nOn) + ' tirés · ' + nIn + ' dans la cour'; hB.className = nIn >= 3 ? 'ok' : ''; }
     var clk = $('clk'); clk.textContent = fmt(Math.min(t, TEND)); clk.className = t > MATCH ? 'bad' : '';
     $('clk2').textContent = fmt(Math.min(t, TEND)) + ' / ' + TEND + ' s';
     var lab = 'Fin du programme', stepN = '-';
@@ -814,6 +853,7 @@
   function importObj(o) {
     if (!o || !Array.isArray(o.program)) throw new Error('le JSON doit contenir une liste « program ».');
     var valid = ACTIONS.map(function (a) { return a[0]; });
+    o.program.forEach(upgradeStep);
     var p2 = o.program.filter(function (s) { return s && valid.indexOf(s.a) >= 0; }).map(function (s) { var d = defaults(s.a); for (var k in d) if (s[k] !== undefined) d[k] = s[k]; if (s.tm === undefined && d.tm !== undefined) d.tm = false; if (s.a === 'deposer' && s.r === undefined) d.r = s.o === 'debout' ? 90 : 0; return d; });
     prog = p2; params = Object.assign({}, DEF, o.params || {}); sel = -1; writeParams(); readParams(); changed(true);
     return p2.length;
@@ -999,7 +1039,7 @@
     b.addEventListener('click', function () { camMode = b.dataset.cam; setCam(camMode); document.querySelectorAll('[data-cam]').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); }); });
   });
   $('cLab').addEventListener('change', function (e) { labels.visible = e.target.checked; });
-  $('cTrail').addEventListener('change', function (e) { showTrail = e.target.checked; if (trail) trail.visible = showTrail; });
+  $('cTrail').addEventListener('change', function (e) { showTrail = e.target.checked; if (trail) trail.visible = showTrail; if (shotLines) shotLines.visible = showTrail; });
   $('cPer').addEventListener('change', function (e) { countPer = e.target.checked; if (R) { computeBad(); drawStrip(); renderAlerts(); renderResults(); } });
   for (var k in PIDS) $(PIDS[k]).addEventListener('change', function () { readParams(); changed(); });
   $('bReset').addEventListener('click', function () { params = Object.assign({}, DEF); writeParams(); changed(); toast('Paramètres par défaut remis', '', [['Annuler', doUndo]]); });

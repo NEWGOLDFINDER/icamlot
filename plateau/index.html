@@ -405,7 +405,6 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
         <label for="pTR">Rotation 90° de la pince <span><input id="pTR" type="number" min="0.1" max="10" step="0.1"> s</span></label>
         <label for="pTV">Mise sous vide <span><input id="pTV" type="number" min="0" max="5" step="0.1"> s</span></label>
         <label for="pTL">Lâcher (vide coupé) <span><input id="pTL" type="number" min="0" max="5" step="0.1"> s</span></label>
-        <label for="pTB">Déchargement des 10 boulets <span><input id="pTB" type="number" min="0.5" max="20" step="0.5"> s</span></label>
         <label for="pZmin">Pince : hauteur mini <span><input id="pZmin" type="number" min="0" max="600" step="5"> mm</span></label>
         <label for="pZmax">Pince : hauteur maxi (0 = sans limite) <span><input id="pZmax" type="number" min="0" max="600" step="5"> mm</span></label>
       </div>
@@ -419,6 +418,39 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
         <label for="pGX">Graal x <span><input id="pGX" type="number" min="0" max="3000" step="10"> mm</span></label>
         <label for="pGY">Graal y <span><input id="pGY" type="number" min="0" max="2000" step="10"> mm</span></label>
         <label for="pGS">Graal (cube) <span><input id="pGS" type="number" min="20" max="200" step="5"> mm</span></label>
+      </div>
+    </div>
+    <div>
+      <h3>Canon (face C)</h3>
+      <p class="note" style="margin-bottom:8px">Tir uniquement depuis la salle du trône, face C vers le camp adverse, à partir de 85 s. Le canon reste replié jusqu'à la séance de tir (périmètre de départ limité à 1200 mm) et se déploie au début de la séance. La vitesse de sortie est calculée pour amener la balle au point visé.</p>
+      <div class="pgrid">
+        <label for="pTX">Position de tir x <span><input id="pTX" type="number" min="0" max="500" step="5"> mm</span></label>
+        <label for="pTY">Position de tir y <span><input id="pTY" type="number" min="750" max="1250" step="5"> mm</span></label>
+        <label for="pCL">Canon : dépassement hors robot <span><input id="pCL" type="number" min="0" max="300" step="5"> mm</span></label>
+        <label for="pCW">Canon : largeur <span><input id="pCW" type="number" min="0" max="200" step="5"> mm</span></label>
+        <label for="pBH">Hauteur de sortie <span><input id="pBH" type="number" min="30" max="350" step="5"> mm</span></label>
+        <label for="pBEl">Élévation du tir <span><input id="pBEl" type="number" min="0" max="80" step="1"> °</span></label>
+        <label for="pBTx">Point visé x (cour adverse) <span><input id="pBTx" type="number" min="2250" max="3000" step="5"> mm</span></label>
+        <label for="pBMode">Le point visé est <span><select id="pBMode"><option value="arret">l'arrêt de la balle</option><option value="impact">le 1er impact au sol</option></select></span></label>
+        <label for="pBN">Boulets tirés <span><input id="pBN" type="number" min="0" max="10" step="1"></span></label>
+        <label for="pBRate">Cadence de tir <span><input id="pBRate" type="number" min="0.1" max="20" step="0.1"> /s</span></label>
+        <label for="pBDep">Déploiement du canon <span><input id="pBDep" type="number" min="0" max="10" step="0.1"> s</span></label>
+        <label for="pBSpin">Mise en route avant le 1er tir <span><input id="pBSpin" type="number" min="0" max="10" step="0.1"> s</span></label>
+      </div>
+    </div>
+    <div>
+      <h3>Boulets (balle en mousse de 45 mm)</h3>
+      <p class="note" style="margin-bottom:8px">Valeurs estimées, à remplacer par des mesures. Chaque tir varie au hasard (tirage reproductible) dans les écarts indiqués.</p>
+      <div class="pgrid">
+        <label for="pBM">Masse <span><input id="pBM" type="number" min="0.5" max="50" step="0.5"> g</span></label>
+        <label for="pBCd">Coefficient de traînée <span><input id="pBCd" type="number" min="0.1" max="2" step="0.01"></span></label>
+        <label for="pBE">Rebond (vitesse gardée) <span><input id="pBE" type="number" min="0" max="1" step="0.05"></span></label>
+        <label for="pBMu">Perte horizontale par rebond <span><input id="pBMu" type="number" min="0" max="1" step="0.05"></span></label>
+        <label for="pBCr">Résistance au roulement <span><input id="pBCr" type="number" min="0" max="1" step="0.01"></span></label>
+        <label for="pBDv">Écart de vitesse <span><input id="pBDv" type="number" min="0" max="50" step="0.5"> ± %</span></label>
+        <label for="pBDaz">Écart de direction <span><input id="pBDaz" type="number" min="0" max="20" step="0.5"> ± °</span></label>
+        <label for="pBDel">Écart d'élévation <span><input id="pBDel" type="number" min="0" max="20" step="0.5"> ± °</span></label>
+        <label for="pBSeed">Tirage n° <span><input id="pBSeed" type="number" min="0" max="9999" step="1"></span></label>
       </div>
     </div>
     <div class="crow"><button type="button" id="bReset">Valeurs par défaut</button></div>
@@ -464,7 +496,7 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
       <h3>Règles contrôlées</h3>
       <ul class="rules">
         <li>Hauteur du robot : 350 mm (règlement général F.3). Objets tenus : 350 mm, ou 430 mm dans les zones de construction et les châteaux (règlement 2027).</li>
-        <li>Périmètre : 1200 mm au départ, 1400 mm ensuite (F.3). Boulets comptés s'ils tombent entre 85 et 100 s (E.4). Graal : plus grand qu'un cube de 100 mm (contraintes PAMI). Fin : robot dans la salle du trône (E.3).</li>
+        <li>Périmètre : 1200 mm au départ, 1400 mm ensuite (F.3). Boulets (E.4) : tirés au canon depuis la salle du trône à partir de 85 s, comptés s'ils sont arrêtés dans la cour adverse (derrière les zones de muraille, salle du trône comprise) à 100 s. Vol avec résistance de l'air, rebonds et roulement ; les pierres et constructions ne sont pas des obstacles pour les boulets. Graal : plus grand qu'un cube de 100 mm (contraintes PAMI). Fin : robot dans la salle du trône (E.3).</li>
         <li>Trajets calculés sur une grille de 40 mm avec la forme exacte du robot et des pierres tenues. Sans trajet sans contact, le robot va tout droit et le contact est signalé.</li>
         <li>Prise : un paquet entier, ou une seule pierre si rien n'est posé dessus (ventouse au choix). Dépôt en x, y, angle : toute la pile tenue ou une pierre, pince à 0° (à plat), 90° (debout) ou 180° (à plat, pile retournée), sur la table ou sur d'autres pierres. À plat, seule la pierre du bas de la pince peut être posée seule. La hauteur de pince doit rester dans sa course (Paramètres) ; sinon, la case « Lâcher » laisse tomber les pierres à plat depuis la position la plus basse de la pince.</li>
         <li>Pince : rotation dans un seul sens, à 0°, 90° ou 180° (180° prend deux fois le temps de 90°). Étape « Tourner la pince » : tout de suite, ou en temps masqué pendant le prochain trajet.</li>
@@ -501,6 +533,12 @@ function rectPoly(f) {
   var n = nv(f.ang), t = lv(f.ang), P = [];
   [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(function (s) { P.push([f.cx + s[0] * f.hl * t[0] + s[1] * f.hn * n[0], f.cy + s[0] * f.hl * t[1] + s[1] * f.hn * n[1]]); });
   return P;
+}
+/* canon de la face C : rectangle qui dépasse de la face (longueur L hors robot, largeur W) */
+function cannonPoly(p, L, W) {
+  if (!(L > 0)) return null;
+  var a = p.h + 240, n = nv(a);
+  return rectPoly({ cx: p.x + (GEO.rin + L / 2) * n[0], cy: p.y + (GEO.rin + L / 2) * n[1], hl: W / 2, hn: L / 2, ang: a });
 }
 function triPoly(p) { var P = []; [180, 300, 60].forEach(function (a) { var v = nv(p.h + a); P.push([p.x + GEO.R * v[0], p.y + GEO.R * v[1]]); }); return P; }
 function overlap(A, B, tol) {
@@ -541,6 +579,9 @@ var ENGINE = (function () {
   var THRONE = [[0, 750], [500, 750], [500, 1250], [0, 1250]];
   var CASTLE = [[0, 295], [610, 295], [960, 640], [960, 1360], [610, 1705], [0, 1705]];
   var CASTLE_B = CASTLE.map(function (p) { return [3000 - p[0], p[1]]; }).reverse();
+  /* cour du château (D.4 : entourée par les remparts, salle du trône comprise) : bords intérieurs des zones de muraille */
+  var COUR_B = [[3000, 500], [2532.8, 500], [2250, 782.8], [2250, 1217.2], [2532.8, 1500], [3000, 1500]];
+  var COUR = COUR_B.map(function (p) { return [3000 - p[0], p[1]]; }).reverse();
   function zoneById(id) { for (var i = 0; i < ZM.length; i++) if (ZM[i].id === id) return ZM[i]; for (var j = 0; j < ZT.length; j++) if (ZT[j].id === id) return ZT[j]; return null; }
   function inPoly(x, y, P) { var c = false; for (var i = 0, j = P.length - 1; i < P.length; j = i++) { if (((P[i][1] > y) !== (P[j][1] > y)) && (x < (P[j][0] - P[i][0]) * (y - P[i][1]) / (P[j][1] - P[i][1]) + P[i][0])) c = !c; } return c; }
   function angd(a, b) { return ((b - a) % 360 + 540) % 360 - 180; }
@@ -559,7 +600,11 @@ var ENGINE = (function () {
     PK.forEach(function (pk, i) { for (var l = 0; l < 3; l++) stones.push({ id: pk.id + '.' + (l + 1), pk: i, l: l, sl: l, tl: [{ t: 0, k: 'home' }], cur: { k: 'home' }, tag: 'home' }); });
     var held = { A: null, B: null };
     var graal = { tl: [{ t: 0, k: 'home' }], cur: { k: 'home' } };
-    var balls = { t: Infinity, d: P.tballs, at: null };
+    /* canon (face C) et boulets : balles en mousse de 45 mm (D.4) */
+    var CL = P.cl != null ? P.cl : 0, CW = P.cw != null ? P.cw : 0;
+    var balls = { shots: null, t0: Infinity, v0: null, n: 0, tDeploy: Infinity };
+    /* le canon est replié (dans le périmètre de départ de 1200 mm) jusqu'à la séance de tir */
+    var canOn = false;
     function cp(g) { return { hc: g.hc, rot: g.rot, vac: g.vac.slice() }; }
     function snap(lin) { return { t: s.t, x: s.x, y: s.y, h: s.h, A: cp(s.A), B: cp(s.B), lin: !!lin }; }
     K.push(snap());
@@ -602,10 +647,10 @@ var ENGINE = (function () {
       return polys;
     }
     function collides(p, excl, frGeo) {
-      var tri = triPoly(p);
-      if (!inTable(tri, 0)) return 'bord de table';
+      var tri = triPoly(p), can = canOn ? cannonPoly(p, CL, CW) : null;
+      if (!inTable(tri, 0) || (can && !inTable(can, 0))) return 'bord de table';
       var fr = frGeo || freeStones(excl).map(function (st) { var g = stoneFoot(st); g.id = st.id; return g; });
-      for (var j = 0; j < fr.length; j++) if (overlap(tri, fr[j].foot, 1)) return fr[j].id;
+      for (var j = 0; j < fr.length; j++) if (overlap(tri, fr[j].foot, 1) || (can && overlap(can, fr[j].foot, 1))) return fr[j].id;
       var hs = [];
       ['A', 'B'].forEach(function (f) { heldStonesOf(f).forEach(function (st) { hs.push(geomHeld(p, f, st.sl)); }); });
       for (var i = 0; i < hs.length; i++) {
@@ -904,6 +949,64 @@ var ENGINE = (function () {
       placeGraal(st, cands, top, where, zoneAt(G));
     }
 
+    /* ---- canon : vol d'une balle en mousse (traînée quadratique, rebonds amortis, roulement) ---- */
+    var BR = 0.0225;
+    function flight(o, az, el, v0) {
+      var g = 9.81, m = (P.bm > 0 ? P.bm : 2) / 1000, k = 0.5 * 1.2 * (P.bcd > 0 ? P.bcd : 0.47) * Math.PI * BR * BR / m;
+      var E = P.be != null ? P.be : 0.5, MU = P.bmu != null ? P.bmu : 0.3, CR = P.bcr != null ? P.bcr : 0.05, dt = 0.001;
+      var x = o[0] / 1000, y = o[1] / 1000, z = o[2] / 1000, a = az * Math.PI / 180, e = el * Math.PI / 180;
+      var vx = v0 * Math.cos(e) * Math.cos(a), vy = v0 * Math.cos(e) * Math.sin(a), vz = v0 * Math.sin(e);
+      var t = 0, pts = [[0, o[0], o[1], o[2]]], next = 0.02, roll = false, out = false, nb = 0, imp = null;
+      while (t < 20) {
+        if (!roll) { var v = Math.hypot(vx, vy, vz); vx -= k * v * vx * dt; vy -= k * v * vy * dt; vz -= (g + k * v * vz) * dt; }
+        else { var vh = Math.hypot(vx, vy), dec = CR * g * dt; if (vh <= dec) { vx = 0; vy = 0; } else { vx -= dec * vx / vh; vy -= dec * vy / vh; } }
+        x += vx * dt; y += vy * dt; z += vz * dt; t += dt;
+        /* sol : rebond (mousse) puis roulement quand le rebond devient trop faible */
+        if (!roll && z <= BR) { z = BR; if (!imp) imp = [x * 1000, y * 1000]; if (Math.abs(vz) < 0.3) { roll = true; vz = 0; } else { vz = -E * vz; vx *= 1 - MU; vy *= 1 - MU; nb++; } }
+        /* bordures de 70 mm : rebond si la balle les touche, sortie de table si elle passe au-dessus */
+        if (x < BR || x > 3 - BR) { if (z < 0.07 + BR) { x = x < BR ? BR : 3 - BR; vx = -E * vx; } else if (x < -0.022 - BR || x > 3.022 + BR) { out = true; break; } }
+        if (y < BR || y > 2 - BR) { if (z < 0.07 + BR) { y = y < BR ? BR : 2 - BR; vy = -E * vy; } else if (y < -0.022 - BR || y > 2.022 + BR) { out = true; break; } }
+        if (t >= next - 1e-9) { pts.push([t, x * 1000, y * 1000, z * 1000]); next += 0.02; }
+        if (roll && !vx && !vy) break;
+      }
+      pts.push([t, x * 1000, y * 1000, z * 1000]);
+      return { pts: pts, rest: [x * 1000, y * 1000], imp: imp || [x * 1000, y * 1000], tStop: t, out: out, bounces: nb };
+    }
+    /* boulet dans la cour adverse : tout ou partie de sa projection verticale (E.4) */
+    function inCour(c) { return inPoly(c[0], c[1], COUR_B) || ptPolyD(c, COUR_B) <= BR * 1000; }
+    /* tirage reproductible, différent à chaque tir */
+    function rnd(i, j) { var x = Math.sin((i + 1) * 12.9898 + (j + 1) * 78.233 + (P.bseed || 1) * 37.719) * 43758.5453; return 2 * (x - Math.floor(x)) - 1; }
+    function seanceTir() {
+      if (balls.shots) return err('La séance de tir a déjà eu lieu.');
+      var O = [P.tx != null ? P.tx : 250, P.ty != null ? P.ty : 1000], h = 120;  /* face C (h + 240) vers +x : le camp adverse */
+      travel(O, h, 'Retour au trône : face C vers le camp adverse');
+      if (s.t < 85) adv(85 - s.t, 'Attente du début de la phase d\'attaque (85 s)');
+      balls.tDeploy = s.t; canOn = true;
+      if (P.bdep > 0) adv(P.bdep, 'Déploiement du canon');
+      if (P.bspin > 0) adv(P.bspin, 'Mise en route du canon');
+      var p = poseNow(), pts = triPoly(p).concat(cannonPoly(p, CL, CW) || []), cc = collides(p);
+      if (cc) err('Canon déployé : contact avec ' + cc + '.');
+      if (!pts.every(function (v) { return v[0] >= THRONE[0][0] - 0.5 && v[0] <= THRONE[1][0] + 0.5 && v[1] >= THRONE[0][1] - 0.5 && v[1] <= THRONE[2][1] + 0.5; }))
+        err('Position de tir : le robot et son canon doivent être entièrement dans la salle du trône (x 0 à 500, y 750 à 1250).');
+      var N = Math.max(0, Math.min(10, Math.round(P.bn != null ? P.bn : 10))), rate = P.brate > 0 ? P.brate : 2, el = P.bel != null ? P.bel : 35;
+      var n = nv(h + 240), mz = [p.x + (rin + CL) * n[0], p.y + (rin + CL) * n[1], P.bh != null ? P.bh : 250];
+      /* vitesse de sortie : celle qui amène la balle (sans dispersion) au point visé, par dichotomie.
+         Point visé = point d'arrêt (bmode 'arret') ou premier impact au sol ('impact'). */
+      var tx = P.btx != null ? P.btx : 2625, imp = P.bmode === 'impact', lo = 0.5, hi = 25, f0 = null;
+      function reach(fl) { return imp ? fl.imp[0] : fl.rest[0]; }
+      for (var it = 0; it < 40; it++) { var mid = (lo + hi) / 2, fm = flight(mz, 0, el, mid); if ((fm.out && !imp) || reach(fm) > tx) hi = mid; else lo = mid; }
+      var v0 = (lo + hi) / 2; f0 = flight(mz, 0, el, v0);
+      if ((f0.out && !imp) || Math.abs(reach(f0) - tx) > 50) err('Canon : le point visé x = ' + Math.round(tx) + ' mm n\'est pas atteignable avec une élévation de ' + el + '° (' + (imp ? 'impact' : 'arrêt') + ' le plus proche à x = ' + Math.round(reach(f0)) + ' mm).');
+      balls.shots = []; balls.t0 = s.t; balls.v0 = v0; balls.n = N; balls.muzzle = mz;
+      for (var i = 0; i < N; i++) {
+        var vi = v0 * (1 + (P.bdv != null ? P.bdv : 5) / 100 * rnd(i, 0)), az = (P.bdaz != null ? P.bdaz : 2) * rnd(i, 1), ei = el + (P.bdel != null ? P.bdel : 2) * rnd(i, 2);
+        var fl = flight(mz, az, ei, vi); fl.t = s.t + i / rate;  /* 1er tir dès la fin de la mise en route */ fl.v0 = vi; fl.az = az; fl.el = ei; fl.cour = !fl.out && inCour(fl.rest);
+        balls.shots.push(fl);
+      }
+      var nIn = balls.shots.filter(function (x) { return x.cour; }).length;
+      adv(Math.max(0.1, (N - 1) / rate + 0.1), N + ' boulets tirés (' + String(rate).replace('.', ',') + ' par seconde, vitesse de sortie ' + v0.toFixed(2).replace('.', ',') + ' m/s) : ' + nIn + ' arrêtés dans la cour adverse');
+    }
+
     var steps = {
       prendre: function (st) {
         var f = st.f; if (held[f]) return err('La face ' + f + ' tient déjà quelque chose.');
@@ -1081,13 +1184,8 @@ var ENGINE = (function () {
         vac(f, [0, 0, 0], 'Linteau posé : porte terminée sur ' + z.id, TL);
         lin([O2[0] - 100 * n[0], O2[1] - 100 * n[1]], c.h, VA, 'Recul'); zz(f, 165, 'Pince ' + f + ' en position basse');
       },
-      boulets: function () {
-        if (balls.t < Infinity) return err('Les boulets ont déjà été lâchés.');
-        var O = [2184, 1000], h = 120;
-        travel(O, h, 'Trappe vers la cour adverse');
-        var n = nv2(s.h + 240); balls.t = s.t; balls.at = [s.x + (rin + 40) * n[0], s.y + (rin + 40) * n[1]];
-        adv(P.tballs, '10 boulets lâchés un par un dans la cour adverse');
-      },
+      tir: function () { seanceTir(); },
+      boulets: function () { seanceTir(); },
       prendreGraal: function (st) {
         var f = st.f; if (held[f]) return err('La face ' + f + ' doit être vide pour prendre le Graal.');
         var gn = graalNow(); if (!gn) return err('Le Graal est déjà tenu.');
@@ -1143,13 +1241,13 @@ var ENGINE = (function () {
     flushPend();
     adv(0.5, 'Fin du programme');
     /* contrôle des contacts le long de la séquence */
-    var res = { K: K, segs: segs, stones: stones, graal: graal, balls: balls, errors: errors, stepInfo: stepInfo, T: s.t, PK: PK, ZM: ZM, ZT: ZT, THRONE: THRONE, CASTLE: CASTLE };
+    var res = { K: K, segs: segs, stones: stones, graal: graal, balls: balls, errors: errors, stepInfo: stepInfo, T: s.t, PK: PK, ZM: ZM, ZT: ZT, THRONE: THRONE, CASTLE: CASTLE, COUR_B: COUR_B };
     res.poseAt = function (t) { return poseAtK(K, t); };
     res.stoneAt = function (st, t) { var e = st.tl[0]; for (var i = 0; i < st.tl.length; i++) if (st.tl[i].t <= t) e = st.tl[i]; return e; };
     res.collisions = [];
     var last = '';
     for (var tt = 0; tt <= s.t; tt += 0.1) {
-      var p = res.poseAt(tt), tri = triPoly(p), hs = [], free = [];
+      var p = res.poseAt(tt), tri = triPoly(p), can = tt >= balls.tDeploy ? cannonPoly(p, CL, CW) : null, hs = [], free = [];
       stones.forEach(function (st) {
         var e = res.stoneAt(st, tt);
         if (e.k === 'held') hs.push(geomHeld(p, e.f, e.l));
@@ -1157,8 +1255,8 @@ var ENGINE = (function () {
         else { var g2 = geomHeld(e.pose, e.f, e.l); free.push({ id: st.id, foot: g2.foot, top: g2.top, bottom: g2.bottom }); }
       });
       var hit = [];
-      if (!inTable(tri, -1)) hit.push('bord de table');
-      free.forEach(function (fs) { if (overlap(tri, fs.foot, 1.5)) hit.push(fs.id); });
+      if (!inTable(tri, -1) || (can && !inTable(can, -1))) hit.push('bord de table');
+      free.forEach(function (fs) { if (overlap(tri, fs.foot, 1.5) || (can && overlap(can, fs.foot, 1.5))) hit.push(fs.id); });
       hs.forEach(function (h) { if (!inTable(h.foot, -1)) hit.push('bord de table'); free.forEach(function (fs) { if (heldVsFree(h, fs)) hit.push(fs.id); }); });
       var key = Array.from(new Set(hit)).join(', ');
       if (key && key !== last) res.collisions.push({ t: tt, with: key });
@@ -1178,7 +1276,7 @@ var ENGINE = (function () {
     }
     return K[K.length - 1];
   }
-  return { simulate: simulate, poseAtK: poseAtK, PK: PK, ZM: ZM, ZT: ZT, THRONE: THRONE, CASTLE: CASTLE, CASTLE_B: CASTLE_B, inPoly: inPoly, zoneById: zoneById };
+  return { simulate: simulate, poseAtK: poseAtK, PK: PK, ZM: ZM, ZT: ZT, THRONE: THRONE, CASTLE: CASTLE, CASTLE_B: CASTLE_B, COUR: COUR, COUR_B: COUR_B, inPoly: inPoly, zoneById: zoneById };
 })();
 /*ENGINE_END*/
 
