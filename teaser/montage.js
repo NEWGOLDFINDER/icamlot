@@ -316,9 +316,26 @@ var TEASER = (function () {
     SHOTS.forEach(function (sh) { if (sh.flash) c.cuts.push(sh.v0); });
     [[0.35, 'titre'], [2.4, 'texte'], [3.0, 'texte'], [4.3, 'go'], [25.35, 'texte'], [25.85, 'tampon'], [26.95, 'texte'], [28.4, 'logo']].forEach(function (h) { c.hits.push({ v: h[0], k: h[1] }); });
     for (var n = 0; n < 5; n++) c.hits.push({ v: 3.62 + n * 0.12, k: 'feu' });
+    /* bruits de la machine, lus dans les étapes du simulateur : aspiration, lâcher, contact, mouvements de pince.
+       Seuls ceux qui tombent dans un plan sont entendus, coupés au raccord suivant. */
+    var KIND = [
+      [/^Vide (face [AB] )?sur/, 'aspire'],
+      [/^Vide coupé|lâchée|^2 piliers posés|^Linteau posé|^Graal posé/, 'lache'],
+      [/^Contact avec/, 'contact'],
+      [/^Levée|^Descente|^Montée|position basse|mis à plat|^Retour de la rotation|tournée|^Centrage/, 'verin']
+    ];
+    c.sfx = [];
     SHOTS.forEach(function (sh) {
-      [E.videP5.t0, E.murM5.t0 + 0.15, E.tourT1.t0 + 0.1, E.tourT2.t0 + 0.1, E.piliers.t0 + 0.1, E.linteau.t0 + 0.08, E.videGraal.t0, E.poseGraal.t0 + 0.08].forEach(function (t) {
-        if (t >= sh.keys[0][1] && t <= sh.keys[sh.keys.length - 1][1] && sh.v1 - sh.v0 > 0.5) { var v = vOf(sh, t); if (v > sh.v0 + 0.02 && v < sh.v1 - 0.02) c.hits.push({ v: v, k: 'pose', slow: rate(sh, v) < 0.62 }); }
+      if (sh.v0 < 4.3 || sh.id === 'fin') return;
+      var s0 = sh.keys[0][1], s1 = sh.keys[sh.keys.length - 1][1];
+      R.segs.forEach(function (g) {
+        var k = null; KIND.forEach(function (q) { if (!k && q[0].test(g.label)) k = q[1]; });
+        var t = k === 'contact' ? g.t1 : g.t0;
+        if (!k || t < s0 || t > s1) return;
+        var v = vOf(sh, t); if (v <= sh.v0 + 0.01 || v >= sh.v1 - 0.03) return;
+        var e = { k: k, v: v, r: Math.max(0.25, Math.min(1, rate(sh, v))), end: sh.v1, label: g.label };
+        if (k === 'aspire' || k === 'verin') e.v1 = Math.min(sh.v1, vOf(sh, Math.min(g.t1, s1)));
+        c.sfx.push(e);
       });
     });
     for (var i = 0; i < DUR * FPS; i++) {

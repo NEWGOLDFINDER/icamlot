@@ -3,6 +3,7 @@
    node render.mjs                      → out/teaser.mp4
    node render.mjs --stills 3,7.5,16    → out/still-<t>.png (images de contrôle, temps vidéo en secondes)
    node render.mjs --strategy autre.json
+   node render.mjs --audio              → refait seulement le son sur out/video-muette.mp4
    node render.mjs --gpu                → même vidéo, rendue avec la carte graphique (sur un PC équipé) */
 import { chromium } from 'playwright';
 import fs from 'node:fs';
@@ -78,6 +79,8 @@ if (arg('debug', '')) {
   console.log(stills.length + ' images dans ' + OUT);
 } else {
   const video = path.join(OUT, 'video-muette.mp4'), wav = path.join(OUT, 'son.wav'), final = path.join(OUT, arg('out', 'teaser.mp4'));
+  /* --audio : refait seulement le son et le remonte sur l'image déjà rendue (out/video-muette.mp4) */
+  if (!process.argv.includes('--audio')) {
   const ff = spawn('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'image2pipe', '-c:v', 'mjpeg', '-framerate', String(info.fps), '-i', '-',
     '-c:v', 'libx264', '-preset', 'slow', '-crf', '17', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', video], { stdio: ['pipe', 'inherit', 'inherit'] });
   const t0 = Date.now();
@@ -88,10 +91,11 @@ if (arg('debug', '')) {
   }
   ff.stdin.end();
   await new Promise((ok, ko) => ff.on('close', c => c ? ko(new Error('ffmpeg ' + c)) : ok()));
+  } else if (!fs.existsSync(video)) throw new Error('--audio : ' + video + ' manque, lancer d\'abord le rendu complet');
   const cues = await page.evaluate(() => TEASER.cues());
   fs.writeFileSync(path.join(OUT, 'cues.json'), JSON.stringify(cues, null, 1));
   soundtrack(cues, wav);
-  await new Promise((ok, ko) => spawn('ffmpeg', ['-y', '-loglevel', 'error', '-i', video, '-i', wav, '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart', final], { stdio: 'inherit' })
+  await new Promise((ok, ko) => spawn('ffmpeg', ['-y', '-loglevel', 'error', '-i', video, '-i', wav, '-c:v', 'copy', '-af', 'loudnorm=I=-14:TP=-1.5:LRA=11', '-ar', '48000', '-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart', final], { stdio: 'inherit' })
     .on('close', c => c ? ko(new Error('ffmpeg ' + c)) : ok()));
   console.log('Vidéo : ' + final);
 }

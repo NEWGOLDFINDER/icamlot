@@ -24,8 +24,11 @@ Il faut Chromium (Playwright) et ffmpeg. three.js est servi depuis `node_modules
 - `montage.js` contient les plans (temps vidéo → temps simulé, caméra) et le floutage. Le masque du robot est rendu
   avec la profondeur de la scène, légèrement élargi puis remplacé par un flou fin et désaturé. Il contient aussi les textes, le chrono,
   les sous-titres et le carton de fin.
-- `audio.mjs` synthétise les bruitages à partir des repères du montage : whoosh aux raccords, impacts, moteur qui
-  suit la vitesse du robot et grave pendant les ralentis, feux de départ. Aucun son externe n'est utilisé.
+- `audio.mjs` synthétise le son à partir des étapes du simulateur : relais qui claquent, pompe à vide et
+  sifflement d'air à la prise, ventouse qui colle, « pschhh » de mise à l'air et choc du carton au lâcher, vérins
+  de la pince, roulement des roues. S'y ajoutent whoosh aux raccords, impacts sur les textes et feux de départ ; au
+  ralenti, les bruits de machine sont plus graves. Volume normalisé à -14 LUFS. Aucun son externe n'est utilisé.
+  `node render.mjs --audio` refait seulement le son, en quelques secondes, sur la vidéo déjà rendue.
 - `logo-roboticam.png` est le logo extrait du dossier de partenariat 2026-2027.
 
 ## Chiffres affichés
