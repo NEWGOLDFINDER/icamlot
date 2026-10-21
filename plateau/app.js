@@ -18,14 +18,23 @@
   var ACTIONS = [
     ['prendre', 'Prendre (paquet ou pierre)'], ['deposer', 'Déposer en x, y, angle'], ['mur', 'Poser en mur'], ['tour', 'Faire une tour'], ['porte', 'Faire une porte'],
     ['boulets', 'Lâcher les boulets (cour adverse)'], ['prendreGraal', 'Prendre le Graal'], ['poserGraal', 'Poser le Graal sur'],
-    ['attendre', 'Attendre (s)'], ['attendreJusqua', 'Attendre jusqu\'à (s)'], ['trone', 'Aller dans la salle du trône']
+    ['tourner', 'Tourner la pince (0, 90, 180°)'], ['attendre', 'Attendre (s)'], ['attendreJusqua', 'Attendre jusqu\'à (s)'], ['trone', 'Aller dans la salle du trône']
   ];
-  var SHORT = { prendre: 'Prendre', deposer: 'Déposer', mur: 'Mur', tour: 'Tour', porte: 'Porte', boulets: 'Boulets', prendreGraal: 'Prendre Graal', poserGraal: 'Poser Graal', attendre: 'Attendre', attendreJusqua: 'Attendre jusqu\'à', trone: 'Trône' };
-  var ICONS = { prendre: 'fa-hand', deposer: 'fa-location-crosshairs', mur: 'fa-grip-lines', tour: 'fa-chess-rook', porte: 'fa-archway', boulets: 'fa-bowling-ball', prendreGraal: 'fa-trophy', poserGraal: 'fa-award', attendre: 'fa-hourglass-half', attendreJusqua: 'fa-clock', trone: 'fa-crown' };
-  var FIELDS = { prendre: ['f', 'mode', 'p', 's', 'v', 'tm'], deposer: ['f', 'q', 'xy', 'ang', 'o', 'tm'], mur: ['f', 'zm', 'side'], tour: ['f', 'zt', 's', 'tm'], porte: ['f', 'zm', 'side', 'tm'], boulets: [], prendreGraal: ['f', 'tm'], poserGraal: ['f', 'gm', 'zmt', 'xy', 'tm'], attendre: ['sec'], attendreJusqua: ['sec'], trone: [] };
+  var SHORT = { prendre: 'Prendre', deposer: 'Déposer', mur: 'Mur', tour: 'Tour', porte: 'Porte', boulets: 'Boulets', prendreGraal: 'Prendre Graal', poserGraal: 'Poser Graal', tourner: 'Tourner', attendre: 'Attendre', attendreJusqua: 'Attendre jusqu\'à', trone: 'Trône' };
+  var ICONS = { prendre: 'fa-hand', deposer: 'fa-location-crosshairs', mur: 'fa-grip-lines', tour: 'fa-chess-rook', porte: 'fa-archway', boulets: 'fa-bowling-ball', prendreGraal: 'fa-trophy', poserGraal: 'fa-award', tourner: 'fa-rotate-right', attendre: 'fa-hourglass-half', attendreJusqua: 'fa-clock', trone: 'fa-crown' };
+  var FIELDS = { prendre: ['f', 'mode', 'p', 's', 'v', 'tm'], deposer: ['f', 'q', 'xy', 'ang', 'r', 'drop', 'tm'], tourner: ['f', 'r', 'tm'], mur: ['f', 'zm', 'side'], tour: ['f', 'zt', 's', 'tm'], porte: ['f', 'zm', 'side', 'tm'], boulets: [], prendreGraal: ['f', 'tm'], poserGraal: ['f', 'gm', 'zmt', 'xy', 'tm'], attendre: ['sec'], attendreJusqua: ['sec'], trone: [] };
   var PKIDS = ENGINE.PK.map(function (p) { return p.id; }), MIDS = ENGINE.ZM.map(function (z) { return z.id; }), TIDS = ENGINE.ZT.map(function (z) { return z.id; });
   var SIDS = []; PKIDS.forEach(function (p) { for (var l = 1; l <= 3; l++) SIDS.push(p + '.' + l); });
   var prog = [], params = {}, sel = -1;
+  /* angle de pince d'un dépôt (ancien champ o : plat / debout) */
+  function rotOf(st) { return st.r != null ? +st.r : st.o === 'debout' ? 90 : 0; }
+  /* la case Lâcher n'est disponible que si la face tient une pierre saisie avant */
+  function updateDrop() {
+    var cb = document.getElementById('cbDrop'); if (!cb || sel < 0 || !prog[sel] || prog[sel].a !== 'deposer') return;
+    var inf = R && R.stepInfo[sel], n = inf && inf.held ? inf.held[prog[sel].f] : null;
+    cb.disabled = n === 0 && !cb.checked; cb.parentNode.title = n === 0 ? 'Aucune pierre saisie avant cette étape sur la face ' + prog[sel].f : '';
+    cb.parentNode.style.opacity = cb.disabled ? '0.5' : '';
+  }
   /* champs affichés : la prise montre soit le paquet, soit la pierre et sa ventouse */
   function fieldsOf(st) {
     return (FIELDS[st.a] || []).filter(function (k) {
@@ -82,7 +91,8 @@
     var f = st.f ? ' · face ' + st.f : '';
     switch (st.a) {
       case 'prendre': return st.mode === 'pierre' ? 'Prendre la pierre ' + st.s + f : 'Prendre ' + st.p + f;
-      case 'deposer': return 'Déposer ' + (st.q === 'pile' ? 'la pile' : st.q) + ' en ' + Math.round(st.x) + ', ' + Math.round(st.y) + ', ' + fmt(st.ang) + '° · ' + (st.o === 'debout' ? 'debout' : 'à plat') + f;
+      case 'deposer': var rd = rotOf(st); return 'Déposer ' + (st.q === 'pile' ? 'la pile' : st.q) + ' en ' + Math.round(st.x) + ', ' + Math.round(st.y) + ', ' + fmt(st.ang) + '° · ' + (rd === 90 ? 'debout' : rd === 180 ? 'à plat retournée' : 'à plat') + (st.drop ? ' · lâcher' : '') + f;
+      case 'tourner': return 'Tourner la pince ' + st.f + ' à ' + (+st.r || 0) + '°' + (st.tm ? ' · pendant le trajet suivant' : '');
       case 'mur': return 'Mur en ' + st.z + f + sideTxt(st.side);
       case 'tour': return 'Tour ' + st.z + ' avec ' + st.s + f;
       case 'porte': return 'Porte en ' + st.z + f + sideTxt(st.side);
@@ -102,7 +112,8 @@
       if (k === 'f') st.f = 'A'; if (k === 'p') st.p = 'P1'; if (k === 'zm') st.z = 'M1'; if (k === 'zt') st.z = 'T1'; if (k === 'zmt') st.z = 'M3';
       if (k === 'side') st.side = 'auto'; if (k === 's') st.s = a === 'prendre' ? 'P1.3' : 'P1.1'; if (k === 'sec') st.sec = a === 'attendreJusqua' ? 85 : 1;
       if (k === 'mode') st.mode = 'paquet'; if (k === 'gm') st.gm = 'zone'; if (k === 'v') st.v = 'auto'; if (k === 'tm') st.tm = true;
-      if (k === 'q') st.q = 'pile'; if (k === 'xy') { st.x = 1200; st.y = 1000; } if (k === 'ang') st.ang = 0; if (k === 'o') st.o = 'plat';
+      if (k === 'q') st.q = 'pile'; if (k === 'xy') { st.x = 1200; st.y = 1000; } if (k === 'ang') st.ang = 0;
+      if (k === 'r') st.r = a === 'tourner' ? 90 : 0; if (k === 'drop') st.drop = false;
     });
     return st;
   }
@@ -144,7 +155,14 @@
       if (k === 'v') d.appendChild(fld('Ventouse', mkSel('Ventouse', [['auto', 'Auto (pince au plus près de 165 mm)'], ['1', 'Ventouse 1 (bas)'], ['2', 'Ventouse 2 (milieu)'], ['3', 'Ventouse 3 (haut)']], st.v || 'auto', function (v) { setField(i, 'v', v); })));
       if (k === 'q') d.appendChild(fld('Quoi', mkSel('Pierres déposées', [['pile', 'Toute la pile tenue']].concat(SIDS.map(function (p) { return [p, 'Pierre ' + p]; })), st.q, function (v) { setField(i, 'q', v); })));
       if (k === 'gm') d.appendChild(fld('Poser', mkSeg('Poser le Graal', [['zone', 'Sur une construction'], ['xy', 'En x, y']], st.gm || 'zone', function (v) { prog[i].gm = v; changed(true); })));
-      if (k === 'o') d.appendChild(fld('Pose', mkSeg('Pose', [['plat', 'À plat'], ['debout', 'Debout']], st.o, function (v) { setField(i, 'o', v); })));
+      if (k === 'r') d.appendChild(fld(st.a === 'tourner' ? 'Angle' : 'Pince', mkSeg('Angle de la pince', st.a === 'tourner' ? [['0', '0°'], ['90', '90°'], ['180', '180°']] : [['0', '0° à plat'], ['90', '90° debout'], ['180', '180° retournée']], String(rotOf(st)), function (v) { delete prog[i].o; setField(i, 'r', +v); })));
+      if (k === 'drop') {
+        var lbd = document.createElement('label'); lbd.className = 'chk';
+        var cbd = document.createElement('input'); cbd.type = 'checkbox'; cbd.id = 'cbDrop'; cbd.checked = !!st.drop;
+        cbd.addEventListener('change', function () { setField(i, 'drop', cbd.checked); });
+        lbd.appendChild(cbd); lbd.appendChild(document.createTextNode(' Lâcher : si la pince ne descend pas assez, la pierre tombe (à plat seulement)'));
+        d.appendChild(lbd); setTimeout(updateDrop, 0);
+      }
       if (k === 'xy' || k === 'ang') {
         var w2 = document.createElement('div'); w2.className = 'crow';
         (k === 'xy' ? [['x', 'x', 0, 3000, 5, 'mm'], ['y', 'y', 0, 2000, 5, 'mm']] : [['ang', 'Angle', -360, 360, 5, '°']]).forEach(function (q) {
@@ -162,7 +180,7 @@
         var lb = document.createElement('label'); lb.className = 'chk';
         var cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !!st.tm;
         cb.addEventListener('change', function () { setField(i, 'tm', cb.checked); });
-        lb.appendChild(cb); lb.appendChild(document.createTextNode(' Temps masqué : la pince monte, descend et tourne pendant le trajet'));
+        lb.appendChild(cb); lb.appendChild(document.createTextNode(st.a === 'tourner' ? ' Temps masqué : la rotation se fait pendant le prochain trajet' : ' Temps masqué : la pince monte, descend et tourne pendant le trajet'));
         d.appendChild(lb);
       }
       if (k === 'sec') {
@@ -267,7 +285,7 @@
   function accept(r) {
     r.poseAt = function (t) { return ENGINE.poseAtK(r.K, t); };
     r.stoneAt = function (st, t) { var e = st.tl[0]; for (var i = 0; i < st.tl.length; i++) if (st.tl[i].t <= t) e = st.tl[i]; return e; };
-    R = r; $('busy').hidden = true;
+    R = r; $('busy').hidden = true; updateDrop();
     TEND = Math.max(MATCH, Math.ceil(R.T + 1));
     $('track').setAttribute('aria-valuemax', String(TEND));
     var tot = $('tot'), nErr = R.errors.length;
@@ -796,7 +814,7 @@
   function importObj(o) {
     if (!o || !Array.isArray(o.program)) throw new Error('le JSON doit contenir une liste « program ».');
     var valid = ACTIONS.map(function (a) { return a[0]; });
-    var p2 = o.program.filter(function (s) { return s && valid.indexOf(s.a) >= 0; }).map(function (s) { var d = defaults(s.a); for (var k in d) if (s[k] !== undefined) d[k] = s[k]; if (s.tm === undefined && d.tm !== undefined) d.tm = false; return d; });
+    var p2 = o.program.filter(function (s) { return s && valid.indexOf(s.a) >= 0; }).map(function (s) { var d = defaults(s.a); for (var k in d) if (s[k] !== undefined) d[k] = s[k]; if (s.tm === undefined && d.tm !== undefined) d.tm = false; if (s.a === 'deposer' && s.r === undefined) d.r = s.o === 'debout' ? 90 : 0; return d; });
     prog = p2; params = Object.assign({}, DEF, o.params || {}); sel = -1; writeParams(); readParams(); changed(true);
     return p2.length;
   }
