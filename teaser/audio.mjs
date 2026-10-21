@@ -101,12 +101,39 @@ export function soundtrack(c, file) {
       put(i, lp(step + rattle * 0.4, 2200 * P, 0.9).lp * g * 0.075, -0.3);
     }
   }
+  /* canon à volants : montée en régime puis rotation continue, chute de régime à chaque boulet */
+  function volant(e, v0, v1, shots) {
+    const { P, D, put } = machine(e), i0 = Math.floor(v0 * SR), i1 = Math.floor(v1 * SR), air = svf(); let ph = 0;
+    for (let i = i0; i < i1; i++) {
+      const t = i / SR, u = t - v0, dip = shots.reduce((m, s) => m + (t >= s ? 0.12 * Math.exp(-(t - s) / 0.08) : 0), 0);
+      const f = 210 * P * (1 - Math.exp(-u / (0.18 * D))) * (1 - dip); ph += f / SR;
+      const w = Math.sin(TAU * ph) + 0.4 * Math.sin(TAU * 2 * ph) + 0.15 * Math.sin(TAU * 5 * ph);
+      put(i, (w * 0.06 + air(rnd(), 1500 * P, 0.9).bp * 0.08) * Math.min(1, u / 0.05, (i1 - i) / SR / 0.03), 0.15);
+    }
+  }
+  /* départ d'un boulet : la mousse écrasée entre les volants, « fwomp » */
+  function tir(e, v, amp) {
+    const { P, D, put } = machine(e), i0 = Math.floor(v * SR), lp = svf(); let ph = 0;
+    for (let k = 0; k < 0.2 * D * SR; k++) {
+      const t = k / SR, f = 60 * P + 110 * P * Math.exp(-t / 0.02); ph += f / SR;
+      put(i0 + k, (Math.sin(TAU * ph) * env(t, 0.002, 0.05 * D) * 0.7 + lp(rnd(), 1600 * P, 0.8).lp * env(t, 0.001, 0.03 * D) * 0.9) * amp, 0.1);
+    }
+  }
+  /* boulet en mousse qui touche la table : « pok » mat, de plus en plus faible */
+  function rebond(e, v, amp) {
+    const { P, D, put } = machine(e), i0 = Math.floor(v * SR), lp = svf();
+    for (let k = 0; k < 0.08 * D * SR; k++) { const t = k / SR; put(i0 + k, (Math.sin(TAU * 190 * P * t) * env(t, 0.001, 0.018 * D) * 0.5 + lp(rnd(), 1100 * P, 1).lp * env(t, 0.0005, 0.008 * D) * 0.8) * amp, 0.3); }
+  }
+  const tirs = (c.sfx || []).filter(e => e.k === 'tir').map(e => e.v);
   (c.sfx || []).forEach(e => {
     const D = 1 / Math.pow(e.r, 0.6);
     if (e.k === 'aspire') { relay(e, e.v); pump(e, e.v + 0.012 * D, e.v1, e.v1 + 0.35 * D); seal(e, e.v1); }
     else if (e.k === 'lache') { relay(e, e.v, 1, 0.2); vent(e, e.v + 0.006 * D); land(e, e.v + 0.02 * D); }
     else if (e.k === 'contact') tap(e, e.v);
     else if (e.k === 'verin') verin(e, e.v, e.v1);
+    else if (e.k === 'volant') volant(e, e.v, e.v1, tirs.filter(v => v >= e.v && v < e.v1));
+    else if (e.k === 'tir') tir(e, e.v, e.amp);
+    else if (e.k === 'rebond') rebond(e, e.v, e.amp);
   });
   /* roues : roulement sourd sur le vinyle, seulement quand le robot avance */
   { const lp = svf(), hp = svf(); let gs = 0;
@@ -123,12 +150,12 @@ export function soundtrack(c, file) {
   for (let i = 0; i < N; i++) {
     const t = i / SR; let x = 0;
     [[1, 1], [1.006, 0.8], [1.498, 0.5], [2, 0.35], [0.5, 0.6]].forEach(([m, a]) => { const ph = (t * 55 * m) % 1; x += a * (2 * ph - 1); });
-    const cut = slowAt(t) ? 0.01 : t > 25.2 ? 0.02 : 0.03;
+    const cut = slowAt(t) ? 0.01 : t > c.end ? 0.02 : 0.03;
     lp1 += cut * (x - lp1); lp2 += cut * (lp1 - lp2);
-    add(i, lp2 * 0.045 * Math.min(1, t / 1.5) * (t > 29 ? Math.max(0, 30 - t) : 1), Math.sin(t * 0.7) * 0.2, 0.15);
+    add(i, lp2 * 0.045 * Math.min(1, t / 1.5) * (t > c.dur - 1 ? Math.max(0, c.dur - t) : 1), Math.sin(t * 0.7) * 0.2, 0.15);
   }
   /* pulsation (120 bpm) pendant l'action ; étouffée au ralenti */
-  for (let b = 4.3; b < 25.2; b += 0.5) {
+  for (let b = 4.3; b < c.end; b += 0.5) {
     const s = slowAt(b), i0 = Math.floor(b * SR), len = Math.floor((s ? 0.6 : 0.35) * SR); let ph = 0;
     for (let k = 0; k < len; k++) { const t = k / SR, f = (s ? 30 : 45) + (s ? 50 : 90) * Math.exp(-t * 28); ph += f / SR; add(i0 + k, Math.sin(TAU * ph) * env(t, 0.002, s ? 0.22 : 0.11) * 0.38, 0, s ? 0.3 : 0.05); }
     if (!s) { const j0 = Math.floor((b + 0.25) * SR); let hp = 0, prev = 0; for (let k = 0; k < 0.05 * SR; k++) { const n = rnd(); hp = 0.9 * (hp + n - prev); prev = n; add(j0 + k, hp * env(k / SR, 0.001, 0.012) * 0.05, (b * 2) % 2 ? 0.4 : -0.4); } }
@@ -139,7 +166,7 @@ export function soundtrack(c, file) {
     for (let k = 0; k < len; k++) { const u = k / len, fc = 300 + 4200 * Math.sin(Math.PI * Math.min(1, u * 1.1)) ** 2; add(i0 + k, bpf(rnd(), fc, 0.7).bp * Math.sin(Math.PI * u) ** 2 * 0.2, (u * 2 - 1) * (n % 2 ? 0.7 : -0.7), 0.2); }
   });
   /* montées avant le départ et avant le carton de fin */
-  [[2.9, 4.3], [24.5, 25.2]].forEach(([a, b]) => {
+  [[2.9, 4.3], [c.end - 0.7, c.end]].forEach(([a, b]) => {
     let ph = 0, y = 0;
     for (let i = Math.floor(a * SR); i < b * SR; i++) { const u = (i / SR - a) / (b - a), f = 120 + 900 * u * u; ph += f / SR; y += 0.2 * (rnd() - y); add(i, (Math.sin(TAU * ph) * 0.06 + y * 0.25) * u * u, 0, 0.3); }
   });
