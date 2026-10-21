@@ -1,0 +1,13 @@
+{
+  "name": "icamlot-teaser",
+  "private": true,
+  "type": "module",
+  "description": "Teaser sponsors : rendu vidéo de la simulation du plateau, robot flouté",
+  "scripts": {
+    "render": "node render.mjs"
+  },
+  "dependencies": {
+    "playwright": "1.56.1",
+    "three": "0.128.0"
+  }
+}

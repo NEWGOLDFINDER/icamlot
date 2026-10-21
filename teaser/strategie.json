@@ -1,0 +1,184 @@
+{
+  "format": "camelot-strategie",
+  "version": 1,
+  "name": "autre 3 murs 3 tours",
+  "params": {
+    "v": 0.5,
+    "va": 0.2,
+    "w": 120,
+    "vz": 100,
+    "trot": 1.5,
+    "tvac": 0.5,
+    "trel": 0.4,
+    "x0": 250,
+    "y0": 1000,
+    "h0": 0,
+    "gx": 100,
+    "gy": 1180,
+    "gs": 60,
+    "zmin": 140,
+    "zmax": 0,
+    "pgap": 5,
+    "ovl": 8,
+    "tx": 250,
+    "ty": 1000,
+    "cl": 80,
+    "cw": 60,
+    "bn": 10,
+    "brate": 2,
+    "bdep": 1,
+    "bspin": 0.5,
+    "bel": 35,
+    "bh": 250,
+    "btx": 2625,
+    "bmode": "arret",
+    "bm": 2,
+    "bcd": 0.47,
+    "be": 0.5,
+    "bmu": 0.3,
+    "bcr": 0.05,
+    "bdv": 5,
+    "bdaz": 2,
+    "bdel": 2,
+    "bseed": 1
+  },
+  "program": [
+    {
+      "a": "prendre",
+      "f": "B",
+      "mode": "paquet",
+      "p": "P5",
+      "s": "P1.3",
+      "v": "auto",
+      "tm": true
+    },
+    {
+      "a": "prendre",
+      "f": "A",
+      "mode": "paquet",
+      "p": "P6",
+      "s": "P1.3",
+      "v": "auto",
+      "tm": true
+    },
+    {
+      "a": "mur",
+      "f": "A",
+      "z": "M5",
+      "pm": "parfait",
+      "side": "int",
+      "x": null,
+      "y": null,
+      "ang": 0
+    },
+    {
+      "a": "tour",
+      "f": "B",
+      "z": "T4",
+      "s": "P5.1",
+      "pm": "parfait",
+      "x": null,
+      "y": null,
+      "ang": 0,
+      "tm": true
+    },
+    {
+      "a": "prendre",
+      "f": "A",
+      "mode": "paquet",
+      "p": "P1",
+      "s": "P1.3",
+      "v": "auto",
+      "tm": true
+    },
+    {
+      "a": "mur",
+      "f": "A",
+      "z": "M1",
+      "pm": "parfait",
+      "side": "auto",
+      "x": null,
+      "y": null,
+      "ang": 0
+    },
+    {
+      "a": "tour",
+      "f": "B",
+      "z": "T1",
+      "s": "P5.2",
+      "pm": "parfait",
+      "x": null,
+      "y": null,
+      "ang": 0,
+      "tm": true
+    },
+    {
+      "a": "tour",
+      "f": "B",
+      "z": "T2",
+      "s": "P5.3",
+      "pm": "proche",
+      "x": null,
+      "y": null,
+      "ang": 0,
+      "tm": true
+    },
+    {
+      "a": "prendre",
+      "f": "A",
+      "mode": "paquet",
+      "p": "P2",
+      "s": "P1.3",
+      "v": "auto",
+      "tm": true
+    },
+    {
+      "a": "prendre",
+      "f": "B",
+      "mode": "paquet",
+      "p": "P9",
+      "s": "P1.3",
+      "v": "auto",
+      "tm": true
+    },
+    {
+      "a": "mur",
+      "f": "B",
+      "z": "M4",
+      "pm": "parfait",
+      "side": "int",
+      "x": null,
+      "y": null,
+      "ang": 0
+    },
+    {
+      "a": "porte",
+      "f": "A",
+      "z": "M3",
+      "pm": "parfait",
+      "side": "auto",
+      "x": null,
+      "y": null,
+      "ang": 0,
+      "tm": true
+    },
+    {
+      "a": "prendreGraal",
+      "f": "A",
+      "tm": true
+    },
+    {
+      "a": "poserGraal",
+      "f": "A",
+      "gm": "zone",
+      "z": "M4",
+      "x": 1200,
+      "y": 1000,
+      "side": "auto",
+      "tm": true
+    },
+    {
+      "a": "trone"
+    }
+  ]
+}

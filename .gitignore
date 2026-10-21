@@ -1,2 +1,4 @@
 .data/
 __pycache__/
+teaser/node_modules/
+teaser/out/
