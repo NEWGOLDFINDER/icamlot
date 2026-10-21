@@ -3,8 +3,8 @@
 (function () {
   var $ = function (id) { return document.getElementById(id); };
   var MATCH = 100;
-  var DEF = { v: 0.5, va: 0.2, w: 120, vz: 100, trot: 1.5, tvac: 0.5, trel: 0.4, tballs: 4, x0: 250, y0: 1000, h0: 0, gx: 100, gy: 1180, gs: 60 };
-  var PIDS = { v: 'pV', va: 'pVA', w: 'pW', vz: 'pVZ', trot: 'pTR', tvac: 'pTV', trel: 'pTL', tballs: 'pTB', x0: 'pX0', y0: 'pY0', h0: 'pH0', gx: 'pGX', gy: 'pGY', gs: 'pGS' };
+  var DEF = { v: 0.5, va: 0.2, w: 120, vz: 100, trot: 1.5, tvac: 0.5, trel: 0.4, tballs: 4, x0: 250, y0: 1000, h0: 0, gx: 100, gy: 1180, gs: 60, zmin: 140, zmax: 0 };
+  var PIDS = { v: 'pV', va: 'pVA', w: 'pW', vz: 'pVZ', trot: 'pTR', tvac: 'pTV', trel: 'pTL', tballs: 'pTB', x0: 'pX0', y0: 'pY0', h0: 'pH0', gx: 'pGX', gy: 'pGY', gs: 'pGS', zmin: 'pZmin', zmax: 'pZmax' };
   var EXAMPLE = [
     { a: 'prendre', f: 'A', p: 'P1' }, { a: 'prendre', f: 'B', p: 'P9' },
     { a: 'mur', f: 'A', z: 'M1', side: 'ext' }, { a: 'mur', f: 'B', z: 'M2', side: 'ext' },
@@ -16,16 +16,24 @@
     { a: 'trone' }
   ];
   var ACTIONS = [
-    ['prendre', 'Prendre le paquet'], ['mur', 'Poser en mur'], ['tour', 'Faire une tour'], ['porte', 'Faire une porte'],
+    ['prendre', 'Prendre (paquet ou pierre)'], ['deposer', 'Déposer en x, y, angle'], ['mur', 'Poser en mur'], ['tour', 'Faire une tour'], ['porte', 'Faire une porte'],
     ['boulets', 'Lâcher les boulets (cour adverse)'], ['prendreGraal', 'Prendre le Graal'], ['poserGraal', 'Poser le Graal sur'],
     ['attendre', 'Attendre (s)'], ['attendreJusqua', 'Attendre jusqu\'à (s)'], ['trone', 'Aller dans la salle du trône']
   ];
-  var SHORT = { prendre: 'Prendre', mur: 'Mur', tour: 'Tour', porte: 'Porte', boulets: 'Boulets', prendreGraal: 'Prendre Graal', poserGraal: 'Poser Graal', attendre: 'Attendre', attendreJusqua: 'Attendre jusqu\'à', trone: 'Trône' };
-  var ICONS = { prendre: 'fa-hand', mur: 'fa-grip-lines', tour: 'fa-chess-rook', porte: 'fa-archway', boulets: 'fa-bowling-ball', prendreGraal: 'fa-trophy', poserGraal: 'fa-award', attendre: 'fa-hourglass-half', attendreJusqua: 'fa-clock', trone: 'fa-crown' };
-  var FIELDS = { prendre: ['f', 'p'], mur: ['f', 'zm', 'side'], tour: ['f', 'zt', 's'], porte: ['f', 'zm', 'side'], boulets: [], prendreGraal: ['f'], poserGraal: ['f', 'zmt'], attendre: ['sec'], attendreJusqua: ['sec'], trone: [] };
+  var SHORT = { prendre: 'Prendre', deposer: 'Déposer', mur: 'Mur', tour: 'Tour', porte: 'Porte', boulets: 'Boulets', prendreGraal: 'Prendre Graal', poserGraal: 'Poser Graal', attendre: 'Attendre', attendreJusqua: 'Attendre jusqu\'à', trone: 'Trône' };
+  var ICONS = { prendre: 'fa-hand', deposer: 'fa-location-crosshairs', mur: 'fa-grip-lines', tour: 'fa-chess-rook', porte: 'fa-archway', boulets: 'fa-bowling-ball', prendreGraal: 'fa-trophy', poserGraal: 'fa-award', attendre: 'fa-hourglass-half', attendreJusqua: 'fa-clock', trone: 'fa-crown' };
+  var FIELDS = { prendre: ['f', 'mode', 'p', 's', 'v', 'tm'], deposer: ['f', 'q', 'xy', 'ang', 'o', 'tm'], mur: ['f', 'zm', 'side'], tour: ['f', 'zt', 's', 'tm'], porte: ['f', 'zm', 'side', 'tm'], boulets: [], prendreGraal: ['f', 'tm'], poserGraal: ['f', 'gm', 'zmt', 'xy', 'tm'], attendre: ['sec'], attendreJusqua: ['sec'], trone: [] };
   var PKIDS = ENGINE.PK.map(function (p) { return p.id; }), MIDS = ENGINE.ZM.map(function (z) { return z.id; }), TIDS = ENGINE.ZT.map(function (z) { return z.id; });
   var SIDS = []; PKIDS.forEach(function (p) { for (var l = 1; l <= 3; l++) SIDS.push(p + '.' + l); });
   var prog = [], params = {}, sel = -1;
+  /* champs affichés : la prise montre soit le paquet, soit la pierre et sa ventouse */
+  function fieldsOf(st) {
+    return (FIELDS[st.a] || []).filter(function (k) {
+      if (st.a === 'poserGraal') return st.gm === 'xy' ? k !== 'zmt' : k !== 'xy';
+      if (st.a !== 'prendre') return true;
+      return st.mode === 'pierre' ? k !== 'p' : k !== 's' && k !== 'v';
+    });
+  }
 
   function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
@@ -38,7 +46,7 @@
   function writeParams() { for (var k in PIDS) $(PIDS[k]).value = params[k]; }
   function readParams() {
     for (var k in PIDS) {
-      var v = parseFloat($(PIDS[k]).value), zeroOk = (k === 'tvac' || k === 'trel' || k === 'x0' || k === 'y0' || k === 'h0' || k === 'gx' || k === 'gy');
+      var v = parseFloat($(PIDS[k]).value), zeroOk = (k === 'tvac' || k === 'trel' || k === 'x0' || k === 'y0' || k === 'h0' || k === 'gx' || k === 'gy' || k === 'zmin' || k === 'zmax');
       params[k] = isFinite(v) && (zeroOk ? true : v > 0) ? v : DEF[k];
     }
   }
@@ -73,13 +81,14 @@
   function describe(st) {
     var f = st.f ? ' · face ' + st.f : '';
     switch (st.a) {
-      case 'prendre': return 'Prendre ' + st.p + f;
+      case 'prendre': return st.mode === 'pierre' ? 'Prendre la pierre ' + st.s + f : 'Prendre ' + st.p + f;
+      case 'deposer': return 'Déposer ' + (st.q === 'pile' ? 'la pile' : st.q) + ' en ' + Math.round(st.x) + ', ' + Math.round(st.y) + ', ' + fmt(st.ang) + '° · ' + (st.o === 'debout' ? 'debout' : 'à plat') + f;
       case 'mur': return 'Mur en ' + st.z + f + sideTxt(st.side);
       case 'tour': return 'Tour ' + st.z + ' avec ' + st.s + f;
       case 'porte': return 'Porte en ' + st.z + f + sideTxt(st.side);
       case 'boulets': return 'Lâcher les boulets';
       case 'prendreGraal': return 'Prendre le Graal' + f;
-      case 'poserGraal': return 'Poser le Graal sur ' + st.z + f;
+      case 'poserGraal': return st.gm === 'xy' ? 'Poser le Graal en ' + Math.round(st.x) + ', ' + Math.round(st.y) + f : 'Poser le Graal sur ' + st.z + f;
       case 'attendre': return 'Attendre ' + fmt(st.sec) + ' s';
       case 'attendreJusqua': return 'Attendre jusqu\'à ' + fmt(st.sec) + ' s';
       case 'trone': return 'Aller dans la salle du trône';
@@ -91,7 +100,9 @@
     var st = { a: a };
     FIELDS[a].forEach(function (k) {
       if (k === 'f') st.f = 'A'; if (k === 'p') st.p = 'P1'; if (k === 'zm') st.z = 'M1'; if (k === 'zt') st.z = 'T1'; if (k === 'zmt') st.z = 'M3';
-      if (k === 'side') st.side = 'auto'; if (k === 's') st.s = 'P1.1'; if (k === 'sec') st.sec = a === 'attendreJusqua' ? 85 : 1;
+      if (k === 'side') st.side = 'auto'; if (k === 's') st.s = a === 'prendre' ? 'P1.3' : 'P1.1'; if (k === 'sec') st.sec = a === 'attendreJusqua' ? 85 : 1;
+      if (k === 'mode') st.mode = 'paquet'; if (k === 'gm') st.gm = 'zone'; if (k === 'v') st.v = 'auto'; if (k === 'tm') st.tm = true;
+      if (k === 'q') st.q = 'pile'; if (k === 'xy') { st.x = 1200; st.y = 1000; } if (k === 'ang') st.ang = 0; if (k === 'o') st.o = 'plat';
     });
     return st;
   }
@@ -121,7 +132,7 @@
   function editor(st, i) {
     var d = document.createElement('div'); d.className = 'sedit';
     d.appendChild(fld('Action', mkSel('Action', ACTIONS, st.a, function (v) { prog[i] = defaults(v); changed(true); })));
-    (FIELDS[st.a] || []).forEach(function (k) {
+    fieldsOf(st).forEach(function (k) {
       if (k === 'f') d.appendChild(fld('Face', mkSeg('Face', [['A', 'Face A'], ['B', 'Face B']], st.f, function (v) { setField(i, 'f', v); })));
       if (k === 'p') d.appendChild(fld('Paquet', mkSel('Paquet', PKIDS.map(function (p) { return [p, p]; }), st.p, function (v) { setField(i, 'p', v); })));
       if (k === 'zm') d.appendChild(fld('Zone', mkSel('Zone de mur', MIDS.map(function (z) { return [z, zoneLabel(z)]; }), st.z, function (v) { setField(i, 'z', v); })));
@@ -129,6 +140,31 @@
       if (k === 'zmt') d.appendChild(fld('Sur', mkSel('Construction', MIDS.concat(TIDS).map(function (z) { return [z, zoneLabel(z)]; }), st.z, function (v) { setField(i, 'z', v); })));
       if (k === 'side') d.appendChild(fld('Côté', mkSeg('Côté', [['auto', 'Auto'], ['ext', 'Extérieur'], ['int', 'Intérieur']], st.side, function (v) { setField(i, 'side', v); })));
       if (k === 's') d.appendChild(fld('Pierre', mkSel('Pierre', SIDS.map(function (p) { return [p, 'Pierre ' + p]; }), st.s, function (v) { setField(i, 's', v); })));
+      if (k === 'mode') d.appendChild(fld('Prendre', mkSeg('Prendre', [['paquet', 'Paquet (3)'], ['pierre', 'Une pierre (dessus)']], st.mode || 'paquet', function (v) { prog[i].mode = v; changed(true); })));
+      if (k === 'v') d.appendChild(fld('Ventouse', mkSel('Ventouse', [['auto', 'Auto (pince au plus près de 165 mm)'], ['1', 'Ventouse 1 (bas)'], ['2', 'Ventouse 2 (milieu)'], ['3', 'Ventouse 3 (haut)']], st.v || 'auto', function (v) { setField(i, 'v', v); })));
+      if (k === 'q') d.appendChild(fld('Quoi', mkSel('Pierres déposées', [['pile', 'Toute la pile tenue']].concat(SIDS.map(function (p) { return [p, 'Pierre ' + p]; })), st.q, function (v) { setField(i, 'q', v); })));
+      if (k === 'gm') d.appendChild(fld('Poser', mkSeg('Poser le Graal', [['zone', 'Sur une construction'], ['xy', 'En x, y']], st.gm || 'zone', function (v) { prog[i].gm = v; changed(true); })));
+      if (k === 'o') d.appendChild(fld('Pose', mkSeg('Pose', [['plat', 'À plat'], ['debout', 'Debout']], st.o, function (v) { setField(i, 'o', v); })));
+      if (k === 'xy' || k === 'ang') {
+        var w2 = document.createElement('div'); w2.className = 'crow';
+        (k === 'xy' ? [['x', 'x', 0, 3000, 5, 'mm'], ['y', 'y', 0, 2000, 5, 'mm']] : [['ang', 'Angle', -360, 360, 5, '°']]).forEach(function (q) {
+          var inp2 = document.createElement('input'); inp2.type = 'number'; inp2.min = String(q[2]); inp2.max = String(q[3]); inp2.step = String(q[4]); inp2.value = st[q[0]]; inp2.setAttribute('aria-label', q[1] + ' (' + q[5] + ')');
+          /* la prévisualisation suit la saisie, le calcul est relancé à la validation */
+          inp2.addEventListener('input', function () { var v = parseFloat(inp2.value); if (isFinite(v)) { prog[i][q[0]] = v; updateGhost(); } });
+          inp2.addEventListener('change', function () { var v = parseFloat(inp2.value); setField(i, q[0], isFinite(v) ? Math.max(q[2], Math.min(q[3], v)) : 0); inp2.value = prog[i][q[0]]; });
+          var u2 = document.createElement('span'); u2.className = 'muted'; u2.textContent = (k === 'xy' ? q[1] + ' ' : '') + q[5];
+          if (k === 'xy') w2.appendChild(u2); w2.appendChild(inp2); if (k !== 'xy') w2.appendChild(u2);
+        });
+        d.appendChild(fld(k === 'xy' ? 'Position' : 'Angle', w2));
+        if (k === 'ang') { var nt = document.createElement('div'); nt.className = 'muted'; nt.style.fontSize = '12px'; nt.textContent = 'Angle du grand côté de la pierre (ou de la rangée debout) : 0° le long de x, positif vers +y, comme l\'orientation de départ.'; d.appendChild(nt); }
+      }
+      if (k === 'tm') {
+        var lb = document.createElement('label'); lb.className = 'chk';
+        var cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !!st.tm;
+        cb.addEventListener('change', function () { setField(i, 'tm', cb.checked); });
+        lb.appendChild(cb); lb.appendChild(document.createTextNode(' Temps masqué : la pince monte, descend et tourne pendant le trajet'));
+        d.appendChild(lb);
+      }
       if (k === 'sec') {
         var w = document.createElement('div'); w.className = 'crow';
         var inp = document.createElement('input'); inp.type = 'number'; inp.min = '0'; inp.step = '0.5'; inp.value = st.sec; inp.setAttribute('aria-label', 'Secondes');
@@ -257,6 +293,25 @@
   function inCastle(x, y) { return ENGINE.inPoly(x, y, ENGINE.CASTLE) || ENGINE.inPoly(x, y, ENGINE.CASTLE_B); }
   var countPer = true;
   function graalAt(t) { var e = R.graal.tl[0]; for (var i = 0; i < R.graal.tl.length; i++) if (R.graal.tl[i].t <= t) e = R.graal.tl[i]; return e; }
+  /* repère d'une pierre à l'instant t (mêmes formules que le moteur) */
+  function stoneGeoAt(st, t) {
+    var e = R.stoneAt(st, t);
+    if (e.k === 'home') { var pk = ENGINE.PK[st.pk]; return { c: [pk.x, pk.y], ang: pk.tan + 90, top: 110 * st.l + 110, e: e }; }
+    var p = e.k === 'held' ? R.poseAt(t) : e.pose, g = p[e.f], th = g.rot * Math.PI / 180, fo = heldFoot(p, e.f === 'A' ? 0 : 1, e.l);
+    return { c: [fo.cx, fo.cy], ang: fo.ang, top: g.hc + 110 * (e.l - 1) * Math.cos(th) + 160 * Math.abs(Math.sin(th)) + 55 * Math.abs(Math.cos(th)), e: e };
+  }
+  function zoneAtXY(c) {
+    for (var i = 0; i < ENGINE.ZM.length; i++) { var z = ENGINE.ZM[i]; if (ENGINE.inPoly(c[0], c[1], rectPoly({ cx: z.c[0], cy: z.c[1], hl: 200, hn: 100, ang: z.tan + 90 }))) return z.id; }
+    for (var j = 0; j < ENGINE.ZT.length; j++) if (Math.hypot(c[0] - ENGINE.ZT[j].c[0], c[1] - ENGINE.ZT[j].c[1]) <= 100) return ENGINE.ZT[j].id;
+    return null;
+  }
+  /* Graal posé sur une pierre : il suit la pierre ; sa zone est recalculée si la pierre a bougé depuis la pose */
+  function graalPos(t) {
+    var ge = graalAt(t); if (ge.k !== 'ride') return null;
+    var st = R.stones.filter(function (x) { return x.id === ge.s; })[0], fr = stoneGeoAt(st, t), n = nv(fr.ang), u = lv(fr.ang);
+    var c = [fr.c[0] + ge.du * u[0] + ge.dv * n[0], fr.c[1] + ge.du * u[1] + ge.dv * n[1]], moved = fr.e.t > ge.t + 1e-6;
+    return { c: c, top: fr.top + params.gs, ang: fr.ang, held: fr.e.k === 'held', zone: moved ? zoneAtXY(c) : ge.zone };
+  }
   function checks(t) {
     var p = R.poseAt(t), robotH = Math.max(345, gripTop(p.A), gripTop(p.B)), pts = triPoly(p), oTop = 0, oLim = 350, bad = false, objBad = false, n = 0;
     R.stones.forEach(function (st) {
@@ -267,6 +322,7 @@
       if (countPer) pts = pts.concat(rectPoly(fo));
     });
     var ge = graalAt(t), gTop = 0;
+    if (ge.k === 'ride') { var gp = graalPos(t); gTop = gp.top; if (gTop > 430.5) objBad = true; if (gp.held) { n++; if (gTop > oTop) { oTop = gTop; oLim = 430; } } }
     if (ge.k === 'held' || ge.k === 'free') { gTop = ge.k === 'held' ? p[ge.f].hc - 110 + params.gs / 2 : (ge.top != null ? ge.top : ge.pose[ge.f].hc - 110 + params.gs); var glim = 430; if (gTop > glim + 0.5) objBad = true; if (ge.k === 'held') { n++; if (gTop > oTop) { oTop = gTop; oLim = glim; } } }
     var per = hullPer(pts), plim = t <= 0.01 ? 1200 : 1400;
     var col = false; R.collisions.forEach(function (c) { if (t >= c.t - 0.001 && t < c.t + 0.1) col = true; });
@@ -352,6 +408,28 @@
     }
   });
 
+  /* prévisualisation du dépôt : pierres fantômes, rouges si l'étape est en erreur (contact, course de pince, appui...) */
+  var ghostMat = new THREE.MeshStandardMaterial({ color: 0x2fbf71, transparent: true, opacity: 0.45, depthWrite: false });
+  var ghostEdge = new THREE.LineBasicMaterial({ color: 0x2fbf71 });
+  var ghosts = [0, 1, 2].map(function () {
+    var m = new THREE.Mesh(new THREE.BoxGeometry(320, 110, 110), ghostMat);
+    m.add(new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry), ghostEdge)); m.visible = false; scene.add(m); return m;
+  });
+  var ghostG = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), ghostMat); ghostG.add(new THREE.LineSegments(new THREE.EdgesGeometry(ghostG.geometry), ghostEdge)); ghostG.visible = false; scene.add(ghostG);
+  function updateGhost() {
+    var st = sel >= 0 ? prog[sel] : null, isG = st && st.a === 'poserGraal' && st.gm === 'xy';
+    var inf = st && (st.a === 'deposer' || isG) && R ? R.stepInfo[sel] : null, gh = inf && inf.ghost;
+    ghostG.visible = !!(isG && gh);
+    if (ghostG.visible) { var gw = W(st.x, st.y); ghostG.scale.setScalar(params.gs); ghostG.position.set(gw[0], gh.feet[0].zc, gw[1]); }
+    ghosts.forEach(function (m, j) {
+      var ft = !isG && gh && gh.feet[j]; m.visible = !!ft; if (!ft) return;
+      var a = (+st.ang || 0) * Math.PI / 180, u = [Math.cos(a), Math.sin(a)], v = [-Math.sin(a), Math.cos(a)];
+      var w = W(st.x + ft.u * u[0] + ft.v * v[0], st.y + ft.u * u[1] + ft.v * v[1]);
+      m.position.set(w[0], ft.zc, w[1]); m.rotation.set(0, -a, ft.vertical ? Math.PI / 2 : 0);
+    });
+    var c = inf && inf.err ? 0xd62f2f : 0x2fbf71; ghostMat.color.setHex(c); ghostEdge.color.setHex(c);
+  }
+
   /* robot */
   var robot = new THREE.Group(); scene.add(robot);
   var yellow = mat(0xf2b600, 0.5, 0.1), blue = mat(0x3a6fd0, 0.55, 0.15), dark = mat(0x39414e, 0.5, 0.3), black = mat(0x1d2128, 0.8, 0);
@@ -408,15 +486,15 @@
   /* ---------- choix d'un repère en cliquant sur la table ---------- */
   function targetKinds(st) {
     var k = [];
-    (FIELDS[st.a] || []).forEach(function (f) {
-      if (f === 'p') k.push('P'); if (f === 'zm') k.push('M'); if (f === 'zt') k.push('T'); if (f === 'zmt') k.push('M', 'T'); if (f === 's') k.push('S');
+    fieldsOf(st).forEach(function (f) {
+      if (f === 'xy') k.push('XY'); if (f === 'p') k.push('P'); if (f === 'zm') k.push('M'); if (f === 'zt') k.push('T'); if (f === 'zmt') k.push('M', 'T'); if (f === 's') k.push('S');
     });
     return k;
   }
   function pickText(kinds) {
     var w = [];
     if (kinds.indexOf('P') >= 0) w.push('un paquet (P)'); if (kinds.indexOf('M') >= 0) w.push('une zone de mur (M)');
-    if (kinds.indexOf('T') >= 0) w.push('une tour (T)'); if (kinds.indexOf('S') >= 0) w.push('une pierre');
+    if (kinds.indexOf('T') >= 0) w.push('une tour (T)'); if (kinds.indexOf('S') >= 0) w.push('une pierre'); if (kinds.indexOf('XY') >= 0) w.push('le point de dépôt');
     return 'Clique ' + w.join(' ou ') + ' sur la table';
   }
   function curKinds() { return sel >= 0 && prog[sel] ? targetKinds(prog[sel]) : []; }
@@ -437,6 +515,11 @@
     var r = canvas.getBoundingClientRect();
     ndc.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
     ray.setFromCamera(ndc, camera);
+    if (kinds.indexOf('XY') >= 0) {
+      var hp = ray.intersectObjects([topM].concat(stoneMeshes), false)[0]; if (!hp) return null;
+      var px = Math.round((hp.point.x + 1500) / 5) * 5, py = Math.round((hp.point.z + 1000) / 5) * 5;
+      return px >= 0 && px <= 3000 && py >= 0 && py <= 2000 ? { kind: 'XY', x: px, y: py } : null;
+    }
     var objs = markers.filter(function (m) { return labels.visible && kinds.indexOf(m.userData.kind) >= 0; });
     if (kinds.indexOf('S') >= 0 || kinds.indexOf('P') >= 0) objs = objs.concat(stoneMeshes);
     var hits = ray.intersectObjects(objs, false);
@@ -455,6 +538,7 @@
   }
   function applyPick(h) {
     var st = prog[sel], f = { P: 'p', M: 'z', T: 'z', S: 's' }[h.kind];
+    if (h.kind === 'XY') { st.x = h.x; st.y = h.y; changed(true); toast('Étape ' + (sel + 1) + ' : ' + describe(st)); return; }
     if (st[f] === h.id) return;
     st[f] = h.id; changed(true); toast('Étape ' + (sel + 1) + ' : ' + describe(st));
   }
@@ -540,13 +624,14 @@
     var thronePart = !throneFull && overlap(tri, ENGINE.THRONE, 0);
     var nBalls = 0;
     if (R.balls.t < Infinity) for (var i = 0; i < 10; i++) { var ti = R.balls.t + (i + 0.5) * R.balls.d / 10; if (ti >= 85 && ti <= T + 1e-6) nBalls++; }
-    return { T: T, fin: fin, walls: walls, doors: doors, towers: towers, inZ: inZ, inOwn: inOwn, ge: ge, throneFull: throneFull, thronePart: thronePart, nBalls: nBalls };
+    return { T: T, fin: fin, walls: walls, doors: doors, towers: towers, inZ: inZ, inOwn: inOwn, ge: ge, gp: graalPos(T), throneFull: throneFull, thronePart: thronePart, nBalls: nBalls };
   }
   /* points de la stratégie avec le barème du compteur (bareme.js) ; douves et PAMI ne sont pas simulés */
   function scoreOf(o) {
     var B = BAREME, rows = [];
     var nP = Object.keys(o.inOwn).length, wOwn = o.walls.filter(own), tOwn = o.towers.filter(own), dOwn = o.doors.filter(own);
     var g = o.ge, gIn = false, lvl = 0, gNote = 'non posé dans le château';
+    if (g.k === 'ride') g = { k: 'free', zone: o.gp.zone, top: o.gp.top };
     if (g.k === 'free' && g.zone && own(g.zone)) {
       gIn = true; var bottom = g.top - params.gs;
       lvl = bottom >= 300 ? 3 : bottom >= 200 ? 2 : bottom >= 100 ? 1 : 0;
@@ -644,6 +729,7 @@
     graalM.scale.setScalar(params.gs / 60);
     if (ge.k === 'home') { var gw = W(params.gx, params.gy); graalM.position.set(gw[0], params.gs / 2, gw[1]); graalM.rotation.set(0, 0, 0); }
     else if (ge.k === 'held') fromGrip(graalM, ge.f, params.gs / 2, -110, 0);
+    else if (ge.k === 'ride') { var gp = graalPos(tt), gw2 = W(gp.c[0], gp.c[1]); graalM.position.set(gw2[0], gp.top - params.gs / 2, gw2[1]); graalM.rotation.set(0, -gp.ang * Math.PI / 180, 0); }
     else { if (!ge._p) { placeRobot(ge.pose); fromGrip(graalM, ge.f, params.gs / 2, -110, 0); ge._p = graalM.position.clone(); ge._q = graalM.quaternion.clone(); placeRobot(p); } graalM.position.copy(ge._p); graalM.quaternion.copy(ge._q); }
     ['A', 'B'].forEach(function (f) { for (var j = 0; j < 3; j++) { var on = p[f].vac[j]; MOD[f].mats[j].color.copy(on ? green : red); MOD[f].mats[j].emissive.copy(green).multiplyScalar(on ? 0.2 : 0); } });
     var ba = R.balls.at, bw = ba ? W(ba[0], ba[1]) : [0, 0];
@@ -673,6 +759,7 @@
     $('ph').style.left = (Math.min(t, TEND) / TEND * 100) + '%';
     $('track').setAttribute('aria-valuenow', String(Math.round(t)));
     if (trail) trail.geometry.setDrawRange(0, Math.max(2, Math.floor(tt / 0.1)));
+    updateGhost();
   }
 
   /* ---------- message éphémère ---------- */
@@ -709,7 +796,7 @@
   function importObj(o) {
     if (!o || !Array.isArray(o.program)) throw new Error('le JSON doit contenir une liste « program ».');
     var valid = ACTIONS.map(function (a) { return a[0]; });
-    var p2 = o.program.filter(function (s) { return s && valid.indexOf(s.a) >= 0; }).map(function (s) { var d = defaults(s.a); for (var k in d) if (s[k] !== undefined) d[k] = s[k]; return d; });
+    var p2 = o.program.filter(function (s) { return s && valid.indexOf(s.a) >= 0; }).map(function (s) { var d = defaults(s.a); for (var k in d) if (s[k] !== undefined) d[k] = s[k]; if (s.tm === undefined && d.tm !== undefined) d.tm = false; return d; });
     prog = p2; params = Object.assign({}, DEF, o.params || {}); sel = -1; writeParams(); readParams(); changed(true);
     return p2.length;
   }
@@ -773,7 +860,11 @@
       var li = document.createElement('li'); if (s.slug === slugify(current)) li.className = 'cur';
       var nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = s.name; nm.title = s.name;
       var meta = document.createElement('span'); meta.className = 'meta'; meta.textContent = s.steps + ' étape' + (s.steps > 1 ? 's' : '') + ' · ' + fmtDate(s.updated);
-      nm.appendChild(meta); li.appendChild(nm);
+      var kpi = document.createElement('span'), stt = statOf(s); kpi.className = 'kpi';
+      if (stt) { kpi.innerHTML = '<b></b> · <b></b>'; kpi.children[0].textContent = stt.pts + ' pts'; kpi.children[1].textContent = fmt(stt.T) + ' s'; if (stt.T > MATCH) kpi.children[1].className = 'bad'; kpi.title = 'Score estimé et durée du programme, calculés avec le simulateur actuel'; }
+      else if (stt === false) kpi.textContent = 'points non calculés';
+      else { kpi.textContent = 'calcul des points…'; queueStat(s); }
+      nm.appendChild(kpi); nm.appendChild(meta); li.appendChild(nm);
       var act = document.createElement('span'); act.className = 'act';
       var bl = document.createElement('button'); bl.type = 'button'; bl.textContent = 'Ouvrir'; bl.setAttribute('aria-label', 'Ouvrir ' + s.name);
       bl.addEventListener('click', function () { confirmLoss(function () { loadStrat(s.slug); }); });
@@ -782,6 +873,41 @@
       bd.addEventListener('click', function () { if (delArm === s.slug) delStrat(s.slug, s.name); else { delArm = s.slug; renderStrats(); } });
       act.appendChild(bl); act.appendChild(bd); li.appendChild(act); ul.appendChild(li);
     });
+  }
+  /* points et durée de chaque stratégie enregistrée : simulées ici, une à la fois, dans un worker à part */
+  var statCache = {}, statQ = [], statBusy = false, statWorker = null, statId = 0;
+  try { if (src) { statWorker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' }))); statWorker.onerror = function () { statWorker = null; }; } } catch (e) { statWorker = null; }
+  function statKey(s) { return 'icamlot-stat-v1-' + s.slug + '-' + s.updated; }
+  function statOf(s) {
+    var k = statKey(s); if (statCache[k] !== undefined) return statCache[k];
+    try { var j = JSON.parse(lsGet(k) || 'null'); if (j && isFinite(j.pts)) return (statCache[k] = j); } catch (e) {}
+    return null;
+  }
+  /* score à 100 s (ou en fin de programme) et durée, avec les fonctions de la page appliquées au résultat r */
+  function statFrom(r, P) {
+    r.poseAt = function (t) { return ENGINE.poseAtK(r.K, t); };
+    r.stoneAt = function (st, t) { var e = st.tl[0]; for (var i = 0; i < st.tl.length; i++) if (st.tl[i].t <= t) e = st.tl[i]; return e; };
+    var sR = R, sP = params; R = r; params = P;
+    try { return { pts: scoreOf(outcome(Math.min(r.T, MATCH))).total, T: r.T }; } finally { R = sR; params = sP; }
+  }
+  function queueStat(s) { if (!statQ.some(function (q) { return statKey(q) === statKey(s); })) statQ.push(s); nextStat(); }
+  function nextStat() {
+    if (statBusy || !statQ.length) return;
+    var s = statQ.shift(); if (statOf(s) !== null) return nextStat();
+    statBusy = true;
+    function done(st) {
+      statBusy = false;
+      statCache[statKey(s)] = st || false; if (st) lsSet(statKey(s), JSON.stringify(st));
+      renderStrats(); nextStat();
+    }
+    api('GET', API + '/' + s.slug).then(function (j) {
+      var P = Object.assign({}, DEF, j.params || {}), pr = Array.isArray(j.program) ? j.program : [];
+      if (statWorker) {
+        var id = ++statId;
+        statWorker.onmessage = function (e) { if (e.data.id === id) { var st = null; try { st = statFrom(e.data.r, P); } catch (x) {} done(st); } };
+        statWorker.postMessage({ prog: pr, P: P, id: id });
+      } else setTimeout(function () { var st = null; try { st = statFrom(ENGINE.simulate(pr, P), P); } catch (x) {} done(st); }, 0);
+    }, function () { done(null); });
   }
   function refreshStrats() {
     return api('GET', API).then(function (j) { strats = j.strategies || []; renderStrats(); }, function () {
