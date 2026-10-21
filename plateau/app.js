@@ -3,14 +3,14 @@
 (function () {
   var $ = function (id) { return document.getElementById(id); };
   var MATCH = 100;
-  var DEF = { v: 0.5, va: 0.2, w: 120, vz: 100, trot: 1.5, tvac: 0.5, trel: 0.4, x0: 250, y0: 1000, h0: 0, gx: 100, gy: 1180, gs: 60, zmin: 140, zmax: 0, pgap: 5,
+  var DEF = { v: 0.5, va: 0.2, w: 120, vz: 100, trot: 1.5, tvac: 0.5, trel: 0.4, x0: 250, y0: 1000, h0: 0, gx: 100, gy: 1180, gs: 60, zmin: 140, zmax: 0, pgap: 5, ovl: 8,
     tx: 250, ty: 1000, cl: 80, cw: 60, bn: 10, brate: 2, bdep: 1, bspin: 0.5, bel: 35, bh: 250, btx: 2625, bmode: 'arret',
     bm: 2, bcd: 0.47, be: 0.5, bmu: 0.3, bcr: 0.05, bdv: 5, bdaz: 2, bdel: 2, bseed: 1 };
-  var PIDS = { v: 'pV', va: 'pVA', w: 'pW', vz: 'pVZ', trot: 'pTR', tvac: 'pTV', trel: 'pTL', x0: 'pX0', y0: 'pY0', h0: 'pH0', gx: 'pGX', gy: 'pGY', gs: 'pGS', zmin: 'pZmin', zmax: 'pZmax', pgap: 'pPGap',
+  var PIDS = { v: 'pV', va: 'pVA', w: 'pW', vz: 'pVZ', trot: 'pTR', tvac: 'pTV', trel: 'pTL', x0: 'pX0', y0: 'pY0', h0: 'pH0', gx: 'pGX', gy: 'pGY', gs: 'pGS', zmin: 'pZmin', zmax: 'pZmax', pgap: 'pPGap', ovl: 'pOvl',
     tx: 'pTX', ty: 'pTY', cl: 'pCL', cw: 'pCW', bn: 'pBN', brate: 'pBRate', bdep: 'pBDep', bspin: 'pBSpin', bel: 'pBEl', bh: 'pBH', btx: 'pBTx', bmode: 'pBMode',
     bm: 'pBM', bcd: 'pBCd', be: 'pBE', bmu: 'pBMu', bcr: 'pBCr', bdv: 'pBDv', bdaz: 'pBDaz', bdel: 'pBDel', bseed: 'pBSeed' };
   /* paramètres qui peuvent valoir 0 */
-  var ZERO_OK = ['tvac', 'trel', 'x0', 'y0', 'h0', 'gx', 'gy', 'zmin', 'zmax', 'pgap', 'tx', 'ty', 'cl', 'cw', 'bn', 'bdep', 'bspin', 'bel', 'be', 'bmu', 'bcr', 'bdv', 'bdaz', 'bdel', 'bseed'];
+  var ZERO_OK = ['tvac', 'trel', 'x0', 'y0', 'h0', 'gx', 'gy', 'zmin', 'zmax', 'pgap', 'ovl', 'tx', 'ty', 'cl', 'cw', 'bn', 'bdep', 'bspin', 'bel', 'be', 'bmu', 'bcr', 'bdv', 'bdaz', 'bdel', 'bseed'];
   var EXAMPLE = [
     { a: 'prendre', f: 'A', p: 'P1' }, { a: 'prendre', f: 'B', p: 'P9' },
     { a: 'mur', f: 'A', z: 'M1', side: 'ext' }, { a: 'mur', f: 'B', z: 'M2', side: 'ext' },
@@ -28,7 +28,7 @@
   ];
   var SHORT = { prendre: 'Prendre', deposer: 'Déposer', mur: 'Mur', tour: 'Tour', porte: 'Porte', tir: 'Tir', prendreGraal: 'Prendre Graal', poserGraal: 'Poser Graal', traj: 'Trajectoire', lacher: 'Lâcher', tourner: 'Tourner', attendre: 'Attendre', attendreJusqua: 'Attendre jusqu\'à', trone: 'Trône' };
   var ICONS = { prendre: 'fa-hand', deposer: 'fa-location-crosshairs', mur: 'fa-grip-lines', tour: 'fa-chess-rook', porte: 'fa-archway', tir: 'fa-bullseye', prendreGraal: 'fa-trophy', poserGraal: 'fa-award', traj: 'fa-route', lacher: 'fa-hand-holding', tourner: 'fa-rotate-right', attendre: 'fa-hourglass-half', attendreJusqua: 'fa-clock', trone: 'fa-crown' };
-  var FIELDS = { prendre: ['f', 'mode', 'p', 's', 'v', 'tm'], deposer: ['f', 'q', 'xy', 'ang', 'r', 'drop', 'tm'], tourner: ['f', 'r', 'tm'], lacher: ['f', 'q'], traj: ['fa', 'pts'], mur: ['f', 'zm', 'side'], tour: ['f', 'zt', 's', 'tm'], porte: ['f', 'zm', 'side', 'tm'], tir: [], prendreGraal: ['f', 'tm'], poserGraal: ['f', 'gm', 'zmt', 'xy', 'tm'], attendre: ['sec'], attendreJusqua: ['sec'], trone: [] };
+  var FIELDS = { prendre: ['f', 'mode', 'p', 's', 'v', 'tm'], deposer: ['f', 'q', 'xy', 'ang', 'r', 'drop', 'tm'], tourner: ['f', 'r', 'tm'], lacher: ['f', 'q'], traj: ['fa', 'pts'], mur: ['f', 'zm', 'pm', 'side', 'xy', 'ang'], tour: ['f', 'zt', 's', 'pm', 'xy', 'ang', 'tm'], porte: ['f', 'zm', 'pm', 'side', 'xy', 'ang', 'tm'], tir: [], prendreGraal: ['f', 'tm'], poserGraal: ['f', 'gm', 'zmt', 'xy', 'tm'], attendre: ['sec'], attendreJusqua: ['sec'], trone: [] };
   var PKIDS = ENGINE.PK.map(function (p) { return p.id; }), MIDS = ENGINE.ZM.map(function (z) { return z.id; }), TIDS = ENGINE.ZT.map(function (z) { return z.id; });
   var SIDS = []; PKIDS.forEach(function (p) { for (var l = 1; l <= 3; l++) SIDS.push(p + '.' + l); });
   var prog = [], params = {}, sel = -1;
@@ -45,6 +45,8 @@
   function fieldsOf(st) {
     return (FIELDS[st.a] || []).filter(function (k) {
       if (st.a === 'poserGraal') return st.gm === 'xy' ? k !== 'zmt' : k !== 'xy';
+      /* constructions : position manuelle seulement en mode manuel, côté d'approche seulement en placement parfait */
+      if (st.a === 'mur' || st.a === 'tour' || st.a === 'porte') { if ((k === 'xy' || k === 'ang') && st.pm !== 'manuel') return false; if (k === 'side' && st.pm && st.pm !== 'parfait') return false; return true; }
       if (st.a !== 'prendre') return true;
       return st.mode === 'pierre' || st.mode === 'deux' ? k !== 'p' : k !== 's' && k !== 'v';
     });
@@ -94,6 +96,7 @@
   }
 
   /* ---------- description d'une étape ---------- */
+  function pmTxt(st) { return st.pm === 'proche' ? ' · au plus proche' : st.pm === 'manuel' ? ' · manuel (' + Math.round(st.x) + ', ' + Math.round(st.y) + ', ' + fmt(+st.ang || 0) + '°)' : ''; }
   function sideTxt(s) { return s === 'ext' ? ' · de l\'extérieur' : s === 'int' ? ' · de l\'intérieur' : ''; }
   function describe(st) {
     var f = st.f ? ' · face ' + st.f : '';
@@ -104,9 +107,9 @@
         return 'Trajectoire : ' + tp.length + ' point' + (tp.length > 1 ? 's' : '') + (la ? ' → ' + Math.round(la.x) + ', ' + Math.round(la.y) + (la.a != null && la.a !== '' ? ', face ' + (st.fa || 'A') + ' à ' + fmt(+la.a) + '°' : '') : '');
       case 'lacher': return 'Lâcher ' + (st.q === 'pile' ? 'la pile' : st.q) + ' sur place' + f;
       case 'tourner': return 'Tourner la pince ' + st.f + ' à ' + (+st.r || 0) + '°' + (st.tm ? ' · pendant le trajet suivant' : '');
-      case 'mur': return 'Mur en ' + st.z + f + sideTxt(st.side);
-      case 'tour': return 'Tour ' + st.z + ' avec ' + st.s + f;
-      case 'porte': return 'Porte en ' + st.z + f + sideTxt(st.side);
+      case 'mur': return 'Mur en ' + st.z + pmTxt(st) + f + (st.pm && st.pm !== 'parfait' ? '' : sideTxt(st.side));
+      case 'tour': return 'Tour ' + st.z + ' avec ' + st.s + pmTxt(st) + f;
+      case 'porte': return 'Porte en ' + st.z + pmTxt(st) + f + (st.pm && st.pm !== 'parfait' ? '' : sideTxt(st.side));
       case 'tir': return 'Séance de tir : salle du trône, face C vers le camp adverse (à partir de 85 s)';
       case 'prendreGraal': return 'Prendre le Graal' + f;
       case 'poserGraal': return st.gm === 'xy' ? 'Poser le Graal en ' + Math.round(st.x) + ', ' + Math.round(st.y) + f : 'Poser le Graal sur ' + st.z + f;
@@ -123,7 +126,7 @@
       if (k === 'f') st.f = 'A'; if (k === 'p') st.p = 'P1'; if (k === 'zm') st.z = 'M1'; if (k === 'zt') st.z = 'T1'; if (k === 'zmt') st.z = 'M3';
       if (k === 'side') st.side = 'auto'; if (k === 's') st.s = a === 'prendre' ? 'P1.3' : 'P1.1'; if (k === 'sec') st.sec = a === 'attendreJusqua' ? 85 : 1;
       if (k === 'mode') st.mode = 'paquet'; if (k === 'gm') st.gm = 'zone'; if (k === 'v') st.v = 'auto'; if (k === 'tm') st.tm = true;
-      if (k === 'q') st.q = 'pile'; if (k === 'xy') { st.x = 1200; st.y = 1000; } if (k === 'ang') st.ang = 0;
+      if (k === 'q') st.q = 'pile'; if (k === 'xy') { if (a === 'deposer' || a === 'poserGraal') { st.x = 1200; st.y = 1000; } else { st.x = null; st.y = null; } } if (k === 'pm') st.pm = 'parfait'; if (k === 'ang') st.ang = 0;
       if (k === 'r') st.r = a === 'tourner' ? 90 : 0; if (k === 'drop') st.drop = false; if (k === 'fa') st.fa = 'A'; if (k === 'pts') st.pts = [];
     });
     return st;
@@ -190,6 +193,11 @@
       if (k === 'q') d.appendChild(fld('Quoi', mkSel('Pierres déposées', [['pile', 'Toute la pile tenue']].concat(SIDS.map(function (p) { return [p, 'Pierre ' + p]; })), st.q, function (v) { setField(i, 'q', v); })));
       if (k === 'gm') d.appendChild(fld('Poser', mkSeg('Poser le Graal', [['zone', 'Sur une construction'], ['xy', 'En x, y']], st.gm || 'zone', function (v) { prog[i].gm = v; changed(true); })));
       if (k === 'r') d.appendChild(fld(st.a === 'tourner' ? 'Angle' : 'Pince', mkSeg('Angle de la pince', st.a === 'tourner' ? [['0', '0°'], ['90', '90°'], ['180', '180°']] : [['0', '0° à plat'], ['90', '90° debout'], ['180', '180° retournée']], String(rotOf(st)), function (v) { delete prog[i].o; setField(i, 'r', +v); })));
+      if (k === 'pm') d.appendChild(fld('Placement', mkSeg('Placement de la construction', [['parfait', 'Parfait'], ['proche', 'Au plus proche'], ['manuel', 'Manuel']], st.pm || 'parfait', function (v) {
+        var q = prog[i]; q.pm = v;
+        if (v === 'manuel' && (q.x == null || q.y == null)) { var zz = ENGINE.zoneById(q.z); q.x = zz ? Math.round(zz.c[0]) : 1200; q.y = zz ? Math.round(zz.c[1]) : 1000; q.ang = zz && zz.tan !== undefined ? zz.tan : 0; }
+        changed(true);
+      })));
       if (k === 'fa') d.appendChild(fld('Angles de', mkSeg('Face orientée par les angles', [['A', 'Face A'], ['B', 'Face B'], ['C', 'Face C']], st.fa || 'A', function (v) { setField(i, 'fa', v); })));
       if (k === 'pts') d.appendChild(fld('Points', ptsEditor(st, i)));
       if (k === 'drop') {
@@ -210,7 +218,7 @@
           if (k === 'xy') w2.appendChild(u2); w2.appendChild(inp2); if (k !== 'xy') w2.appendChild(u2);
         });
         d.appendChild(fld(k === 'xy' ? 'Position' : 'Angle', w2));
-        if (k === 'ang') { var nt = document.createElement('div'); nt.className = 'muted'; nt.style.fontSize = '12px'; nt.textContent = 'Angle du grand côté de la pierre (ou de la rangée debout) : 0° le long de x, positif vers +y, comme l\'orientation de départ.'; d.appendChild(nt); }
+        if (k === 'ang') { var nt = document.createElement('div'); nt.className = 'muted'; nt.style.fontSize = '12px'; nt.textContent = st.a === 'deposer' ? 'Angle du grand côté de la pierre (ou de la rangée debout) : 0° le long de x, positif vers +y, comme l\'orientation de départ.' : 'Centre de la construction et angle de son grand côté (mur, rangée des piliers) : 0° le long de x, positif vers +y. Hors de la zone : avertissement, pas de points.'; d.appendChild(nt); }
       }
       if (k === 'tm') {
         var lb = document.createElement('label'); lb.className = 'chk';
@@ -322,6 +330,8 @@
     r.poseAt = function (t) { return ENGINE.poseAtK(r.K, t); };
     r.stoneAt = function (st, t) { var e = st.tl[0]; for (var i = 0; i < st.tl.length; i++) if (st.tl[i].t <= t) e = st.tl[i]; return e; };
     R = r; $('busy').hidden = true; updateDrop();
+    /* pierres d'un mur, d'une tour ou d'une porte qui ne touchent pas leur zone : en rouge (pas de points) */
+    R.outZone = {}; try { var oz = outcome(Math.min(R.T, MATCH)); R.stones.forEach(function (st) { if (/^[wtpl]/.test(st.tag || '') && oz.fin[st.id] && !oz.fin[st.id].home && !oz.inZ[st.id]) R.outZone[st.id] = 1; }); } catch (x) {}
     TEND = Math.max(MATCH, Math.ceil(R.T + 1));
     $('track').setAttribute('aria-valuemax', String(TEND));
     var tot = $('tot'), nErr = R.errors.length;
@@ -457,7 +467,7 @@
   var stoneMeshes = [];
   ENGINE.PK.forEach(function (pk, qi) {
     for (var l = 0; l < 3; l++) {
-      var m = box(320, 110, 110, stoneMat[l]);
+      var m = box(320, 110, 110, stoneMat[l].clone());
       m.add(new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry), edgeMat));
       [55.5, -55.5].forEach(function (z) { var t = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), tagMat); t.position.z = z; if (z < 0) t.rotation.y = Math.PI; m.add(t); });
       var w = W(pk.x, pk.y); m.userData = { home: { x: w[0], y: 55 + 110 * l, z: w[1], ry: pk.tan ? Math.PI / 2 : 0 }, l: l, pk: pk.id };
@@ -495,13 +505,16 @@
   function updateGhost() {
     var stT = sel >= 0 ? prog[sel] : null; updateTraj(stT, stT && R ? R.stepInfo[sel] : null);
     var st = sel >= 0 ? prog[sel] : null, isG = st && st.a === 'poserGraal' && st.gm === 'xy';
-    var inf = st && (st.a === 'deposer' || isG) && R ? R.stepInfo[sel] : null, gh = inf && inf.ghost;
+    var isC = st && (st.a === 'mur' || st.a === 'tour' || st.a === 'porte');
+    var inf = st && (st.a === 'deposer' || isG || isC) && R ? R.stepInfo[sel] : null, gh = inf && inf.ghost;
+    /* position du fantôme : la saisie (dépôt, construction manuelle) ou celle calculée par le moteur */
+    var bx = isC && st.pm !== 'manuel' && gh && gh.T ? gh.T[0] : st && st.x, by = isC && st.pm !== 'manuel' && gh && gh.T ? gh.T[1] : st && st.y, ba = isC && st.pm !== 'manuel' && gh && gh.T ? gh.ang : st && +st.ang || 0;
     ghostG.visible = !!(isG && gh);
     if (ghostG.visible) { var gw = W(st.x, st.y); ghostG.scale.setScalar(params.gs); ghostG.position.set(gw[0], gh.feet[0].zc, gw[1]); }
     ghosts.forEach(function (m, j) {
       var ft = !isG && gh && gh.feet[j]; m.visible = !!ft; if (!ft) return;
-      var a = (+st.ang || 0) * Math.PI / 180, u = [Math.cos(a), Math.sin(a)], v = [-Math.sin(a), Math.cos(a)];
-      var w = W(st.x + ft.u * u[0] + ft.v * v[0], st.y + ft.u * u[1] + ft.v * v[1]);
+      var a = ba * Math.PI / 180, u = [Math.cos(a), Math.sin(a)], v = [-Math.sin(a), Math.cos(a)];
+      var w = W(bx + ft.u * u[0] + ft.v * v[0], by + ft.u * u[1] + ft.v * v[1]);
       m.position.set(w[0], ft.zc, w[1]); m.rotation.set(0, -a, ft.vertical ? Math.PI / 2 : 0);
     });
     var c = inf && inf.err ? 0xd62f2f : 0x2fbf71; ghostMat.color.setHex(c); ghostEdge.color.setHex(c);
@@ -705,20 +718,27 @@
       else if (e.k === 'free') { var g = e.pose[e.f], th = g.rot * Math.PI / 180, fo = heldFoot(e.pose, e.f === 'A' ? 0 : 1, e.l), zc = g.hc + 110 * (e.l - 1) * Math.cos(th); fin[st.id] = { foot: rectPoly(fo), v: Math.abs(Math.sin(th)) > 0.7, bottom: zc - (160 * Math.abs(Math.sin(th)) + 55 * Math.abs(Math.cos(th))) }; }
     });
     function zr(z) { return rectPoly({ cx: z.c[0], cy: z.c[1], hl: 200, hn: 100, ang: z.tan + 90 }); }
+    Object.keys(fin).forEach(function (k) { fin[k].top = fin[k].bottom + (fin[k].v ? 320 : 110); });
+    /* une pierre compte aussi si elle repose sur une pierre déjà valide pour la zone (E.1) */
+    function grow(ss) {
+      for (var more = true; more;) { more = false; Object.keys(fin).forEach(function (k) { if (fin[k].home || ss.indexOf(k) >= 0) return; if (ss.some(function (j) { return Math.abs(fin[k].bottom - fin[j].top) < 3 && overlap(fin[k].foot, fin[j].foot, 0); })) { ss.push(k); more = true; } }); }
+      return ss;
+    }
     var walls = [], doors = [], towers = [], inZ = {}, inOwn = {};
     ENGINE.ZM.forEach(function (z) {
-      var P = zr(z), ss = Object.keys(fin).filter(function (k) { return !fin[k].home && overlap(fin[k].foot, P, 0); });
+      var P = zr(z), ss = grow(Object.keys(fin).filter(function (k) { return !fin[k].home && overlap(fin[k].foot, P, 0); }));
       ss.forEach(function (k) { inZ[k] = 1; if (own(z.id)) inOwn[k] = 1; });
       var h = ss.filter(function (k) { return !fin[k].v; }), v = ss.filter(function (k) { return fin[k].v; });
       if (v.length >= 2 && h.some(function (k) { return fin[k].bottom > 300; })) doors.push(z.id);
       else if (h.length >= 3) walls.push(z.id);
     });
     ENGINE.ZT.forEach(function (z) {
-      Object.keys(fin).forEach(function (k) {
-        if (fin[k].home) return; var d = 1e9, P = fin[k].foot;
+      var ss = grow(Object.keys(fin).filter(function (k) {
+        if (fin[k].home) return false; var d = 1e9, P = fin[k].foot;
         if (ENGINE.inPoly(z.c[0], z.c[1], P)) d = 0; else for (var i = 0; i < 4; i++) { var a = P[i], b = P[(i + 1) % 4], dx = b[0] - a[0], dy = b[1] - a[1], L = dx * dx + dy * dy, u = Math.max(0, Math.min(1, ((z.c[0] - a[0]) * dx + (z.c[1] - a[1]) * dy) / L)); d = Math.min(d, Math.hypot(z.c[0] - a[0] - u * dx, z.c[1] - a[1] - u * dy)); }
-        if (d < 100) { inZ[k] = 1; if (own(z.id)) inOwn[k] = 1; if (fin[k].v && towers.indexOf(z.id) < 0) towers.push(z.id); }
-      });
+        return d < 100;
+      }));
+      ss.forEach(function (k) { inZ[k] = 1; if (own(z.id)) inOwn[k] = 1; if (fin[k].v && towers.indexOf(z.id) < 0) towers.push(z.id); });
     });
     var ge = graalAt(T), tri = robotFoot(R.poseAt(T), T);
     var throneFull = tri.every(function (v) { return ENGINE.inPoly(v[0], v[1], ENGINE.THRONE); });
@@ -819,6 +839,9 @@
     var tt = Math.min(t, R.T), groups = [];
     R.stones.forEach(function (st, i) {
       var m = stoneMeshes[i], e = R.stoneAt(st, tt);
+      var outZ = e.k === 'free' && R.outZone && R.outZone[st.id];
+      if (m.userData.col == null) m.userData.col = m.material.color.getHex();
+      m.material.color.setHex(outZ ? 0xe03b3b : m.userData.col); m.material.emissive.setHex(outZ ? 0x5a0000 : 0x000000);
       if (e.k === 'home') { var h = m.userData.home; m.position.set(h.x, h.y, h.z); m.rotation.set(0, h.ry, 0); return; }
       if (e.k === 'free') {
         if (!e._p) { placeRobot(e.pose); fromGrip(m, e.f, 55, 110 * (e.l - 1), Math.PI / 2); e._p = m.position.clone(); e._q = m.quaternion.clone(); }
