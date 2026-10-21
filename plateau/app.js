@@ -978,9 +978,29 @@
       setCurrent(name); markSaved(true); toast('« ' + name + ' » enregistrée', 'ok'); refreshStrats();
     }, function (e) { toast('Échec de l\'enregistrement : ' + e.message, 'bad'); });
   }
+  /* Enregistrer : sous le nom affiché en haut (la stratégie ouverte) ; sans nom, demande un nom comme « Enregistrer sous » */
   function save() {
-    var name = $('sName').value.trim(), slug = slugify(name);
-    if (!slug) { $('sName').focus(); toast('Donne d\'abord un nom à la stratégie (en haut).', 'bad'); return; }
+    var name = $('sName').value.trim() || current;
+    if (!slugify(name)) { saveAs(); return; }
+    saveNamed(name);
+  }
+  /* Enregistrer sous : copie sous un nouveau nom, qui devient la stratégie ouverte ; l'ancienne reste telle quelle */
+  function saveAs() {
+    var d = $('dSaveAs'), inp = $('sAsName'), base = $('sName').value.trim() || current;
+    inp.value = base ? base + ' (copie)' : '';
+    $('asNote').hidden = !current;
+    if (typeof d.showModal !== 'function') { var n = window.prompt('Enregistrer sous', inp.value); if (n && slugify(n.trim())) saveNamed(n.trim()); return; }
+    d.showModal(); inp.focus(); inp.select();
+  }
+  $('fSaveAs').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var n = $('sAsName').value.trim();
+    if (!slugify(n)) { $('sAsName').focus(); return; }
+    $('dSaveAs').close(); saveNamed(n);
+  });
+  $('bAsCancel').addEventListener('click', function () { $('dSaveAs').close(); });
+  function saveNamed(name) {
+    var slug = slugify(name);
     api('GET', API).then(function (j) {
       strats = j.strategies || [];
       var clash = strats.filter(function (s) { return s.slug === slug; })[0];
@@ -1007,6 +1027,7 @@
     confirmLoss(function () { prog = []; params = Object.assign({}, DEF); sel = -1; writeParams(); setCurrent(''); markSaved(false); changed(true); closeDrawer(); $('sName').focus(); });
   });
   $('bSave').addEventListener('click', save);
+  $('bSaveAs').addEventListener('click', saveAs);
   $('fName').addEventListener('submit', function (e) { e.preventDefault(); save(); });
   $('sName').addEventListener('input', function () { $('state').textContent = $('sName').value.trim() && $('sName').value.trim() !== current ? 'nouveau nom' : ''; if (!$('state').textContent) updateDirty(); });
   $('bLogout').addEventListener('click', function () {
@@ -1076,7 +1097,8 @@
   /* raccourcis clavier */
   document.addEventListener('keydown', function (e) {
     var tag = e.target.tagName, typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT', mod = e.ctrlKey || e.metaKey, key = e.key;
-    if (mod && key.toLowerCase() === 's') { e.preventDefault(); save(); return; }
+    if (mod && key.toLowerCase() === 's') { e.preventDefault(); if ($('dSaveAs').open) return; if (e.shiftKey) saveAs(); else save(); return; }
+    if ($('dSaveAs').open) return;  /* la boîte « Enregistrer sous » gère ses touches (Échap la ferme) */
     if (key === 'Escape') { if (!$('toast').hidden) hideToast(); else if (openDrawer) closeDrawer(); else if (typing) e.target.blur(); else if (sel >= 0) select(-1); return; }
     if (typing || openDrawer) return;
     if (mod && !e.shiftKey && key.toLowerCase() === 'z') { e.preventDefault(); doUndo(); return; }

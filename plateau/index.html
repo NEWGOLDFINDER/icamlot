@@ -213,6 +213,12 @@ textarea { width: 100%; font-family: var(--font-mono); font-size: 12px; resize: 
 details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
 
 /* ---------- message ---------- */
+.dlg { background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 14px; padding: 18px; width: min(420px, calc(100% - 32px)); box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
+.dlg::backdrop { background: rgba(0,0,0,0.5); }
+.dlg form { display: grid; gap: 10px; }
+.dlg h3 { margin: 0; font-size: 16px; }
+.dlg label { font-size: 13px; color: var(--muted); }
+.dlg input { width: 100%; padding: 8px 10px; background: var(--panel-2); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; font-size: 14px; }
 .toast { position: fixed; left: 50%; bottom: 76px; transform: translateX(-50%); z-index: 300; background: #232633; border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; display: flex; gap: 10px; align-items: center; box-shadow: 0 12px 30px rgba(0,0,0,0.45); max-width: calc(100% - 24px); }
 .toast.bad { border-color: rgba(255,107,107,0.6); }
 .toast.ok { border-color: rgba(60,207,122,0.5); }
@@ -280,6 +286,7 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
     <div class="tbtns">
       <button type="button" id="bStrats" title="Stratégies de l'équipe"><i class="fa-solid fa-folder-open"></i><span class="lbl">Stratégies</span></button>
       <button type="button" class="primary" id="bSave" title="Enregistrer (Ctrl+S)"><i class="fa-solid fa-floppy-disk"></i><span class="lbl">Enregistrer</span></button>
+      <button type="button" id="bSaveAs" title="Enregistrer sous un autre nom (Ctrl+Maj+S)"><i class="fa-regular fa-copy"></i><span class="lbl">Enregistrer sous</span></button>
       <button type="button" id="bParams" title="Paramètres du robot"><i class="fa-solid fa-sliders"></i><span class="lbl">Paramètres</span></button>
       <button type="button" id="bHelp" title="Aide, repères et raccourcis"><i class="fa-solid fa-circle-question"></i></button>
     </div>
@@ -485,6 +492,7 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
         <dt><kbd>Suppr</kbd></dt><dd>Supprimer l'étape</dd>
         <dt><kbd>Ctrl</kbd> + <kbd>Z</kbd> / <kbd>Y</kbd></dt><dd>Annuler / rétablir</dd>
         <dt><kbd>Ctrl</kbd> + <kbd>S</kbd></dt><dd>Enregistrer sur le serveur</dd>
+        <dt><kbd>Ctrl</kbd> + <kbd>Maj</kbd> + <kbd>S</kbd></dt><dd>Enregistrer sous un autre nom</dd>
       </dl>
     </div>
     <div>
@@ -509,6 +517,16 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
     <div class="crow"><button type="button" id="bLogout"><i class="fa-solid fa-right-from-bracket"></i> Se déconnecter</button></div>
   </div>
 </section>
+
+<dialog class="dlg" id="dSaveAs" aria-labelledby="hSaveAs">
+  <form id="fSaveAs">
+    <h3 id="hSaveAs">Enregistrer sous</h3>
+    <label for="sAsName">Nom de la nouvelle stratégie</label>
+    <input id="sAsName" type="text" maxlength="80" autocomplete="off" spellcheck="false">
+    <p class="note" id="asNote">La stratégie actuelle reste enregistrée sous son nom ; la copie devient la stratégie ouverte.</p>
+    <div class="crow"><button type="submit" class="primary">Enregistrer</button><button type="button" id="bAsCancel">Annuler</button></div>
+  </form>
+</dialog>
 
 <div class="toast" id="toast" role="status" hidden><span id="toastMsg"></span><span class="tb" id="toastBtns"></span></div>
 
