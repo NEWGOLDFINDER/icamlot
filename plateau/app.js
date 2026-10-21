@@ -46,7 +46,7 @@
     return (FIELDS[st.a] || []).filter(function (k) {
       if (st.a === 'poserGraal') return st.gm === 'xy' ? k !== 'zmt' : k !== 'xy';
       if (st.a !== 'prendre') return true;
-      return st.mode === 'pierre' ? k !== 'p' : k !== 's' && k !== 'v';
+      return st.mode === 'pierre' || st.mode === 'deux' ? k !== 'p' : k !== 's' && k !== 'v';
     });
   }
 
@@ -98,7 +98,7 @@
   function describe(st) {
     var f = st.f ? ' · face ' + st.f : '';
     switch (st.a) {
-      case 'prendre': return st.mode === 'pierre' ? 'Prendre la pierre ' + st.s + f : 'Prendre ' + st.p + f;
+      case 'prendre': return st.mode === 'pierre' ? 'Prendre la pierre ' + st.s + f : st.mode === 'deux' ? 'Prendre les 2 pierres du dessus (' + st.s + ' et celle dessous)' + f : 'Prendre ' + st.p + f;
       case 'deposer': var rd = rotOf(st); return 'Déposer ' + (st.q === 'pile' ? 'la pile' : st.q) + ' en ' + Math.round(st.x) + ', ' + Math.round(st.y) + ', ' + fmt(st.ang) + '° · ' + (rd === 90 ? 'debout' : rd === 180 ? 'à plat retournée' : 'à plat') + (st.drop ? ' · lâcher' : '') + f;
       case 'lacher': return 'Lâcher ' + (st.q === 'pile' ? 'la pile' : st.q) + ' sur place' + f;
       case 'tourner': return 'Tourner la pince ' + st.f + ' à ' + (+st.r || 0) + '°' + (st.tm ? ' · pendant le trajet suivant' : '');
@@ -159,8 +159,8 @@
       if (k === 'zt') d.appendChild(fld('Tour', mkSel('Tour', TIDS.map(function (z) { return [z, z]; }), st.z, function (v) { setField(i, 'z', v); })));
       if (k === 'zmt') d.appendChild(fld('Sur', mkSel('Construction', MIDS.concat(TIDS).map(function (z) { return [z, zoneLabel(z)]; }), st.z, function (v) { setField(i, 'z', v); })));
       if (k === 'side') d.appendChild(fld('Côté', mkSeg('Côté', [['auto', 'Auto'], ['ext', 'Extérieur'], ['int', 'Intérieur']], st.side, function (v) { setField(i, 'side', v); })));
-      if (k === 's') d.appendChild(fld('Pierre', mkSel('Pierre', SIDS.map(function (p) { return [p, 'Pierre ' + p]; }), st.s, function (v) { setField(i, 's', v); })));
-      if (k === 'mode') d.appendChild(fld('Prendre', mkSeg('Prendre', [['paquet', 'Paquet (3)'], ['pierre', 'Une pierre (dessus)']], st.mode || 'paquet', function (v) { prog[i].mode = v; changed(true); })));
+      if (k === 's') d.appendChild(fld(st.mode === 'deux' ? 'Dessus' : 'Pierre', mkSel('Pierre', SIDS.map(function (p) { return [p, 'Pierre ' + p]; }), st.s, function (v) { setField(i, 's', v); })));
+      if (k === 'mode') d.appendChild(fld('Prendre', mkSeg('Prendre', [['paquet', 'Paquet (3)'], ['deux', 'Deux du dessus'], ['pierre', 'Une pierre (dessus)']], st.mode || 'paquet', function (v) { prog[i].mode = v; changed(true); })));
       if (k === 'v') d.appendChild(fld('Ventouse', mkSel('Ventouse', [['auto', 'Auto (pince au plus près de 165 mm)'], ['1', 'Ventouse 1 (bas)'], ['2', 'Ventouse 2 (milieu)'], ['3', 'Ventouse 3 (haut)']], st.v || 'auto', function (v) { setField(i, 'v', v); })));
       if (k === 'q') d.appendChild(fld('Quoi', mkSel('Pierres déposées', [['pile', 'Toute la pile tenue']].concat(SIDS.map(function (p) { return [p, 'Pierre ' + p]; })), st.q, function (v) { setField(i, 'q', v); })));
       if (k === 'gm') d.appendChild(fld('Poser', mkSeg('Poser le Graal', [['zone', 'Sur une construction'], ['xy', 'En x, y']], st.gm || 'zone', function (v) { prog[i].gm = v; changed(true); })));
