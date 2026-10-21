@@ -24,11 +24,11 @@
   var ACTIONS = [
     ['prendre', 'Prendre (paquet ou pierre)'], ['deposer', 'Déposer en x, y, angle'], ['mur', 'Poser en mur'], ['tour', 'Faire une tour'], ['porte', 'Faire une porte'],
     ['tir', 'Commencer la séance de tir (canon, face C)'], ['prendreGraal', 'Prendre le Graal'], ['poserGraal', 'Poser le Graal sur'],
-    ['lacher', 'Lâcher sur place'], ['tourner', 'Tourner la pince (0, 90, 180°)'], ['attendre', 'Attendre (s)'], ['attendreJusqua', 'Attendre jusqu\'à (s)'], ['trone', 'Aller dans la salle du trône']
+    ['traj', 'Trajectoire (points cliqués)'], ['lacher', 'Lâcher sur place'], ['tourner', 'Tourner la pince (0, 90, 180°)'], ['attendre', 'Attendre (s)'], ['attendreJusqua', 'Attendre jusqu\'à (s)'], ['trone', 'Aller dans la salle du trône']
   ];
-  var SHORT = { prendre: 'Prendre', deposer: 'Déposer', mur: 'Mur', tour: 'Tour', porte: 'Porte', tir: 'Tir', prendreGraal: 'Prendre Graal', poserGraal: 'Poser Graal', lacher: 'Lâcher', tourner: 'Tourner', attendre: 'Attendre', attendreJusqua: 'Attendre jusqu\'à', trone: 'Trône' };
-  var ICONS = { prendre: 'fa-hand', deposer: 'fa-location-crosshairs', mur: 'fa-grip-lines', tour: 'fa-chess-rook', porte: 'fa-archway', tir: 'fa-bullseye', prendreGraal: 'fa-trophy', poserGraal: 'fa-award', lacher: 'fa-hand-holding', tourner: 'fa-rotate-right', attendre: 'fa-hourglass-half', attendreJusqua: 'fa-clock', trone: 'fa-crown' };
-  var FIELDS = { prendre: ['f', 'mode', 'p', 's', 'v', 'tm'], deposer: ['f', 'q', 'xy', 'ang', 'r', 'drop', 'tm'], tourner: ['f', 'r', 'tm'], lacher: ['f', 'q'], mur: ['f', 'zm', 'side'], tour: ['f', 'zt', 's', 'tm'], porte: ['f', 'zm', 'side', 'tm'], tir: [], prendreGraal: ['f', 'tm'], poserGraal: ['f', 'gm', 'zmt', 'xy', 'tm'], attendre: ['sec'], attendreJusqua: ['sec'], trone: [] };
+  var SHORT = { prendre: 'Prendre', deposer: 'Déposer', mur: 'Mur', tour: 'Tour', porte: 'Porte', tir: 'Tir', prendreGraal: 'Prendre Graal', poserGraal: 'Poser Graal', traj: 'Trajectoire', lacher: 'Lâcher', tourner: 'Tourner', attendre: 'Attendre', attendreJusqua: 'Attendre jusqu\'à', trone: 'Trône' };
+  var ICONS = { prendre: 'fa-hand', deposer: 'fa-location-crosshairs', mur: 'fa-grip-lines', tour: 'fa-chess-rook', porte: 'fa-archway', tir: 'fa-bullseye', prendreGraal: 'fa-trophy', poserGraal: 'fa-award', traj: 'fa-route', lacher: 'fa-hand-holding', tourner: 'fa-rotate-right', attendre: 'fa-hourglass-half', attendreJusqua: 'fa-clock', trone: 'fa-crown' };
+  var FIELDS = { prendre: ['f', 'mode', 'p', 's', 'v', 'tm'], deposer: ['f', 'q', 'xy', 'ang', 'r', 'drop', 'tm'], tourner: ['f', 'r', 'tm'], lacher: ['f', 'q'], traj: ['fa', 'pts'], mur: ['f', 'zm', 'side'], tour: ['f', 'zt', 's', 'tm'], porte: ['f', 'zm', 'side', 'tm'], tir: [], prendreGraal: ['f', 'tm'], poserGraal: ['f', 'gm', 'zmt', 'xy', 'tm'], attendre: ['sec'], attendreJusqua: ['sec'], trone: [] };
   var PKIDS = ENGINE.PK.map(function (p) { return p.id; }), MIDS = ENGINE.ZM.map(function (z) { return z.id; }), TIDS = ENGINE.ZT.map(function (z) { return z.id; });
   var SIDS = []; PKIDS.forEach(function (p) { for (var l = 1; l <= 3; l++) SIDS.push(p + '.' + l); });
   var prog = [], params = {}, sel = -1;
@@ -100,6 +100,8 @@
     switch (st.a) {
       case 'prendre': return st.mode === 'pierre' ? 'Prendre la pierre ' + st.s + f : st.mode === 'deux' ? 'Prendre les 2 pierres du dessus (' + st.s + ' et celle dessous)' + f : 'Prendre ' + st.p + f;
       case 'deposer': var rd = rotOf(st); return 'Déposer ' + (st.q === 'pile' ? 'la pile' : st.q) + ' en ' + Math.round(st.x) + ', ' + Math.round(st.y) + ', ' + fmt(st.ang) + '° · ' + (rd === 90 ? 'debout' : rd === 180 ? 'à plat retournée' : 'à plat') + (st.drop ? ' · lâcher' : '') + f;
+      case 'traj': var tp = st.pts || [], la = tp.length ? tp[tp.length - 1] : null;
+        return 'Trajectoire : ' + tp.length + ' point' + (tp.length > 1 ? 's' : '') + (la ? ' → ' + Math.round(la.x) + ', ' + Math.round(la.y) + (la.a != null && la.a !== '' ? ', face ' + (st.fa || 'A') + ' à ' + fmt(+la.a) + '°' : '') : '');
       case 'lacher': return 'Lâcher ' + (st.q === 'pile' ? 'la pile' : st.q) + ' sur place' + f;
       case 'tourner': return 'Tourner la pince ' + st.f + ' à ' + (+st.r || 0) + '°' + (st.tm ? ' · pendant le trajet suivant' : '');
       case 'mur': return 'Mur en ' + st.z + f + sideTxt(st.side);
@@ -122,7 +124,7 @@
       if (k === 'side') st.side = 'auto'; if (k === 's') st.s = a === 'prendre' ? 'P1.3' : 'P1.1'; if (k === 'sec') st.sec = a === 'attendreJusqua' ? 85 : 1;
       if (k === 'mode') st.mode = 'paquet'; if (k === 'gm') st.gm = 'zone'; if (k === 'v') st.v = 'auto'; if (k === 'tm') st.tm = true;
       if (k === 'q') st.q = 'pile'; if (k === 'xy') { st.x = 1200; st.y = 1000; } if (k === 'ang') st.ang = 0;
-      if (k === 'r') st.r = a === 'tourner' ? 90 : 0; if (k === 'drop') st.drop = false;
+      if (k === 'r') st.r = a === 'tourner' ? 90 : 0; if (k === 'drop') st.drop = false; if (k === 'fa') st.fa = 'A'; if (k === 'pts') st.pts = [];
     });
     return st;
   }
@@ -149,6 +151,29 @@
   function setField(i, k, v) { prog[i][k] = v; changed(); refreshRow(i); }
   function refreshRow(i) { var li = stepsEl.children[i]; if (li) { var t = li.querySelector('.txt'); if (t) t.textContent = describe(prog[i]); } renderTimeline(); }
 
+  /* liste des points d'une trajectoire : x, y, angle facultatif ; clic sur la table pour en ajouter */
+  function ptsEditor(st, i) {
+    var box = document.createElement('div'); box.className = 'ptsl';
+    var P = st.pts || (st.pts = []);
+    if (!P.length) { var e0 = document.createElement('div'); e0.className = 'muted'; e0.textContent = 'Aucun point : clique sur la table pour en ajouter.'; box.appendChild(e0); }
+    P.forEach(function (q, j) {
+      var row = document.createElement('div'); row.className = 'ptr';
+      var lb = document.createElement('span'); lb.className = 'muted'; lb.textContent = j === P.length - 1 ? 'Arr.' : String(j + 1); row.appendChild(lb);
+      [['x', 'x', 0, 3000], ['y', 'y', 0, 2000], ['a', 'angle', -360, 360]].forEach(function (c) {
+        var inp = document.createElement('input'); inp.type = 'number'; inp.step = '5'; inp.min = String(c[2]); inp.max = String(c[3]);
+        inp.value = q[c[0]] == null ? '' : q[c[0]]; inp.setAttribute('aria-label', 'Point ' + (j + 1) + ' : ' + c[1]); if (c[0] === 'a') inp.placeholder = 'libre';
+        function read() { var v = parseFloat(inp.value); return c[0] === 'a' ? (isFinite(v) ? v : null) : (isFinite(v) ? Math.max(c[2], Math.min(c[3], v)) : q[c[0]]); }
+        inp.addEventListener('input', function () { q[c[0]] = read(); updateGhost(); });
+        inp.addEventListener('change', function () { q[c[0]] = read(); changed(); refreshRow(i); });
+        row.appendChild(inp);
+      });
+      row.appendChild(iconBtn('fa-arrow-up', '', 'Monter le point', function () { if (j > 0) { P.splice(j - 1, 0, P.splice(j, 1)[0]); changed(true); } }));
+      row.appendChild(iconBtn('fa-xmark', '', 'Supprimer le point', function () { P.splice(j, 1); changed(true); }, 'danger'));
+      box.appendChild(row);
+    });
+    if (P.length) box.appendChild(iconBtn('fa-eraser', 'Effacer les points', 'Effacer tous les points', function () { st.pts = []; changed(true); }));
+    return box;
+  }
   function editor(st, i) {
     var d = document.createElement('div'); d.className = 'sedit';
     d.appendChild(fld('Action', mkSel('Action', ACTIONS, st.a, function (v) { prog[i] = defaults(v); changed(true); })));
@@ -165,6 +190,8 @@
       if (k === 'q') d.appendChild(fld('Quoi', mkSel('Pierres déposées', [['pile', 'Toute la pile tenue']].concat(SIDS.map(function (p) { return [p, 'Pierre ' + p]; })), st.q, function (v) { setField(i, 'q', v); })));
       if (k === 'gm') d.appendChild(fld('Poser', mkSeg('Poser le Graal', [['zone', 'Sur une construction'], ['xy', 'En x, y']], st.gm || 'zone', function (v) { prog[i].gm = v; changed(true); })));
       if (k === 'r') d.appendChild(fld(st.a === 'tourner' ? 'Angle' : 'Pince', mkSeg('Angle de la pince', st.a === 'tourner' ? [['0', '0°'], ['90', '90°'], ['180', '180°']] : [['0', '0° à plat'], ['90', '90° debout'], ['180', '180° retournée']], String(rotOf(st)), function (v) { delete prog[i].o; setField(i, 'r', +v); })));
+      if (k === 'fa') d.appendChild(fld('Angles de', mkSeg('Face orientée par les angles', [['A', 'Face A'], ['B', 'Face B'], ['C', 'Face C']], st.fa || 'A', function (v) { setField(i, 'fa', v); })));
+      if (k === 'pts') d.appendChild(fld('Points', ptsEditor(st, i)));
       if (k === 'drop') {
         var lbd = document.createElement('label'); lbd.className = 'chk';
         var cbd = document.createElement('input'); cbd.type = 'checkbox'; cbd.id = 'cbDrop'; cbd.checked = !!st.drop;
@@ -446,7 +473,27 @@
     m.add(new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry), ghostEdge)); m.visible = false; scene.add(m); return m;
   });
   var ghostG = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), ghostMat); ghostG.add(new THREE.LineSegments(new THREE.EdgesGeometry(ghostG.geometry), ghostEdge)); ghostG.visible = false; scene.add(ghostG);
+  /* trajectoire de l'étape sélectionnée : ligne, points et robot à l'arrivée (flèche : face des angles) */
+  var trajG = new THREE.Group(); scene.add(trajG); var trajKey = '';
+  function updateTraj(st, inf) {
+    var key = st && st.a === 'traj' && R && inf ? JSON.stringify([st.pts, st.fa, inf.t0, inf.t1, R.T, !!inf.err]) : '';
+    if (key === trajKey) return; trajKey = key;
+    trajG.children.slice().forEach(function (o) { trajG.remove(o); if (o.geometry) o.geometry.dispose(); });
+    if (!key) return;
+    var p0 = R.poseAt(inf.t0), w0 = W(p0.x, p0.y), pts = [new THREE.Vector3(w0[0], 6, w0[1])];
+    var col = inf.err ? 0xd62f2f : 0x4fc3f7, lm = new THREE.LineBasicMaterial({ color: col }), dm = new THREE.MeshBasicMaterial({ color: col });
+    (st.pts || []).forEach(function (q, j) {
+      var w = W(+q.x, +q.y); pts.push(new THREE.Vector3(w[0], 6, w[1]));
+      var dot = new THREE.Mesh(new THREE.SphereGeometry(j === st.pts.length - 1 ? 16 : 11, 12, 8), dm); dot.position.set(w[0], 8, w[1]); trajG.add(dot);
+    });
+    trajG.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), lm));
+    var pe = R.poseAt(inf.t1), tri = triPoly(pe).map(function (v) { var w = W(v[0], v[1]); return new THREE.Vector3(w[0], 7, w[1]); });
+    tri.push(tri[0].clone()); trajG.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(tri), lm));
+    var a = nv(pe.h + 120 * ({ A: 0, B: 1, C: 2 }[st.fa] || 0)), we = W(pe.x, pe.y), wf = W(pe.x + 260 * a[0], pe.y + 260 * a[1]);
+    trajG.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(we[0], 9, we[1]), new THREE.Vector3(wf[0], 9, wf[1])]), new THREE.LineBasicMaterial({ color: 0xf5c518 })));
+  }
   function updateGhost() {
+    var stT = sel >= 0 ? prog[sel] : null; updateTraj(stT, stT && R ? R.stepInfo[sel] : null);
     var st = sel >= 0 ? prog[sel] : null, isG = st && st.a === 'poserGraal' && st.gm === 'xy';
     var inf = st && (st.a === 'deposer' || isG) && R ? R.stepInfo[sel] : null, gh = inf && inf.ghost;
     ghostG.visible = !!(isG && gh);
@@ -540,14 +587,14 @@
   function targetKinds(st) {
     var k = [];
     fieldsOf(st).forEach(function (f) {
-      if (f === 'xy') k.push('XY'); if (f === 'p') k.push('P'); if (f === 'zm') k.push('M'); if (f === 'zt') k.push('T'); if (f === 'zmt') k.push('M', 'T'); if (f === 's') k.push('S');
+      if (f === 'xy') k.push('XY'); if (f === 'pts') k.push('PT'); if (f === 'p') k.push('P'); if (f === 'zm') k.push('M'); if (f === 'zt') k.push('T'); if (f === 'zmt') k.push('M', 'T'); if (f === 's') k.push('S');
     });
     return k;
   }
   function pickText(kinds) {
     var w = [];
     if (kinds.indexOf('P') >= 0) w.push('un paquet (P)'); if (kinds.indexOf('M') >= 0) w.push('une zone de mur (M)');
-    if (kinds.indexOf('T') >= 0) w.push('une tour (T)'); if (kinds.indexOf('S') >= 0) w.push('une pierre'); if (kinds.indexOf('XY') >= 0) w.push('le point de dépôt');
+    if (kinds.indexOf('T') >= 0) w.push('une tour (T)'); if (kinds.indexOf('S') >= 0) w.push('une pierre'); if (kinds.indexOf('XY') >= 0) w.push('le point de dépôt'); if (kinds.indexOf('PT') >= 0) return 'Clique sur la table pour ajouter un point à la trajectoire';
     return 'Clique ' + w.join(' ou ') + ' sur la table';
   }
   function curKinds() { return sel >= 0 && prog[sel] ? targetKinds(prog[sel]) : []; }
@@ -568,10 +615,10 @@
     var r = canvas.getBoundingClientRect();
     ndc.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
     ray.setFromCamera(ndc, camera);
-    if (kinds.indexOf('XY') >= 0) {
+    if (kinds.indexOf('XY') >= 0 || kinds.indexOf('PT') >= 0) {
       var hp = ray.intersectObjects([topM].concat(stoneMeshes), false)[0]; if (!hp) return null;
       var px = Math.round((hp.point.x + 1500) / 5) * 5, py = Math.round((hp.point.z + 1000) / 5) * 5;
-      return px >= 0 && px <= 3000 && py >= 0 && py <= 2000 ? { kind: 'XY', x: px, y: py } : null;
+      return px >= 0 && px <= 3000 && py >= 0 && py <= 2000 ? { kind: kinds.indexOf('PT') >= 0 ? 'PT' : 'XY', x: px, y: py } : null;
     }
     var objs = markers.filter(function (m) { return labels.visible && kinds.indexOf(m.userData.kind) >= 0; });
     if (kinds.indexOf('S') >= 0 || kinds.indexOf('P') >= 0) objs = objs.concat(stoneMeshes);
@@ -591,6 +638,7 @@
   }
   function applyPick(h) {
     var st = prog[sel], f = { P: 'p', M: 'z', T: 'z', S: 's' }[h.kind];
+    if (h.kind === 'PT') { (st.pts || (st.pts = [])).push({ x: h.x, y: h.y, a: null }); changed(true); toast('Point ' + st.pts.length + ' ajouté : ' + h.x + ', ' + h.y); return; }
     if (h.kind === 'XY') { st.x = h.x; st.y = h.y; changed(true); toast('Étape ' + (sel + 1) + ' : ' + describe(st)); return; }
     if (st[f] === h.id) return;
     st[f] = h.id; changed(true); toast('Étape ' + (sel + 1) + ' : ' + describe(st));

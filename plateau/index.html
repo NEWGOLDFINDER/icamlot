@@ -131,6 +131,10 @@ kbd { font-family: var(--font-mono); font-size: 12px; background: var(--panel-2)
 .fld { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 8px; align-items: center; }
 .fld > span { color: var(--muted); font-size: 12.5px; }
 .fld select { width: 100%; padding: 5px 8px; }
+.ptsl { display: grid; gap: 4px; }
+.ptr { display: grid; grid-template-columns: 26px repeat(3, minmax(0, 1fr)) auto auto; gap: 4px; align-items: center; min-width: 0; }
+.fld .ptr input[type=number] { width: 100%; min-width: 0; padding: 4px 6px; }
+.ptr button { padding: 4px 7px; }
 .fld input[type=number] { width: 90px; }
 .segc { display: inline-flex; background: var(--bg); border: 1px solid var(--line); border-radius: 999px; padding: 2px; gap: 2px; flex-wrap: wrap; }
 .segc button { border: none; background: transparent; border-radius: 999px; padding: 4px 11px; font-size: 13px; color: var(--muted); }
@@ -509,6 +513,7 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
         <li>Trajets calculés sur une grille de 40 mm avec la forme exacte du robot, du canon et des pierres tenues, en gardant si possible 25 mm d'écart avec les pierres. Chaque trajet est vérifié pas à pas (10 mm, 1,5°, et au millimètre près là où le robot frôle une pierre), avec la position réelle des pinces au même instant ; si besoin le robot pivote sur place dans un endroit dégagé, et la pince bouge au départ, en fin de trajet ou avant de partir. Les mouvements de pince sur place sont aussi vérifiés. S'il n'existe aucun passage sans contact, l'étape est signalée en erreur.</li>
         <li>Prise : un paquet entier, les deux pierres du dessus (empilées à plat et alignées), ou une seule pierre si rien n'est posé dessus (ventouse au choix). Dépôt en x, y, angle : toute la pile tenue ou une pierre, pince à 0° (à plat), 90° (debout) ou 180° (à plat, pile retournée), sur la table ou sur d'autres pierres. À plat, seule la pierre du bas de la pince peut être posée seule. La hauteur de pince doit rester dans sa course (Paramètres) ; sinon, la case « Lâcher » laisse tomber les pierres à plat depuis la position la plus basse de la pince.</li>
         <li>Étape « Lâcher » : coupe le vide sur place, sans bouger ; les pierres tombent droit sur le sol ou sur les pierres en dessous (debout : seulement au contact de l'appui).</li>
+        <li>Étape « Trajectoire » : le robot suit les points cliqués sur la table, depuis sa position, en ligne droite d'un point à l'autre. Angle facultatif à chaque point (orientation de la face choisie, 0° le long de x, positif vers +y) ; sans angle, la rotation est répartie selon la distance. Les contacts sont signalés, le tracé n'est pas corrigé.</li>
         <li>Pince : rotation dans un seul sens, à 0°, 90° ou 180° (180° prend deux fois le temps de 90°). Étape « Tourner la pince » : tout de suite, ou en temps masqué pendant le prochain trajet.</li>
         <li>Temps masqué (case dans l'étape) : la pince monte, descend et tourne pendant le trajet ; le robot attend la pince si elle est plus lente. Les étapes enregistrées avant cette option restent sans temps masqué.</li>
         <li>Porte : 2 piliers accolés posés debout, puis le robot recule juste assez, met le linteau à plat en restant bas et ne le monte qu'à la hauteur des piliers (+ l'écart réglable) pour le poser : la pince reste sous le plafond de 350 mm. Linteau tenu par de petites ventouses. Tour : la pierre est centrée sur son cercle si la place le permet, sinon décalée (signalé). Robot adverse absent.</li>
@@ -1338,6 +1343,35 @@ var ENGINE = (function () {
           cands.push({ O: [Gc[0] - (rin + GS / 2) * n[0], Gc[1] - (rin + GS / 2) * n[1]], h: phi - 120 * fk(f), phi: phi, Gc: Gc });
         }
         placeGraal(st, cands, top, z.id, z.id);
+      },
+      /* trajectoire tracée point par point : suivie telle quelle (contacts signalés, pas corrigés).
+         Angle facultatif à chaque point (orientation de la face choisie) ; entre deux angles, rotation répartie selon la distance. */
+      traj: function (st) {
+        flushPend();
+        var list = (st.pts || []).filter(function (q) { return q && isFinite(+q.x) && isFinite(+q.y); });
+        if (!list.length) return err('Trajectoire : aucun point (clique sur la table pour en ajouter).');
+        var off = 120 * ({ A: 0, B: 1, C: 2 }[st.fa] || 0), P0 = [s.x, s.y], pts = [P0].concat(list.map(function (q) { return [+q.x, +q.y]; }));
+        var dcum = [0]; for (var i = 1; i < pts.length; i++) dcum.push(dcum[i - 1] + dist(pts[i - 1], pts[i]));
+        /* caps imposés (déroulés sans saut de plus de 180° d'un repère au suivant) */
+        var anc = [{ i: 0, h: s.h }];
+        list.forEach(function (q, k) { if (q.a !== null && q.a !== undefined && q.a !== '' && isFinite(+q.a)) { var prev = anc[anc.length - 1].h; anc.push({ i: k + 1, h: prev + angd(prev, +q.a - off) }); } });
+        var hs = pts.map(function (p, i) {
+          var a = null, b = null; anc.forEach(function (x) { if (x.i <= i) a = x; if (x.i >= i && !b) b = x; });
+          if (!b || b === a) return a.h;
+          var span = dcum[b.i] - dcum[a.i], u = span > 0 ? (dcum[i] - dcum[a.i]) / span : (i - a.i) / Math.max(1, b.i - a.i);
+          return a.h + (b.h - a.h) * u;
+        });
+        var hit = null;
+        for (var j = 1; j < pts.length; j++) {
+          var A = pts[j - 1], B = pts[j], hA = hs[j - 1], hB = hs[j], L = dist(A, B);
+          var n = Math.max(1, Math.ceil(Math.max(L / 10, Math.abs(hB - hA) / 1.5)));
+          for (var k = 1; k <= n && !hit; k++) { var u = k / n, q = { x: A[0] + (B[0] - A[0]) * u, y: A[1] + (B[1] - A[1]) * u, h: hA + (hB - hA) * u, A: cp(s.A), B: cp(s.B) }; var c = collides(q); if (c) hit = { c: c, j: j }; }
+          if (hit && hit.j === j) err('Trajectoire : contact avec ' + hit.c + ' entre ' + (j === 1 ? 'le départ' : 'le point ' + (j - 1)) + ' et le point ' + j + '.');
+          var d = Math.max(L / V, Math.abs(hB - hA) / WR, 0.05);
+          s.x = B[0]; s.y = B[1]; s.h = hB; adv(d, 'Trajectoire : point ' + j + ' / ' + list.length + ' (' + Math.round(B[0]) + ', ' + Math.round(B[1]) + ')');
+          K[K.length - 1].lin = true;
+          if (hit) hit = { c: hit.c, j: -1 };
+        }
       },
       /* lâcher sur place : vide coupé, les pierres tombent droit sur leur appui (sol ou pierres) */
       lacher: function (st) {
