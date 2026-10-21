@@ -28,7 +28,7 @@
   ];
   var SHORT = { prendre: 'Prendre', deposer: 'Déposer', mur: 'Mur', tour: 'Tour', porte: 'Porte', tir: 'Tir', prendreGraal: 'Prendre Graal', poserGraal: 'Poser Graal', traj: 'Trajectoire', lacher: 'Lâcher', tourner: 'Tourner', attendre: 'Attendre', attendreJusqua: 'Attendre jusqu\'à', trone: 'Trône' };
   var ICONS = { prendre: 'fa-hand', deposer: 'fa-location-crosshairs', mur: 'fa-grip-lines', tour: 'fa-chess-rook', porte: 'fa-archway', tir: 'fa-bullseye', prendreGraal: 'fa-trophy', poserGraal: 'fa-award', traj: 'fa-route', lacher: 'fa-hand-holding', tourner: 'fa-rotate-right', attendre: 'fa-hourglass-half', attendreJusqua: 'fa-clock', trone: 'fa-crown' };
-  var FIELDS = { prendre: ['f', 'mode', 'p', 's', 'v', 'tm'], deposer: ['f', 'q', 'xy', 'ang', 'r', 'drop', 'tm'], tourner: ['f', 'r', 'tm'], lacher: ['f', 'q'], traj: ['fa', 'pts'], mur: ['f', 'zm', 'pm', 'side', 'xy', 'ang'], tour: ['f', 'zt', 's', 'pm', 'xy', 'ang', 'tm'], porte: ['f', 'zm', 'pm', 'side', 'xy', 'ang', 'tm'], tir: [], prendreGraal: ['f', 'tm'], poserGraal: ['f', 'gm', 'zmt', 'xy', 'tm'], attendre: ['sec'], attendreJusqua: ['sec'], trone: [] };
+  var FIELDS = { prendre: ['f', 'mode', 'p', 's', 'v', 'tm'], deposer: ['f', 'q', 'xy', 'ang', 'r', 'drop', 'tm'], tourner: ['f', 'r', 'tm'], lacher: ['f', 'q'], traj: ['fa', 'pts'], mur: ['f', 'zm', 'pm', 'side', 'xy', 'ang'], tour: ['f', 'zt', 's', 'pm', 'xy', 'ang', 'tm'], porte: ['f', 'zm', 'pm', 'side', 'xy', 'ang', 'tm'], tir: [], prendreGraal: ['f', 'tm'], poserGraal: ['f', 'gm', 'zmt', 'xy', 'side', 'tm'], attendre: ['sec'], attendreJusqua: ['sec'], trone: [] };
   var PKIDS = ENGINE.PK.map(function (p) { return p.id; }), MIDS = ENGINE.ZM.map(function (z) { return z.id; }), TIDS = ENGINE.ZT.map(function (z) { return z.id; });
   var SIDS = []; PKIDS.forEach(function (p) { for (var l = 1; l <= 3; l++) SIDS.push(p + '.' + l); });
   var prog = [], params = {}, sel = -1;
@@ -112,7 +112,7 @@
       case 'porte': return 'Porte en ' + st.z + pmTxt(st) + f + (st.pm && st.pm !== 'parfait' ? '' : sideTxt(st.side));
       case 'tir': return 'Séance de tir : salle du trône, face C vers le camp adverse (à partir de 85 s)';
       case 'prendreGraal': return 'Prendre le Graal' + f;
-      case 'poserGraal': return st.gm === 'xy' ? 'Poser le Graal en ' + Math.round(st.x) + ', ' + Math.round(st.y) + f : 'Poser le Graal sur ' + st.z + f;
+      case 'poserGraal': return (st.gm === 'xy' ? 'Poser le Graal en ' + Math.round(st.x) + ', ' + Math.round(st.y) : 'Poser le Graal sur ' + st.z) + f + sideTxt(st.side);
       case 'attendre': return 'Attendre ' + fmt(st.sec) + ' s';
       case 'attendreJusqua': return 'Attendre jusqu\'à ' + fmt(st.sec) + ' s';
       case 'trone': return 'Aller dans la salle du trône';

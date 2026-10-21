@@ -514,6 +514,7 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
         <li>Trajets calculés sur une grille de 40 mm avec la forme exacte du robot, du canon et des pierres tenues, en gardant si possible 25 mm d'écart avec les pierres. Chaque trajet est vérifié pas à pas (10 mm, 1,5°, et au millimètre près là où le robot frôle une pierre), avec la position réelle des pinces au même instant ; si besoin le robot pivote sur place dans un endroit dégagé, et la pince bouge au départ, en fin de trajet ou avant de partir. Les mouvements de pince sur place sont aussi vérifiés. S'il n'existe aucun passage sans contact, l'étape est signalée en erreur.</li>
         <li>Prise : un paquet entier, les deux pierres du dessus (empilées à plat et alignées), ou une seule pierre si rien n'est posé dessus (ventouse au choix). Dépôt en x, y, angle : toute la pile tenue ou une pierre, pince à 0° (à plat), 90° (debout) ou 180° (à plat, pile retournée), sur la table ou sur d'autres pierres. À plat, seule la pierre du bas de la pince peut être posée seule. La hauteur de pince doit rester dans sa course (Paramètres) ; sinon, la case « Lâcher » laisse tomber les pierres à plat depuis la position la plus basse de la pince.</li>
         <li>Étape « Lâcher » : coupe le vide sur place, sans bouger ; les pierres tombent droit sur le sol ou sur les pierres en dessous (debout : seulement au contact de l'appui).</li>
+        <li>Poser le Graal : côté au choix, de l'intérieur (robot dans le château) ou de l'extérieur.</li>
         <li>Étape « Trajectoire » : le robot suit les points cliqués sur la table, depuis sa position, en ligne droite d'un point à l'autre. Angle facultatif à chaque point (orientation de la face choisie, 0° le long de x, positif vers +y) ; sans angle, la rotation est répartie selon la distance. Les contacts sont signalés, le tracé n'est pas corrigé.</li>
         <li>Pince : rotation dans un seul sens, à 0°, 90° ou 180° (180° prend deux fois le temps de 90°). Étape « Tourner la pince » : tout de suite, ou en temps masqué pendant le prochain trajet.</li>
         <li>Temps masqué (case dans l'étape) : la pince monte, descend et tourne pendant le trajet ; le robot attend la pince si elle est plus lente. Les étapes enregistrées avant cette option restent sans temps masqué.</li>
@@ -1071,6 +1072,11 @@ var ENGINE = (function () {
 
     /* pose du Graal : s'il repose sur une pierre, il la suit ensuite quand elle est déplacée */
     function placeGraal(st, cands, top, where, zone) {
+      /* côté de pose : robot dans le château (intérieur) ou dehors (extérieur) */
+      if (st.side === 'int' || st.side === 'ext') {
+        cands = cands.filter(function (c) { var inC = inPoly(c.O[0], c.O[1], CASTLE) || inPoly(c.O[0], c.O[1], CASTLE_B); return st.side === 'int' ? inC : !inC; });
+        if (!cands.length) return err('Pose du Graal sur ' + where + ' : aucune position de pose depuis ' + (st.side === 'int' ? 'l\'intérieur' : 'l\'extérieur') + ' du château.');
+      }
       var f = st.f, b = choose(cands, null, 100, true); if (b.col) err('Pose du Graal : contact possible avec ' + b.col + '.');
       var n2 = nv2(b.c.phi), Ob = [b.c.O[0] - 100 * n2[0], b.c.O[1] - 100 * n2[1]], hcp = top + GS / 2 + 110;
       moveTo(Ob, b.c.h, 'Face ' + f + ' vers ' + where + ' avec le Graal', null, f, [{ hc: hcp + 5, label: 'Montée du Graal au-dessus de ' + where }], st.tm, false);
