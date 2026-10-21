@@ -29,7 +29,7 @@ function patchApp(src) {
   const i = src.lastIndexOf(tail);
   if (i < 0) throw new Error('fin de plateau/app.js introuvable : le crochet du teaser est à mettre à jour');
   return src.slice(0, i) + `  window.__SIM = {
-    THREE: THREE, scene: scene, camera: camera, gl: gl, robot: robot, balls: balls, graal: graalM,
+    THREE: THREE, scene: scene, camera: camera, gl: gl, robot: robot, balls: balls, graal: graalM, stones: stoneMeshes,
     update: update, importObj: importObj, outcome: outcome, scoreOf: scoreOf, MATCH: MATCH,
     getR: function () { return R; },
     hideAids: function () { labels.visible = false; trajG.visible = false; if (trail) trail.visible = false; if (shotLines) shotLines.visible = false; }

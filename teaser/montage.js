@@ -114,7 +114,8 @@ var TEASER = (function () {
   var soft = mk(), sx = soft.getContext('2d'), inv = mk(), ix = inv.getContext('2d'), cen = mk(), cx = cen.getContext('2d');
   var layB = mk(), lbx = layB.getContext('2d');
   var white = new THREE.MeshBasicMaterial({ color: 0xffffff }), dark = new THREE.MeshBasicMaterial({ color: 0x000000 }), black = new THREE.Color(0x000000);
-  var maskSet = [S.robot].concat(S.balls);
+  var maskSet = [S.robot].concat(S.balls), keepSet = S.stones.concat([S.graal]);
+  var keep = mk(), kx = keep.getContext('2d');
   S.robot.traverse(function (o) { o.castShadow = false; });   /* son ombre dessinerait sa forme sur la table */
   var tagPos = null, robotR = 0;
 
@@ -127,15 +128,20 @@ var TEASER = (function () {
     S.update(s); placeCam(c);
     gl.shadowMap.autoUpdate = true; gl.render(S.scene, S.camera);
     bx.drawImage(cv, 0, 0);
-    /* masque : la partie visible du robot en blanc, le reste de la scène en noir (ce qui passe devant le robot le cache) */
+    /* masques : la partie visible du robot, puis celle des pierres et du Graal (jamais floutés) ;
+       ce qui passe devant cache ce qui est derrière */
     var vis = S.scene.children.map(function (o) { return o.visible; }), bg = S.scene.background;
     S.scene.background = black; gl.shadowMap.autoUpdate = false;
-    S.scene.children.forEach(function (o, i) { o.visible = vis[i] && maskSet.indexOf(o) < 0; }); S.scene.overrideMaterial = dark;
-    gl.render(S.scene, S.camera);
-    S.scene.children.forEach(function (o, i) { o.visible = maskSet.indexOf(o) >= 0 || !!o.isLight; }); S.scene.overrideMaterial = white;
-    gl.autoClear = false; gl.render(S.scene, S.camera); gl.autoClear = true;
+    function silhouette(set, into) {
+      S.scene.children.forEach(function (o, i) { o.visible = vis[i] && set.indexOf(o) < 0; }); S.scene.overrideMaterial = dark;
+      gl.render(S.scene, S.camera);
+      /* sans fond : un fond de couleur forcerait three.js à effacer la profondeur de la première passe */
+      S.scene.children.forEach(function (o) { o.visible = set.indexOf(o) >= 0 || !!o.isLight; }); S.scene.overrideMaterial = white; S.scene.background = null;
+      gl.autoClear = false; gl.render(S.scene, S.camera); gl.autoClear = true; S.scene.background = black;
+      into.drawImage(cv, 0, 0);
+    }
+    silhouette(maskSet, mx); silhouette(keepSet, kx);
     S.scene.overrideMaterial = null; S.scene.background = bg; S.scene.children.forEach(function (o, i) { o.visible = vis[i]; });
-    mx.drawImage(cv, 0, 0);
     /* taille du robot à l'écran : règle l'élargissement du masque et la force du flou */
     var rp = rob(s, 175), a = project(rp), side = new THREE.Vector3().setFromMatrixColumn(S.camera.matrixWorld, 0).multiplyScalar(260), b = project(rp.clone().add(side));
     robotR = a && b ? Math.hypot(a[0] - b[0], a[1] - b[1]) : 0;
@@ -143,6 +149,9 @@ var TEASER = (function () {
     var grow = Math.max(5, Math.min(24, robotR * 0.09)), fuzz = Math.max(12, Math.min(48, robotR * 0.17));
     sx.filter = 'blur(' + grow + 'px) brightness(4)'; sx.fillStyle = '#000'; sx.fillRect(0, 0, W, H); sx.drawImage(mask, 0, 0); sx.filter = 'none';
     mx.filter = 'blur(' + Math.max(3, grow * 0.6) + 'px)'; mx.fillStyle = '#000'; mx.fillRect(0, 0, W, H); mx.drawImage(soft, 0, 0); mx.filter = 'none';
+    /* on retire les pierres et le Graal visibles : seul le robot est flouté */
+    kx.globalCompositeOperation = 'difference'; kx.fillStyle = '#fff'; kx.fillRect(0, 0, W, H); kx.globalCompositeOperation = 'source-over';
+    mx.globalCompositeOperation = 'multiply'; mx.drawImage(keep, 0, 0); mx.globalCompositeOperation = 'source-over';
     ix.filter = 'invert(1)'; ix.drawImage(mask, 0, 0); ix.filter = 'none';
     /* flou fin : les formes générales restent, les mécanismes disparaissent */
     cx.filter = 'blur(' + fuzz + 'px) saturate(0.15) brightness(0.9)'; cx.drawImage(base, 0, 0); cx.filter = 'none';
@@ -187,7 +196,8 @@ var TEASER = (function () {
   /* étiquette « CONFIDENTIEL » accrochée au robot */
   function robotTag(al) {
     if (!tagPos || robotR < 18 || tagPos[0] < -100 || tagPos[0] > W + 100 || tagPos[1] < -60 || tagPos[1] > H + 60) return;
-    var sz = Math.max(24, Math.min(40, robotR * 0.22)), w = sz * 8.2, h = sz * 1.5, x = tagPos[0] - w / 2, y = Math.max(24, tagPos[1] - h - 16);
+    var sz = Math.max(24, Math.min(40, robotR * 0.22)); ox.font = '800 ' + sz + 'px ' + FONT; ox.letterSpacing = '2px';
+    var w = ox.measureText('PROTOTYPE CONFIDENTIEL').width + sz * 1.2, h = sz * 1.5, x = tagPos[0] - w / 2, y = Math.max(24, tagPos[1] - h - 16);
     hazard(x - 12, y - 12, w + 24, h + 24, al);
     ox.save(); ox.globalAlpha = al; ox.fillStyle = INK; ox.fillRect(x, y, w, h); ox.restore();
     txt('PROTOTYPE CONFIDENTIEL', x + w / 2, y + h / 2 + 1, sz, { a: 'center', b: 'middle', c: YELLOW, ls: 2, al: al, w: '800' });
