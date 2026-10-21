@@ -412,6 +412,7 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
         <label for="pTR">Rotation 90° de la pince <span><input id="pTR" type="number" min="0.1" max="10" step="0.1"> s</span></label>
         <label for="pTV">Mise sous vide <span><input id="pTV" type="number" min="0" max="5" step="0.1"> s</span></label>
         <label for="pTL">Lâcher (vide coupé) <span><input id="pTL" type="number" min="0" max="5" step="0.1"> s</span></label>
+        <label for="pPGap">Porte : écart du linteau au-dessus des piliers <span><input id="pPGap" type="number" min="0" max="50" step="1"> mm</span></label>
         <label for="pZmin">Pince : hauteur mini <span><input id="pZmin" type="number" min="0" max="600" step="5"> mm</span></label>
         <label for="pZmax">Pince : hauteur maxi (0 = sans limite) <span><input id="pZmax" type="number" min="0" max="600" step="5"> mm</span></label>
       </div>
@@ -510,7 +511,7 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
         <li>Étape « Lâcher » : coupe le vide sur place, sans bouger ; les pierres tombent droit sur le sol ou sur les pierres en dessous (debout : seulement au contact de l'appui).</li>
         <li>Pince : rotation dans un seul sens, à 0°, 90° ou 180° (180° prend deux fois le temps de 90°). Étape « Tourner la pince » : tout de suite, ou en temps masqué pendant le prochain trajet.</li>
         <li>Temps masqué (case dans l'étape) : la pince monte, descend et tourne pendant le trajet ; le robot attend la pince si elle est plus lente. Les étapes enregistrées avant cette option restent sans temps masqué.</li>
-        <li>Porte : 2 piliers accolés et linteau tenu par de petites ventouses. Tour : la pierre est centrée sur son cercle si la place le permet, sinon décalée (signalé). Robot adverse absent.</li>
+        <li>Porte : 2 piliers accolés posés debout, puis le robot recule juste assez, met le linteau à plat en restant bas et ne le monte qu'à la hauteur des piliers (+ l'écart réglable) pour le poser : la pince reste sous le plafond de 350 mm. Linteau tenu par de petites ventouses. Tour : la pierre est centrée sur son cercle si la place le permet, sinon décalée (signalé). Robot adverse absent.</li>
         <li>Score : barème du compteur de points, état de la table à 100 s (ou en fin de programme). Seules nos zones comptent. Niveau du Graal estimé d'après sa hauteur. Douves et attaque de PAMI non simulées.</li>
       </ul>
     </div>
@@ -1282,9 +1283,25 @@ var ENGINE = (function () {
         zz(f, 160, 'Descente au sol');
         [hs[0], hs[1]].forEach(function (x) { release(x, f); x.tag = 'p'; held[f].stack[x.sl] = null; });
         vac(f, [0, 0, 1], '2 piliers posés', TL);
-        zz(f, 320, 'Levée à 320 mm'); rr(f, 0, 'Retour de la rotation : linteau horizontal');
-        lin(O2, c.h, VA, 'Centrage du linteau');
-        zz(f, 265, 'Pose du linteau (petites ventouses en bas)');
+        /* linteau : on recule, on le met à plat en restant bas, puis on le monte juste au-dessus des piliers
+           (la pince ne dépasse jamais le plafond de 350 mm) */
+        zz(f, 175, 'Levée de 15 mm');
+        var dR = null;
+        for (var r = 60; r <= 300 && dR == null; r += 10) {
+          var pr = [c.O[0] - r * n[0], c.O[1] - r * n[1]], ok = true;
+          for (var d0 = 10; d0 <= r && ok; d0 += 10) { var pl = { x: c.O[0] - d0 * n[0], y: c.O[1] - d0 * n[1], h: c.h, A: cp(s.A), B: cp(s.B) }; if (collides(pl)) ok = false; }
+          for (var a = 90; a >= 0 && ok; a -= 3) { var pa = { x: pr[0], y: pr[1], h: c.h, A: cp(s.A), B: cp(s.B) }; pa[f].rot = a; if (collides(pa)) ok = false; }
+          if (ok) dR = r;
+        }
+        if (dR == null) { err('Porte ' + z.id + ' : pas de place pour reculer et mettre le linteau à plat.'); dR = 120; }
+        lin([c.O[0] - dR * n[0], c.O[1] - dR * n[1]], c.h, VA, 'Recul de ' + dR + ' mm pour tourner le linteau');
+        rr(f, 0, 'Linteau mis à plat (en bas)');
+        /* hauteur de pince qui pose le dessous du linteau sur le haut des piliers */
+        var pTop = Math.max(stoneFoot(hs[0]).top, stoneFoot(hs[1]).top), hL = pTop + 55 - 110 * (hs[2].sl - 1), gap = P.pgap != null ? P.pgap : 5;
+        zz(f, hL + gap, 'Montée du linteau juste au-dessus des piliers');
+        lin([O2[0] - dR * n[0], O2[1] - dR * n[1]], c.h, VA, 'Centrage du linteau');
+        lin(O2, c.h, VA, 'Linteau au-dessus des piliers');
+        zz(f, hL, 'Pose du linteau sur les piliers');
         release(hs[2], f); hs[2].tag = 'l'; held[f] = null;
         vac(f, [0, 0, 0], 'Linteau posé : porte terminée sur ' + z.id, TL);
         lin([O2[0] - 100 * n[0], O2[1] - 100 * n[1]], c.h, VA, 'Recul'); zz(f, 165, 'Pince ' + f + ' en position basse');
