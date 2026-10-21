@@ -2,7 +2,8 @@
    puis encode la vidéo et le son avec ffmpeg.
    node render.mjs                      → out/teaser.mp4
    node render.mjs --stills 3,7.5,16    → out/still-<t>.png (images de contrôle, temps vidéo en secondes)
-   node render.mjs --strategy autre.json */
+   node render.mjs --strategy autre.json
+   node render.mjs --gpu                → même vidéo, rendue avec la carte graphique (sur un PC équipé) */
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -36,7 +37,9 @@ function patchApp(src) {
 })();`;
 }
 
-const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+/* --gpu : rendu sur la carte graphique de la machine (sinon WebGL logiciel, plus lent mais partout disponible) */
+const gpu = process.argv.includes('--gpu');
+const browser = await chromium.launch({ args: gpu ? ['--enable-gpu', '--ignore-gpu-blocklist', '--use-angle=default'] : ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 });
 page.on('pageerror', e => console.error('[page]', e.message));
 await page.route('**/*', route => {

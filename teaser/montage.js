@@ -30,6 +30,14 @@ var TEASER = (function () {
     mur: BAREME.mur + 3 * BAREME.pierre, tour: BAREME.tour + BAREME.pierre, porte: BAREME.porte + 3 * BAREME.pierre,
     graal: graal.pts, roi: roi.pts, total: SC.total
   };
+  /* compteur : chaque construction compte au moment où le robot la pose (barème de bareme.js) */
+  var GAINS = [
+    [seg(/mur posé sur M5/).t1, PTS.mur], [seg(/: tour T4$/).t1, PTS.tour], [seg(/mur posé sur M1/).t1, PTS.mur],
+    [E.tourT1.t1, PTS.tour], [E.tourT2.t1, PTS.tour], [seg(/mur posé sur M4/).t1, PTS.mur],
+    [seg(/^Linteau posé/).t1, PTS.porte], [E.poseGraal.t1, PTS.graal], [E.trone.t1, PTS.roi]
+  ];
+  need(GAINS.reduce(function (a, g) { return a + g[1]; }, 0) === PTS.total, 'un total égal à la somme des actions');
+  function earned(s) { var n = 0; GAINS.forEach(function (g) { if (s >= g[0] - 1e-6) n += g[1]; }); return n; }
   function fmt(t) { return (Math.round(t * 10) / 10).toFixed(1).replace('.', ','); }
 
   /* ---------- outils ---------- */
@@ -104,7 +112,7 @@ var TEASER = (function () {
   function mk(w, h) { var c = document.createElement('canvas'); c.width = w || W; c.height = h || H; return c; }
   var out = mk(), ox = out.getContext('2d'), base = mk(), bx = base.getContext('2d'), mask = mk(), mx = mask.getContext('2d');
   var soft = mk(), sx = soft.getContext('2d'), inv = mk(), ix = inv.getContext('2d'), cen = mk(), cx = cen.getContext('2d');
-  var tiny = mk(64, 36), tx = tiny.getContext('2d'), layB = mk(), lbx = layB.getContext('2d');
+  var layB = mk(), lbx = layB.getContext('2d');
   var white = new THREE.MeshBasicMaterial({ color: 0xffffff }), dark = new THREE.MeshBasicMaterial({ color: 0x000000 }), black = new THREE.Color(0x000000);
   var maskSet = [S.robot].concat(S.balls);
   S.robot.traverse(function (o) { o.castShadow = false; });   /* son ombre dessinerait sa forme sur la table */
@@ -128,19 +136,16 @@ var TEASER = (function () {
     gl.autoClear = false; gl.render(S.scene, S.camera); gl.autoClear = true;
     S.scene.overrideMaterial = null; S.scene.background = bg; S.scene.children.forEach(function (o, i) { o.visible = vis[i]; });
     mx.drawImage(cv, 0, 0);
-    /* taille du robot à l'écran : règle l'élargissement du masque et la taille des pavés */
+    /* taille du robot à l'écran : règle l'élargissement du masque et la force du flou */
     var rp = rob(s, 175), a = project(rp), side = new THREE.Vector3().setFromMatrixColumn(S.camera.matrixWorld, 0).multiplyScalar(260), b = project(rp.clone().add(side));
     robotR = a && b ? Math.hypot(a[0] - b[0], a[1] - b[1]) : 0;
     tagPos = project(rob(s, 400));
-    var grow = Math.max(6, Math.min(34, robotR * 0.16)), block = Math.max(14, Math.min(90, robotR / 3.2));
+    var grow = Math.max(5, Math.min(24, robotR * 0.09)), fuzz = Math.max(12, Math.min(48, robotR * 0.17));
     sx.filter = 'blur(' + grow + 'px) brightness(4)'; sx.fillStyle = '#000'; sx.fillRect(0, 0, W, H); sx.drawImage(mask, 0, 0); sx.filter = 'none';
-    mx.filter = 'blur(' + Math.max(3, grow * 0.35) + 'px)'; mx.fillStyle = '#000'; mx.fillRect(0, 0, W, H); mx.drawImage(soft, 0, 0); mx.filter = 'none';
+    mx.filter = 'blur(' + Math.max(3, grow * 0.6) + 'px)'; mx.fillStyle = '#000'; mx.fillRect(0, 0, W, H); mx.drawImage(soft, 0, 0); mx.filter = 'none';
     ix.filter = 'invert(1)'; ix.drawImage(mask, 0, 0); ix.filter = 'none';
-    /* pavés : image réduite puis agrandie sans lissage, assombrie */
-    var tw = Math.max(8, Math.round(W / block)), th = Math.max(5, Math.round(H / block));
-    if (tiny.width !== tw) { tiny.width = tw; tiny.height = th; }
-    tx.imageSmoothingEnabled = true; tx.drawImage(base, 0, 0, tw, th);
-    cx.imageSmoothingEnabled = false; cx.filter = 'saturate(0.25) brightness(0.72) contrast(1.1)'; cx.drawImage(tiny, 0, 0, W, H); cx.filter = 'none';
+    /* flou fin : les formes générales restent, les mécanismes disparaissent */
+    cx.filter = 'blur(' + fuzz + 'px) saturate(0.15) brightness(0.9)'; cx.drawImage(base, 0, 0); cx.filter = 'none';
     cx.globalCompositeOperation = 'multiply'; cx.drawImage(mask, 0, 0); cx.globalCompositeOperation = 'source-over';
     lbx.drawImage(base, 0, 0); lbx.globalCompositeOperation = 'multiply'; lbx.drawImage(inv, 0, 0); lbx.globalCompositeOperation = 'lighter'; lbx.drawImage(cen, 0, 0); lbx.globalCompositeOperation = 'source-over';
     ox.filter = 'contrast(1.12) saturate(1.18) brightness(' + (sh.grade || 1) + ')' + (sh.blur ? ' blur(' + sh.blur + 'px)' : '');
@@ -202,17 +207,26 @@ var TEASER = (function () {
     txt(c[1], x + 22, y + 158, 44, { w: '600', ls: 1 });
     ox.restore();
   }
+  function earnedAt(v) { return v < 4.3 ? 0 : earned(simAt(shotAt(Math.min(v, 25.19)), Math.min(v, 25.19))); }
+  /* instant vidéo où le compteur a changé pour la dernière fois (pour l'animation) */
+  function popStart(v) { var n = earnedAt(v), w = v; while (w > v - 0.4 && earnedAt(w - 1 / 120) === n) w -= 1 / 120; return w; }
   function hud(v, sh, s) {
     var r = rate(sh, v), al = inOut(v, 4.3, 25.2, 0.2, 0.2);
     ox.save(); ox.globalAlpha = al;
     ox.fillStyle = 'rgba(11,12,16,0.78)'; ox.fillRect(W - 372, 56, 300, 112); ox.fillStyle = ORANGE; ox.fillRect(W - 372, 56, 8, 112);
     txt('CHRONO DU MATCH', W - 344, 92, 26, { w: '600', c: '#c9ccd6', ls: 3 });
     txt(fmt(s) + ' s', W - 344, 150, 58, { w: '500', f: MONO });
+    /* points marqués : le compteur saute à chaque construction posée */
+    var n = earnedAt(v), n0 = earnedAt(v - 0.4), pop = n > n0 ? 1 - Math.min(1, (v - popStart(v)) / 0.4) : 0;
+    ox.fillStyle = 'rgba(11,12,16,0.78)'; ox.fillRect(W - 372, 180, 300, 112); ox.fillStyle = YELLOW; ox.fillRect(W - 372, 180, 8, 112);
+    txt('POINTS', W - 344, 216, 26, { w: '600', c: '#c9ccd6', ls: 3 });
+    ox.save(); ox.translate(W - 344, 256); ox.scale(1 + 0.25 * pop, 1 + 0.25 * pop); txt(String(n), 0, 0, 62, { b: 'middle', c: pop > 0 ? '#fff' : YELLOW }); ox.restore();
+    if (pop > 0) txt('+' + (n - n0), W - 96, 270 - 36 * (1 - pop), 50, { a: 'right', c: YELLOW, al: Math.min(1, pop * 2), sh: 1 });
     if (r < 0.62) {
       var blink = Math.floor(v * 2.5) % 2 === 0;
-      ox.fillStyle = '#e8352c'; ox.fillRect(W - 372, 176, 300, 52);
-      ox.fillStyle = blink ? '#fff' : 'rgba(255,255,255,0.35)'; ox.beginPath(); ox.arc(W - 342, 202, 9, 0, 7); ox.fill();
-      txt('RALENTI  ×' + (Math.round(r * 10) / 10).toFixed(1).replace('.', ','), W - 320, 216, 38, { w: '800 italic', ls: 2 });
+      ox.fillStyle = '#e8352c'; ox.fillRect(W - 372, 304, 300, 52);
+      ox.fillStyle = blink ? '#fff' : 'rgba(255,255,255,0.35)'; ox.beginPath(); ox.arc(W - 342, 330, 9, 0, 7); ox.fill();
+      txt('RALENTI  ×' + (Math.round(r * 10) / 10).toFixed(1).replace('.', ','), W - 320, 344, 38, { w: '800 italic', ls: 2 });
     }
     ox.restore();
   }
@@ -235,9 +249,6 @@ var TEASER = (function () {
     if (sh.id === 'feux') lights(v);
     if (v >= 4.3 && v < 4.75) center([['GO', 0, 230, YELLOW, 10]], v, 4.3, 4.75);
     if (v >= 4.3 && v < 25.2) { hud(v, sh, s); caption(v, sh); }
-    if (sh.id === 'final' && v >= 24.1) {
-      center([['SCORE SIMULÉ', -150, 64, '#fff', 10, '700 italic'], [PTS.total + ' PTS', 0, 230, YELLOW, 4], ['en ' + fmt(R.T) + ' s, sans robot adverse', 140, 44, '#fff', 2, '600']], v, 24.1, 25.25);
-    }
     if (sh.id === 'fin') endCard(v);
     /* logo en haut à gauche pendant l'action */
     if (v >= 4.3 && v < 25.2 && logo.complete) { ox.save(); ox.globalAlpha = inOut(v, 4.3, 25.2, 0.2, 0.2) * 0.95; ox.drawImage(logo, 64, 52, 230, 230 * logo.height / logo.width); ox.restore(); }
@@ -293,7 +304,7 @@ var TEASER = (function () {
   function cues() {
     var c = { dur: DUR, fps: FPS, cuts: [], hits: [], frames: [] };
     SHOTS.forEach(function (sh) { if (sh.flash) c.cuts.push(sh.v0); });
-    [[0.35, 'titre'], [2.4, 'texte'], [3.0, 'texte'], [4.3, 'go'], [24.1, 'score'], [25.35, 'texte'], [25.85, 'tampon'], [26.95, 'texte'], [28.4, 'logo']].forEach(function (h) { c.hits.push({ v: h[0], k: h[1] }); });
+    [[0.35, 'titre'], [2.4, 'texte'], [3.0, 'texte'], [4.3, 'go'], [25.35, 'texte'], [25.85, 'tampon'], [26.95, 'texte'], [28.4, 'logo']].forEach(function (h) { c.hits.push({ v: h[0], k: h[1] }); });
     for (var n = 0; n < 5; n++) c.hits.push({ v: 3.62 + n * 0.12, k: 'feu' });
     SHOTS.forEach(function (sh) {
       [E.videP5.t0, E.murM5.t0 + 0.15, E.tourT1.t0 + 0.1, E.tourT2.t0 + 0.1, E.piliers.t0 + 0.1, E.linteau.t0 + 0.08, E.videGraal.t0, E.poseGraal.t0 + 0.08].forEach(function (t) {
