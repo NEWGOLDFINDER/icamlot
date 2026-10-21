@@ -24,11 +24,11 @@
   var ACTIONS = [
     ['prendre', 'Prendre (paquet ou pierre)'], ['deposer', 'Déposer en x, y, angle'], ['mur', 'Poser en mur'], ['tour', 'Faire une tour'], ['porte', 'Faire une porte'],
     ['tir', 'Commencer la séance de tir (canon, face C)'], ['prendreGraal', 'Prendre le Graal'], ['poserGraal', 'Poser le Graal sur'],
-    ['tourner', 'Tourner la pince (0, 90, 180°)'], ['attendre', 'Attendre (s)'], ['attendreJusqua', 'Attendre jusqu\'à (s)'], ['trone', 'Aller dans la salle du trône']
+    ['lacher', 'Lâcher sur place'], ['tourner', 'Tourner la pince (0, 90, 180°)'], ['attendre', 'Attendre (s)'], ['attendreJusqua', 'Attendre jusqu\'à (s)'], ['trone', 'Aller dans la salle du trône']
   ];
-  var SHORT = { prendre: 'Prendre', deposer: 'Déposer', mur: 'Mur', tour: 'Tour', porte: 'Porte', tir: 'Tir', prendreGraal: 'Prendre Graal', poserGraal: 'Poser Graal', tourner: 'Tourner', attendre: 'Attendre', attendreJusqua: 'Attendre jusqu\'à', trone: 'Trône' };
-  var ICONS = { prendre: 'fa-hand', deposer: 'fa-location-crosshairs', mur: 'fa-grip-lines', tour: 'fa-chess-rook', porte: 'fa-archway', tir: 'fa-bullseye', prendreGraal: 'fa-trophy', poserGraal: 'fa-award', tourner: 'fa-rotate-right', attendre: 'fa-hourglass-half', attendreJusqua: 'fa-clock', trone: 'fa-crown' };
-  var FIELDS = { prendre: ['f', 'mode', 'p', 's', 'v', 'tm'], deposer: ['f', 'q', 'xy', 'ang', 'r', 'drop', 'tm'], tourner: ['f', 'r', 'tm'], mur: ['f', 'zm', 'side'], tour: ['f', 'zt', 's', 'tm'], porte: ['f', 'zm', 'side', 'tm'], tir: [], prendreGraal: ['f', 'tm'], poserGraal: ['f', 'gm', 'zmt', 'xy', 'tm'], attendre: ['sec'], attendreJusqua: ['sec'], trone: [] };
+  var SHORT = { prendre: 'Prendre', deposer: 'Déposer', mur: 'Mur', tour: 'Tour', porte: 'Porte', tir: 'Tir', prendreGraal: 'Prendre Graal', poserGraal: 'Poser Graal', lacher: 'Lâcher', tourner: 'Tourner', attendre: 'Attendre', attendreJusqua: 'Attendre jusqu\'à', trone: 'Trône' };
+  var ICONS = { prendre: 'fa-hand', deposer: 'fa-location-crosshairs', mur: 'fa-grip-lines', tour: 'fa-chess-rook', porte: 'fa-archway', tir: 'fa-bullseye', prendreGraal: 'fa-trophy', poserGraal: 'fa-award', lacher: 'fa-hand-holding', tourner: 'fa-rotate-right', attendre: 'fa-hourglass-half', attendreJusqua: 'fa-clock', trone: 'fa-crown' };
+  var FIELDS = { prendre: ['f', 'mode', 'p', 's', 'v', 'tm'], deposer: ['f', 'q', 'xy', 'ang', 'r', 'drop', 'tm'], tourner: ['f', 'r', 'tm'], lacher: ['f', 'q'], mur: ['f', 'zm', 'side'], tour: ['f', 'zt', 's', 'tm'], porte: ['f', 'zm', 'side', 'tm'], tir: [], prendreGraal: ['f', 'tm'], poserGraal: ['f', 'gm', 'zmt', 'xy', 'tm'], attendre: ['sec'], attendreJusqua: ['sec'], trone: [] };
   var PKIDS = ENGINE.PK.map(function (p) { return p.id; }), MIDS = ENGINE.ZM.map(function (z) { return z.id; }), TIDS = ENGINE.ZT.map(function (z) { return z.id; });
   var SIDS = []; PKIDS.forEach(function (p) { for (var l = 1; l <= 3; l++) SIDS.push(p + '.' + l); });
   var prog = [], params = {}, sel = -1;
@@ -100,6 +100,7 @@
     switch (st.a) {
       case 'prendre': return st.mode === 'pierre' ? 'Prendre la pierre ' + st.s + f : 'Prendre ' + st.p + f;
       case 'deposer': var rd = rotOf(st); return 'Déposer ' + (st.q === 'pile' ? 'la pile' : st.q) + ' en ' + Math.round(st.x) + ', ' + Math.round(st.y) + ', ' + fmt(st.ang) + '° · ' + (rd === 90 ? 'debout' : rd === 180 ? 'à plat retournée' : 'à plat') + (st.drop ? ' · lâcher' : '') + f;
+      case 'lacher': return 'Lâcher ' + (st.q === 'pile' ? 'la pile' : st.q) + ' sur place' + f;
       case 'tourner': return 'Tourner la pince ' + st.f + ' à ' + (+st.r || 0) + '°' + (st.tm ? ' · pendant le trajet suivant' : '');
       case 'mur': return 'Mur en ' + st.z + f + sideTxt(st.side);
       case 'tour': return 'Tour ' + st.z + ' avec ' + st.s + f;

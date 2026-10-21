@@ -499,6 +499,7 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
         <li>Périmètre : 1200 mm au départ, 1400 mm ensuite (F.3). Boulets (E.4) : tirés au canon depuis la salle du trône à partir de 85 s, comptés s'ils sont arrêtés dans la cour adverse (derrière les zones de muraille, salle du trône comprise) à 100 s. Vol avec résistance de l'air, rebonds et roulement ; les pierres et constructions ne sont pas des obstacles pour les boulets. Graal : plus grand qu'un cube de 100 mm (contraintes PAMI). Fin : robot dans la salle du trône (E.3).</li>
         <li>Trajets calculés sur une grille de 40 mm avec la forme exacte du robot et des pierres tenues. Sans trajet sans contact, le robot va tout droit et le contact est signalé.</li>
         <li>Prise : un paquet entier, ou une seule pierre si rien n'est posé dessus (ventouse au choix). Dépôt en x, y, angle : toute la pile tenue ou une pierre, pince à 0° (à plat), 90° (debout) ou 180° (à plat, pile retournée), sur la table ou sur d'autres pierres. À plat, seule la pierre du bas de la pince peut être posée seule. La hauteur de pince doit rester dans sa course (Paramètres) ; sinon, la case « Lâcher » laisse tomber les pierres à plat depuis la position la plus basse de la pince.</li>
+        <li>Étape « Lâcher » : coupe le vide sur place, sans bouger ; les pierres tombent droit sur le sol ou sur les pierres en dessous (debout : seulement au contact de l'appui).</li>
         <li>Pince : rotation dans un seul sens, à 0°, 90° ou 180° (180° prend deux fois le temps de 90°). Étape « Tourner la pince » : tout de suite, ou en temps masqué pendant le prochain trajet.</li>
         <li>Temps masqué (case dans l'étape) : la pince monte, descend et tourne pendant le trajet ; le robot attend la pince si elle est plus lente. Les étapes enregistrées avant cette option restent sans temps masqué.</li>
         <li>Porte : 2 piliers accolés et linteau tenu par de petites ventouses. Tour : la pierre est centrée sur son cercle si la place le permet, sinon décalée (signalé). Robot adverse absent.</li>
@@ -1216,6 +1217,30 @@ var ENGINE = (function () {
           cands.push({ O: [Gc[0] - (rin + GS / 2) * n[0], Gc[1] - (rin + GS / 2) * n[1]], h: phi - 120 * fk(f), phi: phi, Gc: Gc });
         }
         placeGraal(st, cands, top, z.id, z.id);
+      },
+      /* lâcher sur place : vide coupé, les pierres tombent droit sur leur appui (sol ou pierres) */
+      lacher: function (st) {
+        var f = st.f, hs = heldStonesOf(f), dep = st.q === 'pile' || !st.q ? hs : hs.filter(function (x) { return x.id === st.q; });
+        if (!hs.length) return err('La face ' + f + ' ne tient aucune pierre.');
+        if (!dep.length) return err('La pierre ' + st.q + ' n\'est pas tenue par la face ' + f + '.');
+        var p = poseNow(), cs = Math.cos(s[f].rot * Math.PI / 180), deb = Math.abs(cs) < 0.5;
+        if (!deb) {
+          var sl = dep.map(function (x) { return x.sl; }), all = hs.map(function (x) { return x.sl; });
+          var low = cs > 0 ? Math.min : Math.max;
+          if (Math.max.apply(null, sl) - Math.min.apply(null, sl) + 1 !== dep.length) return err('Lâcher : il manque une pierre au milieu de la pince, celles du dessus tomberaient en vrac.');
+          if (low.apply(null, sl) !== low.apply(null, all)) return err('Lâcher à plat : seule la pierre du bas de la pince peut être lâchée seule (une pierre tenue est sous ' + dep[0].id + ').');
+        }
+        /* chute de chaque pierre jusqu'à son appui ; à plat, la pile tombe d'un bloc */
+        var gs = dep.map(function (x) { var g = geomHeld(p, f, x.sl), m = 0; freeStones().forEach(function (o) { var go = stoneFoot(o); if (go.top <= g.bottom + 1 && overlap(g.foot, go.foot, 1)) m = Math.max(m, go.top); }); return { x: x, g: g, fall: g.bottom - m }; });
+        if (!deb) { var fmin = Math.min.apply(null, gs.map(function (q) { return q.fall; })); gs.forEach(function (q) { q.fall = fmin; }); }
+        var fmax = Math.max.apply(null, gs.map(function (q) { return q.fall; }));
+        if (deb && fmax > 5) err('Une pierre debout lâchée de ' + Math.round(fmax) + ' mm basculerait : lâcher debout seulement au contact de l\'appui.');
+        var gg = graalGeo(); if (gg) gs.forEach(function (q) { var b = q.g.bottom - q.fall, t2 = q.g.top - q.fall; if (overlap(q.g.foot, gg.foot, 1) && b < gg.top - 1 && t2 > gg.bottom + 1) err('Lâcher : ' + q.x.id + ' tomberait sur le Graal.'); });
+        var tag = 'd' + s.t.toFixed(3) + f, v = s[f].vac.slice();
+        gs.forEach(function (q) { var land = poseNow(); land[f].hc -= q.fall; release(q.x, f, land); q.x.tag = tag; held[f].stack[q.x.sl] = null; v[q.x.sl] = 0; });
+        if (!heldStonesOf(f).length) held[f] = null;
+        var what = st.q === 'pile' || !st.q ? (dep.length > 1 ? 'la pile' : dep[0].id) : st.q;
+        vac(f, v, 'Lâcher : ' + what + (fmax > 1 ? ' tombe de ' + Math.round(fmax) + ' mm' : ' posée') + ' (face ' + f + ')', TL);
       },
       tourner: function (st) {
         var f = st.f, r = +st.r;
