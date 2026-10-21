@@ -1007,7 +1007,11 @@
   /* points et durée de chaque stratégie enregistrée : simulées ici, une à la fois, dans un worker à part */
   var statCache = {}, statQ = [], statBusy = false, statWorker = null, statId = 0;
   try { if (src) { statWorker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' }))); statWorker.onerror = function () { statWorker = null; }; } } catch (e) { statWorker = null; }
-  function statKey(s) { return 'icamlot-stat-v1-' + s.slug + '-' + s.updated; }
+  /* les points mémorisés sont liés à la version du moteur : recalculés dès que le simulateur change */
+  var ENG_VER = (function (t) { var h = 0; for (var i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) | 0; return (h >>> 0).toString(36); })($('engSrc').textContent + $('geomSrc').textContent);
+  function statKey(s) { return 'icamlot-stat-' + ENG_VER + '-' + s.slug + '-' + s.updated; }
+  try { for (var li = localStorage.length - 1; li >= 0; li--) { var lk = localStorage.key(li); if (/^icamlot-stat-/.test(lk) && lk.indexOf('icamlot-stat-' + ENG_VER + '-') !== 0) localStorage.removeItem(lk); } } catch (e) {}
+  if (/__V__/.test($('verNote').textContent)) $('verNote').hidden = true;
   function statOf(s) {
     var k = statKey(s); if (statCache[k] !== undefined) return statCache[k];
     try { var j = JSON.parse(lsGet(k) || 'null'); if (j && isFinite(j.pts)) return (statCache[k] = j); } catch (e) {}

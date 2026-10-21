@@ -523,6 +523,7 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
         <li>Score : barème du compteur de points, état de la table à 100 s (ou en fin de programme). Seules nos zones comptent. Niveau du Graal estimé d'après sa hauteur. Douves et attaque de PAMI non simulées.</li>
       </ul>
     </div>
+    <p class="note" id="verNote">Version du simulateur : <b>__V__</b></p>
     <div class="crow"><button type="button" id="bLogout"><i class="fa-solid fa-right-from-bracket"></i> Se déconnecter</button></div>
   </div>
 </section>
@@ -1529,7 +1530,8 @@ var ENGINE = (function () {
 /*ENGINE_END*/
 
 </script>
-<script src="../bareme.js"></script>
-<script src="app.js"></script>
+<!-- ?v=__V__ : remplacé par le numéro de version à l'installation (deploy/install.sh), pour ne jamais servir un ancien fichier -->
+<script src="../bareme.js?v=__V__"></script>
+<script src="app.js?v=__V__"></script>
 </body>
 </html>
