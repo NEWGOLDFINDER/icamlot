@@ -41,8 +41,15 @@
     return true;
   }
 
-  var api = { GEO: GEO, QUARRIES: QUARRIES, nv: nv, lv: lv, heldFoot: heldFoot, rectPoly: rectPoly, triPoly: triPoly, overlap: overlap };
+  /* canon de la face C : rectangle qui dépasse de la face (longueur L hors robot, largeur W) */
+  function cannonPoly(p, L, W) {
+    if (!(L > 0)) return null;
+    var a = p.h + 240, n = nv(a);
+    return rectPoly({ cx: p.x + (GEO.rin + L / 2) * n[0], cy: p.y + (GEO.rin + L / 2) * n[1], hl: W / 2, hn: L / 2, ang: a });
+  }
+
+  var api = { GEO: GEO, QUARRIES: QUARRIES, nv: nv, lv: lv, heldFoot: heldFoot, rectPoly: rectPoly, triPoly: triPoly, cannonPoly: cannonPoly, overlap: overlap };
   root.GEO = GEO; root.QUARRIES = QUARRIES; root.nv = nv; root.lv = lv;
-  root.heldFoot = heldFoot; root.rectPoly = rectPoly; root.triPoly = triPoly; root.overlap = overlap;
+  root.heldFoot = heldFoot; root.rectPoly = rectPoly; root.triPoly = triPoly; root.cannonPoly = cannonPoly; root.overlap = overlap;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -58,7 +58,7 @@
     catalogue = catalogue || ALL;
     for (var i = 0; i < catalogue.length; i++) {
       var a = catalogue[i];
-      if (a.a !== st.a) continue;
+      if (a.a !== (st.a === 'tir' ? 'boulets' : st.a)) continue;
       if (a.f && a.f !== st.f) continue;
       if (a.p && a.p !== st.p) continue;
       if (a.z && a.z !== st.z) continue;
@@ -75,7 +75,7 @@
     return -1;
   }
   function toProgramStep(act, sim) {
-    var st = { a: act.a };
+    var st = { a: act.a === 'boulets' ? 'tir' : act.a };
     if (act.f) st.f = act.f;
     if (act.p) st.p = act.p;
     if (act.z) st.z = act.z;
@@ -138,7 +138,7 @@
       case 'mur': return faceStackFlat(sim, act.f) && !zoneHasBuild(sim, act.z);
       case 'tour': return stoneHeldRank(sim, act.f, act.rank) && !towerComplete(sim, act.z);
       case 'porte': return faceStackFlat(sim, act.f) && !zoneHasBuild(sim, act.z);
-      case 'boulets': return sim.balls().t === Infinity && sim.time() >= 80;
+      case 'boulets': return !sim.balls().shots && sim.time() >= 80;
       case 'prendreGraal': return faceEmpty(sim, act.f) && sim.graal().cur.k === 'home';
       case 'poserGraal': return faceHoldsGraal(sim, act.f) && zoneHasBuild(sim, act.z);
       case 'trone': return true;

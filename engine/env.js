@@ -101,15 +101,16 @@
         ACTIONS.TOURS.forEach(function (z) { push(c.tours[z] || 0); });
       }
       if (id === 'graal') {
-        var home = graal.k === 'home' ? 1 : 0, heldG = graal.k === 'held' ? 1 : 0, posed = graal.k === 'free' ? 1 : 0;
-        var lvl = 0;
-        if (graal.k === 'free' && graal.top != null) {
-          var bottom = graal.top - (sim.params().gs || 60);
+        var home = graal.k === 'home' ? 1 : 0, heldG = graal.k === 'held' ? 1 : 0, posed = (graal.k === 'free' || graal.k === 'ride') ? 1 : 0;
+        var lvl = 0, gtop = graal.k === 'free' ? graal.top : null;
+        if (graal.k === 'ride') { var gpos = SCORE.graalPos(sim.result(false), sim.params(), sim.time()); gtop = gpos ? gpos.top : null; }
+        if (gtop != null) {
+          var bottom = gtop - (sim.params().gs || 60);
           lvl = bottom >= 300 ? 3 : bottom >= 200 ? 2 : bottom >= 100 ? 1 : 0;
         }
         push(home, heldG, posed, lvl / 4);
       }
-      if (id === 'boulets') push(balls.t < Infinity ? 1 : 0);
+      if (id === 'boulets') push(balls.shots ? 1 : 0);
       if (id === 'adversaire') {
         var o = oppPose || { x: 0, y: 0 };
         push((o.x || 0) / 3000, (o.y || 0) / 2000);
@@ -202,7 +203,7 @@
       if (!ACTIONS.mask(sim, catalogue).some(function (x, i) { return x && catalogue[i].a !== 'trone'; }) && act.a === 'trone') {
         /* plus rien d'utile : on attend les boulets (80 s) ou la fin, sans figer une stratégie */
         if (sim.time() < MATCH) {
-          var ballsLeft = sim.balls().t === Infinity && catalogue.some(function (a) { return a.a === 'boulets'; });
+          var ballsLeft = !sim.balls().shots && catalogue.some(function (a) { return a.a === 'boulets'; });
           var until = (ballsLeft && sim.time() < 80) ? 80 : MATCH;
           finishWait(until);
           t1 = Math.min(sim.time(), MATCH);
@@ -303,9 +304,10 @@
     { a: 'mur', f: 'A', z: 'M1', side: 'ext' }, { a: 'mur', f: 'B', z: 'M2', side: 'ext' },
     { a: 'prendre', f: 'A', p: 'P5' }, { a: 'prendre', f: 'B', p: 'P10' },
     { a: 'mur', f: 'A', z: 'M5', side: 'ext' }, { a: 'mur', f: 'B', z: 'M4', side: 'ext' },
-    { a: 'prendre', f: 'A', p: 'P4' }, { a: 'boulets' },
+    { a: 'prendre', f: 'A', p: 'P4' },
     { a: 'porte', f: 'A', z: 'M3', side: 'int' },
     { a: 'prendreGraal', f: 'B' }, { a: 'poserGraal', f: 'B', z: 'M3' },
+    { a: 'tir' },
     { a: 'trone' }
   ];
 

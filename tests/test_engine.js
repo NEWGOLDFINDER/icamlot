@@ -20,7 +20,7 @@ var t0 = Date.now();
 var R = ENGINE.simulate(EXAMPLE, ENGINE.DEF);
 var ms = Date.now() - t0;
 console.log('   durée simulée ' + R.T.toFixed(1) + ' s, calcul en ' + ms + ' ms, erreurs ' + R.errors.length + ', contacts ' + R.collisions.length);
-check('durée ~ 65,1 s', Math.abs(R.T - 65.1) < 0.15, 'T=' + R.T);
+check('durée ~ 91,8 s (tir attendu jusqu\'à 85 s)', Math.abs(R.T - 91.8) < 0.15, 'T=' + R.T);
 check('aucune erreur', R.errors.length === 0, JSON.stringify(R.errors));
 check('score calculable', SCORE.scoreAt(R, ENGINE.DEF).total >= 0);
 var sc = SCORE.scoreAt(R, ENGINE.DEF);
@@ -91,7 +91,7 @@ console.log('\n8. Robot adverse');
 check('P1 miroir = P4', ENGINE.mirrorId('P1') === 'P4');
 check('M1 miroir = M6', ENGINE.mirrorId('M1') === 'M6');
 var none = ENGINE.simulateMatch(EXAMPLE, ENGINE.DEF, { opponent: { program: EXAMPLE }, intensity: 'aucun' });
-check('intensité aucun = sans adversaire', !none.opponent && Math.abs(none.T - 65.1) < 0.15, 'T=' + none.T);
+check('intensité aucun = sans adversaire', !none.opponent && Math.abs(none.T - 91.8) < 0.15, 'T=' + none.T);
 var both = ENGINE.simulateMatch(EXAMPLE, ENGINE.DEF, { opponent: { program: EXAMPLE, name: 'Exemple' }, intensity: 'realiste' });
 check('adversaire simulé', !!both.opponent);
 check('départ bleu x ≈ 2750', both.opponent && Math.abs(both.opponent.params.x0 - 2750) < 1, both.opponent && both.opponent.params.x0);
@@ -166,7 +166,7 @@ benv.play(function (obs, mask) {
   for (i = 0; i < mask.length; i++) if (mask[i]) return i;
   return -1;
 }, {});
-check('les boulets peuvent être tirés en live', benv.program().some(function (s) { return s.a === 'boulets'; }), JSON.stringify(benv.program().map(function (s) { return s.a; })));
+check('les boulets peuvent être tirés en live', benv.program().some(function (s) { return s.a === 'tir'; }), JSON.stringify(benv.program().map(function (s) { return s.a; })));
 check('durée au moins 100 s avec boulets', benv.result().T >= 99.5, 'T=' + benv.result().T);
 
 if (fail) { console.log('\n' + fail + ' échec(s).'); process.exit(1); }
