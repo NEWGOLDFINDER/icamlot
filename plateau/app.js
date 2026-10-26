@@ -29,6 +29,13 @@
 
   function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
+  var oppChoice = { slug: lsGet('icamlot-opp-slug'), intensity: lsGet('icamlot-opp-int') || 'realiste' };
+  if (oppChoice.slug == null) oppChoice.slug = 'exemple';
+  var oppLoaded = {};
+  function saveOppChoice() {
+    lsSet('icamlot-opp-slug', oppChoice.slug || '');
+    lsSet('icamlot-opp-int', oppChoice.intensity);
+  }
 
   /* ---------- stockage navigateur (brouillon en cours) ---------- */
   function saveLocal() { lsSet('camelot-prog-v1', JSON.stringify({ params: params, program: prog })); }
@@ -219,7 +226,7 @@
   (function () {
     function attach(w) {
       worker = w;
-      worker.onmessage = function (e) { if (e.data.id === reqId) accept(e.data.r); };
+      worker.onmessage = function (e) { if (e.data.id === reqId) accept(e.data.r, e.data.opp); };
       worker.onerror = function () { worker = null; };
     }
     try {
@@ -227,27 +234,49 @@
         fetch('../engine/geom.js').then(function (r) { return r.text(); }),
         fetch('../engine/engine.js').then(function (r) { return r.text(); })
       ]).then(function (src) {
-        var code = src[0] + '\n' + src[1] + '\nonmessage=function(e){var r=ENGINE.simulate(e.data.prog,e.data.P);delete r.poseAt;delete r.stoneAt;postMessage({id:e.data.id,r:r});};';
+        var code = src[0] + '\n' + src[1] + '\nonmessage=function(e){var r=ENGINE.simulateMatch(e.data.prog,e.data.P,{opponent:e.data.opponent,intensity:e.data.intensity});var opp=r.opponent||null;if(opp){delete opp.poseAt;delete opp.stoneAt;}r.opponent=null;delete r.poseAt;delete r.stoneAt;postMessage({id:e.data.id,r:r,opp:opp});};';
         attach(new Worker(URL.createObjectURL(new Blob([code], { type: 'text/javascript' }))));
       }, function () { worker = null; });
     } catch (e) { worker = null; }
   })();
+  function currentOpponent() {
+    if (!oppChoice.slug) return null;
+    if (oppChoice.slug === 'exemple') return { name: 'Exemple', program: EXAMPLE, params: params };
+    return oppLoaded[oppChoice.slug] || null;
+  }
   function recompute() {
     readParams(); $('busy').hidden = false;
-    var data = { prog: JSON.parse(JSON.stringify(prog)), P: Object.assign({}, params), id: ++reqId };
+    var opp = currentOpponent();
+    if (oppChoice.slug && oppChoice.slug !== 'exemple' && !opp) {
+      api('GET', API + '/' + oppChoice.slug).then(function (j) {
+        oppLoaded[oppChoice.slug] = { name: j.name, program: j.program, params: j.params || params };
+        recompute();
+      }, function () { oppChoice.slug = ''; saveOppChoice(); recompute(); });
+      return;
+    }
+    var data = { prog: JSON.parse(JSON.stringify(prog)), P: Object.assign({}, params), id: ++reqId, opponent: opp ? { name: opp.name, program: opp.program, params: opp.params || params } : null, intensity: opp ? oppChoice.intensity : 'aucun' };
     if (worker) worker.postMessage(data);
-    else setTimeout(function () { var r = ENGINE.simulate(data.prog, data.P); accept(r); }, 0);
+    else setTimeout(function () { var r = ENGINE.simulateMatch(data.prog, data.P, { opponent: data.opponent, intensity: data.intensity }); accept(r, r.opponent); }, 0);
   }
-  function accept(r) {
-    r.poseAt = function (t) { return ENGINE.poseAtK(r.K, t); };
-    r.stoneAt = function (st, t) { var e = st.tl[0]; for (var i = 0; i < st.tl.length; i++) if (st.tl[i].t <= t) e = st.tl[i]; return e; };
+  function attachAt(res) {
+    if (!res) return res;
+    res.poseAt = function (t) { return ENGINE.poseAtK(res.K, t); };
+    res.stoneAt = function (st, t) { var e = st.tl[0]; for (var i = 0; i < st.tl.length; i++) if (st.tl[i].t <= t) e = st.tl[i]; return e; };
+    return res;
+  }
+  function accept(r, opp) {
+    attachAt(r);
+    r.opponent = attachAt(opp || r.opponent || null);
     R = r; $('busy').hidden = true;
     TEND = Math.max(MATCH, Math.ceil(R.T + 1));
     $('track').setAttribute('aria-valuemax', String(TEND));
     var tot = $('tot'), nErr = R.errors.length;
     tot.textContent = 'Durée ' + fmt(R.T) + ' s' + (R.T <= MATCH ? '' : ' (+' + fmt(R.T - MATCH) + ' s)');
     tot.className = 'tot ' + (R.T <= MATCH && !nErr ? 'ok' : 'bad');
-    showStepInfo(); buildTrail(); computeBad(); drawStrip(); renderResults(); renderAlerts(); renderTimeline();
+    showStepInfo(); buildTrail(); buildOppTrail(); computeBad(); drawStrip(); renderResults(); renderAlerts(); renderTimeline();
+    if (them) them.group.visible = !!R.opponent;
+    if (graalOpp) graalOpp.visible = !!R.opponent;
+    if (ballsOpp) ballsOpp.forEach(function (b) { b.visible = !!R.opponent; });
     if (time > TEND) time = TEND;
   }
 
@@ -336,58 +365,79 @@
     }
   });
 
-  /* robot */
-  var robot = new THREE.Group(); scene.add(robot);
+  /* robots (jaune = nous, bleu = adversaire en miroir) */
   var yellow = mat(0xf2b600, 0.5, 0.1), blue = mat(0x3a6fd0, 0.55, 0.15), dark = mat(0x39414e, 0.5, 0.3), black = mat(0x1d2128, 0.8, 0);
   var shp = new THREE.Shape();
   [180, 300, 60].forEach(function (a, i) { var r = a * Math.PI / 180, x = GEO.R * Math.cos(r), z = GEO.R * Math.sin(r); if (i) shp.lineTo(x, -z); else shp.moveTo(x, -z); });
   var plateGeo = new THREE.ExtrudeGeometry(shp, { depth: 20, bevelEnabled: false });
-  [70, 220].forEach(function (y) { var pl = new THREE.Mesh(plateGeo, dark); pl.rotation.x = -Math.PI / 2; pl.position.y = y; pl.castShadow = true; robot.add(pl); });
-  var elec = cyl(70, 70, 130, yellow, 3); elec.rotation.y = Math.PI / 6; elec.position.set(-25, 155, 0); robot.add(elec);
-  var lidar = cyl(38, 38, 40, black); lidar.position.set(-30, 260, 0); robot.add(lidar);
-  [180, 300, 60].forEach(function (a) { var r = a * Math.PI / 180, g = new THREE.Group(); g.position.set(150 * Math.cos(r), 50.8, 150 * Math.sin(r)); g.rotation.y = -r; robot.add(g); var wh = cyl(50.8, 50.8, 39.5, black, 24); wh.rotation.z = Math.PI / 2; g.add(wh); });
-  var rc = nv(240), bau = cyl(22, 22, 25, mat(0xd62f2f, 0.4, 0.1)); bau.position.set(60 * rc[0], 245, 60 * rc[1]); robot.add(bau);
-  function makeModule(k) {
-    var face = new THREE.Group(); face.rotation.y = -k * 120 * Math.PI / 180; robot.add(face);
-    var mod = new THREE.Group(); mod.position.x = GEO.rin; face.add(mod);
-    [-175, 175].forEach(function (z) { var u = box(20, 345, 20, blue); u.position.set(-40, 172.5, z); mod.add(u); });
-    var tb = box(20, 15, 370, blue); tb.position.set(-40, 337.5, 0); mod.add(tb);
-    var carr = new THREE.Group(); mod.add(carr);
-    var cross = box(14, 14, 330, blue); cross.position.set(-40, 0, 0); carr.add(cross);
-    var ring = new THREE.Mesh(new THREE.TorusGeometry(58, 3.5, 10, 48), new THREE.MeshStandardMaterial({ color: 0xd62f2f, roughness: 0.5 })); ring.rotation.y = Math.PI / 2; ring.position.set(-34, 0, 0); carr.add(ring);
-    var grip = new THREE.Group(); carr.add(grip);
-    var spine = box(6, 200, 14, blue); spine.position.set(-27, -20, 0); grip.add(spine);
-    var mats = [0, 1, 2].map(function () { return new THREE.MeshStandardMaterial({ color: 0xd62f2f, roughness: 0.55 }); });
-    BARS.forEach(function (b, i) {
-      var bar = box(6, 14, 2 * (b.hl - b.r) + 20, blue); bar.position.set(-27, b.y, 0); grip.add(bar);
-      [-80, 80].forEach(function (z) { var c = cyl(b.r * 0.4, b.r, 24, mats[i]); c.rotation.z = -Math.PI / 2; c.position.set(-12, b.y, z); grip.add(c); });
-    });
-    var gcup = cyl(8, 16, 24, mats[0]); gcup.rotation.z = -Math.PI / 2; gcup.position.set(-12, -110, 0); grip.add(gcup);
-    var lab = box(4, 40, 40, k ? mat(0x2aa3a3, 0.5, 0.1) : mat(0x8a5cd0, 0.5, 0.1)); lab.position.set(-60, 300, 0); mod.add(lab);
-    return { carr: carr, grip: grip, mats: mats };
+  function makeBot(scheme) {
+    var bot = new THREE.Group(); scene.add(bot);
+    var elecM = scheme.elec, modM = scheme.mod, banner = scheme.banner;
+    [70, 220].forEach(function (y) { var pl = new THREE.Mesh(plateGeo, dark); pl.rotation.x = -Math.PI / 2; pl.position.y = y; pl.castShadow = true; bot.add(pl); });
+    var elec = cyl(70, 70, 130, elecM, 3); elec.rotation.y = Math.PI / 6; elec.position.set(-25, 155, 0); bot.add(elec);
+    var lidar = cyl(38, 38, 40, black); lidar.position.set(-30, 260, 0); bot.add(lidar);
+    [180, 300, 60].forEach(function (a) { var r = a * Math.PI / 180, g = new THREE.Group(); g.position.set(150 * Math.cos(r), 50.8, 150 * Math.sin(r)); g.rotation.y = -r; bot.add(g); var wh = cyl(50.8, 50.8, 39.5, black, 24); wh.rotation.z = Math.PI / 2; g.add(wh); });
+    var rc = nv(240), bau = cyl(22, 22, 25, mat(banner, 0.4, 0.1)); bau.position.set(60 * rc[0], 245, 60 * rc[1]); bot.add(bau);
+    function makeModule(k) {
+      var face = new THREE.Group(); face.rotation.y = -k * 120 * Math.PI / 180; bot.add(face);
+      var mod = new THREE.Group(); mod.position.x = GEO.rin; face.add(mod);
+      [-175, 175].forEach(function (z) { var u = box(20, 345, 20, modM); u.position.set(-40, 172.5, z); mod.add(u); });
+      var tb = box(20, 15, 370, modM); tb.position.set(-40, 337.5, 0); mod.add(tb);
+      var carr = new THREE.Group(); mod.add(carr);
+      var cross = box(14, 14, 330, modM); cross.position.set(-40, 0, 0); carr.add(cross);
+      var ring = new THREE.Mesh(new THREE.TorusGeometry(58, 3.5, 10, 48), new THREE.MeshStandardMaterial({ color: banner, roughness: 0.5 })); ring.rotation.y = Math.PI / 2; ring.position.set(-34, 0, 0); carr.add(ring);
+      var grip = new THREE.Group(); carr.add(grip);
+      var spine = box(6, 200, 14, modM); spine.position.set(-27, -20, 0); grip.add(spine);
+      var mats = [0, 1, 2].map(function () { return new THREE.MeshStandardMaterial({ color: banner, roughness: 0.55 }); });
+      BARS.forEach(function (b, i) {
+        var bar = box(6, 14, 2 * (b.hl - b.r) + 20, modM); bar.position.set(-27, b.y, 0); grip.add(bar);
+        [-80, 80].forEach(function (z) { var c = cyl(b.r * 0.4, b.r, 24, mats[i]); c.rotation.z = -Math.PI / 2; c.position.set(-12, b.y, z); grip.add(c); });
+      });
+      var gcup = cyl(8, 16, 24, mats[0]); gcup.rotation.z = -Math.PI / 2; gcup.position.set(-12, -110, 0); grip.add(gcup);
+      var lab = box(4, 40, 40, k ? mat(0x2aa3a3, 0.5, 0.1) : mat(0x8a5cd0, 0.5, 0.1)); lab.position.set(-60, 300, 0); mod.add(lab);
+      return { carr: carr, grip: grip, mats: mats };
+    }
+    var MOD = { A: makeModule(0), B: makeModule(1) };
+    var tmpM = new THREE.Matrix4(), tmpQ = new THREE.Quaternion(), tmpV = new THREE.Vector3(), tmpS = new THREE.Vector3(), loc = new THREE.Object3D();
+    function place(p) {
+      if (!p) return;
+      var w = W(p.x, p.y); bot.position.set(w[0], 0, w[1]); bot.rotation.y = -p.h * Math.PI / 180;
+      ['A', 'B'].forEach(function (f) { if (p[f]) { MOD[f].carr.position.y = p[f].hc; MOD[f].grip.rotation.x = p[f].rot * Math.PI / 180; } });
+      bot.updateMatrixWorld(true);
+    }
+    function fromGrip(mesh, f, lx, ly, ry) {
+      loc.position.set(lx, ly, 0); loc.rotation.set(0, ry, 0); loc.updateMatrix();
+      tmpM.multiplyMatrices(MOD[f].grip.matrixWorld, loc.matrix); tmpM.decompose(tmpV, tmpQ, tmpS);
+      mesh.position.copy(tmpV); mesh.quaternion.copy(tmpQ);
+    }
+    return { group: bot, MOD: MOD, place: place, fromGrip: fromGrip };
   }
-  var MOD = { A: makeModule(0), B: makeModule(1) };
+  var us = makeBot({ elec: yellow, mod: blue, banner: 0xd62f2f });
+  var them = makeBot({ elec: blue, mod: yellow, banner: 0xf2b600 });
+  them.group.visible = false;
+  var robot = us.group, MOD = us.MOD;
   var graalM = box(60, 60, 60, new THREE.MeshStandardMaterial({ color: 0xe8c547, roughness: 0.3, metalness: 0.6 })); scene.add(graalM);
+  var graalOpp = box(60, 60, 60, new THREE.MeshStandardMaterial({ color: 0x9ec0ff, roughness: 0.3, metalness: 0.6 })); graalOpp.visible = false; scene.add(graalOpp);
   var ballMat = new THREE.MeshStandardMaterial({ color: 0xf2b600, roughness: 0.8 }), balls = [];
+  var ballMatOpp = new THREE.MeshStandardMaterial({ color: 0x3a6fd0, roughness: 0.8 }), ballsOpp = [];
   for (var bi = 0; bi < 10; bi++) { var bm = new THREE.Mesh(new THREE.SphereGeometry(22.5, 16, 12), ballMat); bm.castShadow = true; scene.add(bm); balls.push(bm); }
-  var BSEED = []; for (var bj = 0; bj < 10; bj++) BSEED.push([((bj * 37) % 10) / 10 - 0.5, ((bj * 53) % 10) / 10 - 0.5]);
-  var trail = null, showTrail = true;
+  for (var bj = 0; bj < 10; bj++) { var bo = new THREE.Mesh(new THREE.SphereGeometry(22.5, 16, 12), ballMatOpp); bo.castShadow = true; bo.visible = false; scene.add(bo); ballsOpp.push(bo); }
+  var BSEED = []; for (var bk = 0; bk < 10; bk++) BSEED.push([((bk * 37) % 10) / 10 - 0.5, ((bk * 53) % 10) / 10 - 0.5]);
+  var trail = null, trailOpp = null, showTrail = true, showOppTrail = true;
   function buildTrail() {
     if (trail) { scene.remove(trail); trail.geometry.dispose(); }
+    if (!R) return;
     var pts = []; for (var t = 0; t <= R.T; t += 0.1) { var p = R.poseAt(t), w = W(p.x, p.y); pts.push(new THREE.Vector3(w[0], 2, w[1])); }
     trail = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0xff3d7f })); trail.visible = showTrail; scene.add(trail);
   }
-  function placeRobot(p) {
-    var w = W(p.x, p.y); robot.position.set(w[0], 0, w[1]); robot.rotation.y = -p.h * Math.PI / 180;
-    ['A', 'B'].forEach(function (f) { MOD[f].carr.position.y = p[f].hc; MOD[f].grip.rotation.x = p[f].rot * Math.PI / 180; });
-    robot.updateMatrixWorld(true);
+  function buildOppTrail() {
+    if (trailOpp) { scene.remove(trailOpp); if (trailOpp.geometry) trailOpp.geometry.dispose(); trailOpp = null; }
+    if (!R || !R.opponent) return;
+    var pts = []; for (var t = 0; t <= R.opponent.T; t += 0.1) { var p = R.opponent.poseAt(t), w = W(p.x, p.y); pts.push(new THREE.Vector3(w[0], 3, w[1])); }
+    trailOpp = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0x4aa3ff })); trailOpp.visible = showOppTrail; scene.add(trailOpp);
   }
-  var tmpM = new THREE.Matrix4(), tmpQ = new THREE.Quaternion(), tmpV = new THREE.Vector3(), tmpS = new THREE.Vector3(), loc = new THREE.Object3D();
-  function fromGrip(mesh, f, lx, ly, ry) {
-    loc.position.set(lx, ly, 0); loc.rotation.set(0, ry, 0); loc.updateMatrix();
-    tmpM.multiplyMatrices(MOD[f].grip.matrixWorld, loc.matrix); tmpM.decompose(tmpV, tmpQ, tmpS);
-    mesh.position.copy(tmpV); mesh.quaternion.copy(tmpQ);
-  }
+  function placeRobot(p) { us.place(p); }
+  function fromGrip(mesh, f, lx, ly, ry) { us.fromGrip(mesh, f, lx, ly, ry); }
 
   /* ---------- choix d'un repère en cliquant sur la table ---------- */
   function targetKinds(st) {
@@ -500,8 +550,14 @@
   function renderResults() {
     var T = R.T, tE = Math.min(T, MATCH), o = outcome(tE), sc = scoreOf(o);
     $('scoreV').textContent = sc.total; $('totPts').textContent = sc.total + ' pts';
+    var oppR = R.opponent, oppSc = null;
+    if (oppR) {
+      oppSc = SCORE.scoreAt(oppR, oppR.params, Math.min(oppR.T, MATCH));
+      $('scoreOpp').hidden = false; $('scoreOpp').textContent = 'adv. ' + oppSc.total + ' pts';
+      $('totPts').textContent = sc.total + ' · adv. ' + oppSc.total;
+    } else { $('scoreOpp').hidden = true; $('scoreOpp').textContent = ''; }
     $('score').title = 'Score estimé ' + (T > MATCH ? 'à 100 s' : 'en fin de programme') + ' : détail dans l\'onglet Résultat';
-    var h = '<div class="scorebox"><div class="big"><b>' + sc.total + '</b> pts</div><p class="note">Score estimé ' + (T > MATCH ? 'à 100 s : ce qui est fait après ne compte pas' : 'en fin de programme') + '. Barème du compteur de points, robot adverse absent.</p></div>';
+    var h = '<div class="scorebox"><div class="big"><b>' + sc.total + '</b> pts</div><p class="note">Score estimé ' + (T > MATCH ? 'à 100 s : ce qui est fait après ne compte pas' : 'en fin de programme') + '. Barème du compteur de points' + (oppR ? ', face à l\'adversaire (' + ((currentOpponent() && currentOpponent().name) || 'miroir') + ' : ' + oppSc.total + ' pts).' : '.') + '</p></div>';
     sc.rows.forEach(function (r) {
       var sub = 0; r[1].forEach(function (x) { sub += x[2]; });
       h += '<div class="sgrp"><div class="sh"><span>' + esc(r[0]) + '</span><b>' + sub + ' pts</b></div>';
@@ -549,37 +605,66 @@
 
   /* ---------- mise à jour de la vue ---------- */
   var red = new THREE.Color(0xd62f2f), green = new THREE.Color(0x2fbf71), dragging = false, lastPlayIdx = -2;
+  function placeGraal(mesh, ge, holder, homeX, homeY, gs, pHold) {
+    mesh.scale.setScalar(gs / 60);
+    if (!ge || ge.k === 'home') { var gw = W(homeX, homeY); mesh.position.set(gw[0], gs / 2, gw[1]); mesh.rotation.set(0, 0, 0); return; }
+    if (ge.k === 'held') holder.fromGrip(mesh, ge.f, gs / 2, -110, 0);
+    else {
+      if (!ge._p) { holder.place(ge.pose); holder.fromGrip(mesh, ge.f, gs / 2, -110, 0); ge._p = mesh.position.clone(); ge._q = mesh.quaternion.clone(); if (pHold) holder.place(pHold); }
+      mesh.position.copy(ge._p); mesh.quaternion.copy(ge._q);
+    }
+  }
   function update(t) {
     if (!R) return;
-    var tt = Math.min(t, R.T), groups = [];
+    var tt = Math.min(t, R.T), groups = [], opp = R.opponent;
     R.stones.forEach(function (st, i) {
-      var m = stoneMeshes[i], e = R.stoneAt(st, tt);
+      var m = stoneMeshes[i], e = R.stoneAt(st, tt), holder = us;
+      m.visible = true;
+      if (e.k === 'gone') {
+        if (opp) { e = opp.stoneAt(opp.stones[i], tt); holder = them; }
+        else { m.visible = false; return; }
+      }
+      if (e.k === 'gone') { m.visible = false; return; }
       if (e.k === 'home') { var h = m.userData.home; m.position.set(h.x, h.y, h.z); m.rotation.set(0, h.ry, 0); return; }
       if (e.k === 'free') {
-        if (!e._p) { placeRobot(e.pose); fromGrip(m, e.f, 55, 110 * (e.l - 1), Math.PI / 2); e._p = m.position.clone(); e._q = m.quaternion.clone(); }
+        if (!e._p) { holder.place(e.pose); holder.fromGrip(m, e.f, 55, 110 * (e.l - 1), Math.PI / 2); e._p = m.position.clone(); e._q = m.quaternion.clone(); }
         m.position.copy(e._p); m.quaternion.copy(e._q); return;
       }
-      groups.push([m, e]);
+      groups.push([m, e, holder]);
     });
     var ge = graalAt(tt);
-    var c = checks(tt), p = c.p; placeRobot(p);
-    groups.forEach(function (g) { fromGrip(g[0], g[1].f, 55, 110 * (g[1].l - 1), Math.PI / 2); });
-    graalM.scale.setScalar(params.gs / 60);
-    if (ge.k === 'home') { var gw = W(params.gx, params.gy); graalM.position.set(gw[0], params.gs / 2, gw[1]); graalM.rotation.set(0, 0, 0); }
-    else if (ge.k === 'held') fromGrip(graalM, ge.f, params.gs / 2, -110, 0);
-    else { if (!ge._p) { placeRobot(ge.pose); fromGrip(graalM, ge.f, params.gs / 2, -110, 0); ge._p = graalM.position.clone(); ge._q = graalM.quaternion.clone(); placeRobot(p); } graalM.position.copy(ge._p); graalM.quaternion.copy(ge._q); }
-    ['A', 'B'].forEach(function (f) { for (var j = 0; j < 3; j++) { var on = p[f].vac[j]; MOD[f].mats[j].color.copy(on ? green : red); MOD[f].mats[j].emissive.copy(green).multiplyScalar(on ? 0.2 : 0); } });
+    var c = checks(tt), p = c.p; us.place(p);
+    var po = opp ? opp.poseAt(Math.min(t, opp.T)) : null;
+    if (opp) them.place(po);
+    groups.forEach(function (g) { g[2].fromGrip(g[0], g[1].f, 55, 110 * (g[1].l - 1), Math.PI / 2); });
+    placeGraal(graalM, ge, us, params.gx, params.gy, params.gs, p);
+    if (opp) placeGraal(graalOpp, SCORE.graalAt(opp, Math.min(t, opp.T)), them, opp.params.gx, opp.params.gy, opp.params.gs || params.gs, po);
+    ['A', 'B'].forEach(function (f) { for (var j = 0; j < 3; j++) { var on = p[f].vac[j]; us.MOD[f].mats[j].color.copy(on ? green : red); us.MOD[f].mats[j].emissive.copy(green).multiplyScalar(on ? 0.2 : 0); } });
+    if (po) ['A', 'B'].forEach(function (f) { if (!po[f]) return; for (var j = 0; j < 3; j++) { var on = po[f].vac[j]; them.MOD[f].mats[j].color.copy(on ? green : red); them.MOD[f].mats[j].emissive.copy(green).multiplyScalar(on ? 0.2 : 0); } });
     var ba = R.balls.at, bw = ba ? W(ba[0], ba[1]) : [0, 0];
     balls.forEach(function (bm, i) {
       var ti = R.balls.t + (i + 0.5) * R.balls.d / 10;
-      if (tt < ti) bm.position.copy(new THREE.Vector3(-76 + (i % 5) * 18, 245, (Math.floor(i / 5) - 0.5) * 30).applyMatrix4(robot.matrixWorld));
+      if (tt < ti) bm.position.copy(new THREE.Vector3(-76 + (i % 5) * 18, 245, (Math.floor(i / 5) - 0.5) * 30).applyMatrix4(us.group.matrixWorld));
       else { var k = Math.min(1, (tt - ti) / 0.35); bm.position.set(bw[0] + BSEED[i][0] * 160 * k, 200 + (22.5 - 200) * k * k, bw[1] + BSEED[i][1] * 160 * k); }
     });
+    if (opp) {
+      var bao = opp.balls.at, bwo = bao ? W(bao[0], bao[1]) : [0, 0], tto = Math.min(t, opp.T);
+      ballsOpp.forEach(function (bm, i) {
+        var ti = opp.balls.t + (i + 0.5) * opp.balls.d / 10;
+        if (tto < ti) bm.position.copy(new THREE.Vector3(-76 + (i % 5) * 18, 245, (Math.floor(i / 5) - 0.5) * 30).applyMatrix4(them.group.matrixWorld));
+        else { var k = Math.min(1, (tto - ti) / 0.35); bm.position.set(bwo[0] + BSEED[i][0] * 160 * k, 200 + (22.5 - 200) * k * k, bwo[1] + BSEED[i][1] * 160 * k); }
+      });
+    }
     var hR = $('hR'), hS = $('hS'), hP = $('hP'), hB = $('hBall');
     hR.textContent = Math.round(c.robotH) + ' mm ' + (c.robotH <= 350.5 ? '✓' : '✗'); hR.className = c.robotH <= 350.5 ? 'ok' : 'bad';
     if (c.n) { var okS = c.oTop <= c.oLim + 0.5; hS.textContent = Math.round(c.oTop) + ' / ' + c.oLim + ' mm ' + (okS ? '✓' : '✗'); hS.className = okS ? 'ok' : 'bad'; } else { hS.textContent = '-'; hS.className = ''; }
     hP.textContent = Math.round(c.per) + ' / ' + c.plim + ' mm ' + (c.per <= c.plim + 0.5 ? '✓' : '✗'); hP.className = c.per <= c.plim + 0.5 ? 'ok' : 'bad';
     $('hA').textContent = Math.round(p.A.hc) + ' / ' + Math.round(p.A.rot) + '°'; $('hB').textContent = Math.round(p.B.hc) + ' / ' + Math.round(p.B.rot) + '°';
+    var hOpp = $('hOpp');
+    if (opp) {
+      var oName = (currentOpponent() && currentOpponent().name) || 'en miroir';
+      hOpp.textContent = oName; hOpp.className = '';
+    } else { hOpp.textContent = 'aucun'; hOpp.className = 'muted'; }
     if (tt < R.balls.t) { hB.textContent = 'à bord'; hB.className = ''; }
     else { var nb = Math.min(10, Math.floor((tt - R.balls.t) / (R.balls.d / 10) + 0.5)), okB = R.balls.t >= 85 && R.balls.t + R.balls.d <= 100; hB.textContent = nb + ' / 10 ' + (okB ? '✓' : '✗'); hB.className = okB ? 'ok' : 'bad'; }
     var clk = $('clk'); clk.textContent = fmt(Math.min(t, TEND)); clk.className = t > MATCH ? 'bad' : '';
@@ -596,6 +681,7 @@
     $('ph').style.left = (Math.min(t, TEND) / TEND * 100) + '%';
     $('track').setAttribute('aria-valuenow', String(Math.round(t)));
     if (trail) trail.geometry.setDrawRange(0, Math.max(2, Math.floor(tt / 0.1)));
+    if (trailOpp) trailOpp.geometry.setDrawRange(0, Math.max(2, Math.floor(Math.min(t, opp ? opp.T : 0) / 0.1)));
   }
 
   /* ---------- message éphémère ---------- */
@@ -706,9 +792,20 @@
       act.appendChild(bl); act.appendChild(bd); li.appendChild(act); ul.appendChild(li);
     });
   }
+  function fillOppSelect() {
+    var sel_ = $('pOpp'), cur = oppChoice.slug, html = '<option value="">Aucun</option><option value="exemple">Exemple (miroir)</option>';
+    if (oppLoaded.cerveau) html += '<option value="cerveau">' + esc(oppLoaded.cerveau.name || 'Rejeu Cerveau') + '</option>';
+    strats.forEach(function (s) { html += '<option value="' + esc(s.slug) + '">' + esc(s.name) + '</option>'; });
+    sel_.innerHTML = html;
+    if (cur && cur !== 'exemple' && !strats.some(function (s) { return s.slug === cur; })) cur = 'exemple';
+    sel_.value = cur || '';
+    document.querySelectorAll('#pOppInt button').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.i === oppChoice.intensity)); });
+    $('pOppInt').hidden = !sel_.value;
+  }
   function refreshStrats() {
-    return api('GET', API).then(function (j) { strats = j.strategies || []; renderStrats(); }, function () {
+    return api('GET', API).then(function (j) { strats = j.strategies || []; renderStrats(); fillOppSelect(); }, function () {
       strats = []; $('strats').innerHTML = '<li class="emptyl bad">Serveur des stratégies injoignable. L\'export JSON reste disponible.</li>';
+      fillOppSelect();
     });
   }
   function doSave(name) {
@@ -779,7 +876,20 @@
   });
   $('cLab').addEventListener('change', function (e) { labels.visible = e.target.checked; });
   $('cTrail').addEventListener('change', function (e) { showTrail = e.target.checked; if (trail) trail.visible = showTrail; });
+  $('cOppTrail').addEventListener('change', function (e) { showOppTrail = e.target.checked; if (trailOpp) trailOpp.visible = showOppTrail; });
   $('cPer').addEventListener('change', function (e) { countPer = e.target.checked; if (R) { computeBad(); drawStrip(); renderAlerts(); renderResults(); } });
+  $('pOpp').addEventListener('change', function () {
+    oppChoice.slug = $('pOpp').value;
+    $('pOppInt').hidden = !oppChoice.slug;
+    saveOppChoice(); recompute();
+  });
+  document.querySelectorAll('#pOppInt button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      oppChoice.intensity = b.dataset.i;
+      document.querySelectorAll('#pOppInt button').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+      saveOppChoice(); if (oppChoice.slug) recompute();
+    });
+  });
   for (var k in PIDS) $(PIDS[k]).addEventListener('change', function () { readParams(); changed(); });
   $('bReset').addEventListener('click', function () { params = Object.assign({}, DEF); writeParams(); changed(); toast('Paramètres par défaut remis', '', [['Annuler', doUndo]]); });
   $('bUndo').addEventListener('click', doUndo);
@@ -840,14 +950,22 @@
   var saved = loadLocal();
   params = Object.assign({}, DEF, saved && saved.params ? saved.params : {});
   prog = saved ? saved.program : JSON.parse(JSON.stringify(EXAMPLE));
-  writeParams(); readParams(); lastSnap = snap(); updateUndoBtns(); renderSteps(); updateDirty(); resize(); recompute();
+  writeParams(); readParams(); lastSnap = snap(); updateUndoBtns(); renderSteps(); updateDirty(); resize(); fillOppSelect(); refreshStrats(); recompute();
   (function openReplay() {
     try {
       var replay = sessionStorage.getItem('icamlot-replay');
       if (replay) {
         sessionStorage.removeItem('icamlot-replay');
         var o = JSON.parse(replay);
-        importObj(o); setCurrent(o.name || ''); markSaved(false); toast('Programme issu de l\'Atelier Cerveau chargé', 'ok');
+        if (o.opponent && o.opponent.program) {
+          oppChoice.intensity = o.intensity || o.opponent.intensity || 'realiste';
+          oppLoaded.cerveau = { name: o.opponent.name || 'Cerveau', program: o.opponent.program, params: o.opponent.params || o.params };
+          oppChoice.slug = 'cerveau';
+          saveOppChoice();
+        }
+        importObj(o); setCurrent(o.name || ''); markSaved(false);
+        fillOppSelect();
+        toast('Programme issu de l\'Atelier Cerveau chargé', 'ok');
       }
     } catch (e) {}
     var m = /[?&]strategie=([a-z0-9-]+)/.exec(location.search);

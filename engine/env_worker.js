@@ -45,6 +45,10 @@ rl.on('line', function (line) {
       if (!env) make(msg.config || {});
       return reply(env.imitate(msg.program || [], msg.scenario || {}));
     }
+    if (cmd === 'qualify') {
+      return reply(ctx.ENV.qualify(msg.strategy || { program: msg.program }, msg.params));
+    }
+    if (cmd === 'example') return reply({ program: ctx.ENV.EXAMPLE });
     if (cmd === 'close') { env = null; return reply({ ok: true }); }
     reply({ error: 'Commande inconnue : ' + cmd });
   } catch (e) {

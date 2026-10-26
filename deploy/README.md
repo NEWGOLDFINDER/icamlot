@@ -58,3 +58,4 @@ ICAMLOT_PASSWORD=test python3 api/server.py --static . --data .data/strategies
 puis ouvrir http://127.0.0.1:8081/ (l'intro se rejoue à chaque chargement).
 L'Atelier Cerveau est sur http://127.0.0.1:8081/cerveau/ (même mot de passe).
 L'entraînement lance `node engine/env_worker.js` et `python3 trainer/trainer.py` en local.
+Dans `/plateau/`, le robot adverse (Paramètres) joue une stratégie en miroir.

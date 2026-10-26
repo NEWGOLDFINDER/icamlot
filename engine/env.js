@@ -18,63 +18,31 @@
     return n;
   }
 
-  function mirrorId(id) {
-    var n = parseInt(id.slice(1), 10), p = id[0];
-    if (p === 'M') return 'M' + (n <= 5 ? n + 5 : n - 5);
-    if (p === 'T') return 'T' + (n <= 4 ? n + 4 : n - 4);
-    if (p === 'P') {
-      var map = { P1: 'P4', P2: 'P3', P3: 'P2', P4: 'P1', P5: 'P8', P6: 'P7', P7: 'P6', P8: 'P5', P9: 'P9', P10: 'P10' };
-      return map[id] || id;
-    }
-    return id;
-  }
-  function mirrorStep(st) {
-    var o = {}; Object.keys(st).forEach(function (k) { o[k] = st[k]; });
-    if (o.p) o.p = mirrorId(o.p);
-    if (o.z) o.z = mirrorId(o.z);
-    if (o.s && o.s.indexOf('.') >= 0) o.s = mirrorId(o.s.split('.')[0]) + '.' + o.s.split('.')[1];
-    return o;
-  }
-  function blueParams(base) {
-    var P = Object.assign({}, ENGINE.DEF, base || {}, { team: 'blue' });
-    P.x0 = 3000 - (base && base.x0 != null ? base.x0 : ENGINE.DEF.x0);
-    P.h0 = 180 - (base && base.h0 != null ? base.h0 : ENGINE.DEF.h0);
-    P.gx = 3000 - (base && base.gx != null ? base.gx : ENGINE.DEF.gx);
-    P.gy = base && base.gy != null ? base.gy : ENGINE.DEF.gy;
-    return P;
-  }
-
-  function eventsFromResult(R) {
-    var ev = { taken: {}, path: [], poseAt: null };
-    R.stepInfo.forEach(function (inf, i) {
-      var st = R.program[i]; if (!st) return;
-      if (st.a === 'prendre' && !inf.err) ev.taken[st.p] = inf.t1;
-    });
-    (R.K || []).forEach(function (k) { ev.path.push({ t: k.t, x: k.x, y: k.y, h: k.h }); });
-    ev.poseAt = function (t) {
-      if (!ev.path.length) return { x: 2750, y: 1000, h: 180 };
-      if (t <= ev.path[0].t) return ev.path[0];
-      for (var i = 1; i < ev.path.length; i++) if (t <= ev.path[i].t) {
-        var a = ev.path[i - 1], b = ev.path[i], d = b.t - a.t, u = d > 0 ? (t - a.t) / d : 1;
-        return { t: t, x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u, h: a.h + (b.h - a.h) * u };
-      }
-      return ev.path[ev.path.length - 1];
-    };
-    return ev;
-  }
+  function mirrorId(id) { return ENGINE.mirrorId(id); }
+  function mirrorStep(st) { return ENGINE.mirrorStep(st); }
+  function blueParams(base) { return ENGINE.blueParams(base); }
 
   var oppCache = {};
   function opponentEvents(strategy, params, intensity) {
-    if (!strategy || intensity === 'aucun' || intensity === 'none') return { taken: {}, poseAt: function () { return { x: 0, y: 0, h: 0 }; }, none: true };
-    var key = (strategy.slug || strategy.name || '') + ':' + JSON.stringify(strategy.program) + ':' + (params && params.v);
+    if (!strategy || !strategy.program || !strategy.program.length || intensity === 'aucun' || intensity === 'none') {
+      return { taken: {}, poseAt: function () { return { x: 0, y: 0, h: 0 }; }, none: true };
+    }
+    var key = (strategy.slug || strategy.name || '') + ':' + JSON.stringify(strategy.program) + ':' + (params && params.v) + ':' + intensity;
     if (oppCache[key]) return oppCache[key];
-    var prog = (strategy.program || []).map(mirrorStep);
-    var R = ENGINE.simulate(prog, blueParams(params), { skipContacts: true });
-    var ev = eventsFromResult(R);
-    ev.score = (root.SCORE && SCORE.scoreAt) ? SCORE.scoreAt(R, blueParams(params), Math.min(R.T, MATCH)).total : 0;
+    var Pb = ENGINE.intensityParams(blueParams(params), intensity);
+    var R = ENGINE.simulate(strategy.program.map(mirrorStep), Pb, { skipContacts: true });
+    var ev = ENGINE.extractOpp(R);
+    ev.score = (root.SCORE && SCORE.scoreAt) ? SCORE.scoreAt(R, Pb, Math.min(R.T, MATCH)).total : 0;
     ev.errors = R.errors.length;
     oppCache[key] = ev;
     return ev;
+  }
+
+  function qualify(strategy, params) {
+    if (!strategy || !strategy.program || !strategy.program.length) return { ok: false, score: 0, errors: 1 };
+    var R = ENGINE.simulate(strategy.program, Object.assign({}, ENGINE.DEF, params || {}), { skipContacts: false });
+    var sc = SCORE.scoreAt(R, R.params, Math.min(R.T, MATCH));
+    return { ok: R.errors.length === 0 && sc.total >= 70, score: sc.total, errors: R.errors.length, T: R.T };
   }
 
   function mulberry(seed) {
@@ -85,7 +53,13 @@
   function pickOpponent(list, seed, intensity) {
     if (!list || !list.length || intensity === 'aucun' || intensity === 'none') return null;
     var rng = mulberry(seed + 17);
-    return list[Math.floor(rng() * list.length)];
+    var eligible = list.filter(function (s) { return s.program && s.program.length && (s.score == null || s.score >= 70); });
+    if (!eligible.length) eligible = list;
+    if (intensity === 'agressif' || intensity === 'faible') {
+      eligible = eligible.slice().sort(function (a, b) { return ((b.score || 0) - (a.score || 0)) * (intensity === 'faible' ? -1 : 1); });
+      eligible = eligible.slice(0, Math.max(1, Math.ceil(eligible.length / 2)));
+    }
+    return eligible[Math.floor(rng() * eligible.length)];
   }
 
   function constructionsState(sim) {
@@ -192,7 +166,7 @@
       opp = opponentEvents(scenario.opponent || opts.opponent, P, scenario.intensite || intensity);
       if (opp.none) P.oppTaken = {};
       else P.oppTaken = Object.assign({}, opp.taken);
-      sim = ENGINE.makeSim(P, { skipContacts: skipContacts });
+      sim = ENGINE.makeSim(P, { skipContacts: skipContacts, oppPoseAt: opp.none ? null : function (t) { return opp.poseAt(t); } });
       belief = makeBelief();
       done = false;
       history = [];
@@ -268,7 +242,12 @@
       return { pairs: pairs, score: sc.total, detail: sc.detail, T: sim.time(), n: pairs.length, start: s0 };
     }
     function program() { return history.slice(); }
-    function result() { return sim ? sim.result(!skipContacts) : null; }
+    function result() {
+      if (!sim) return null;
+      var R = sim.result(!skipContacts);
+      if (opp && !opp.none && opp.result) R.opponent = opp.result;
+      return R;
+    }
     function snapshot() { return sim ? { sim: sim.snapshot(), belief: JSON.parse(JSON.stringify(belief)), lastScore: lastScore, done: done, history: JSON.parse(JSON.stringify(history)) } : null; }
     function restore(snap) {
       if (!sim) reset();
@@ -289,7 +268,7 @@
     { a: 'trone' }
   ];
 
-  var api = { MATCH: MATCH, GROUPS: GROUPS, nInputs: nInputs, create: create, mirrorId: mirrorId, mirrorStep: mirrorStep, blueParams: blueParams, opponentEvents: opponentEvents, pickOpponent: pickOpponent, EXAMPLE: EXAMPLE };
+  var api = { MATCH: MATCH, GROUPS: GROUPS, nInputs: nInputs, create: create, mirrorId: mirrorId, mirrorStep: mirrorStep, blueParams: blueParams, opponentEvents: opponentEvents, pickOpponent: pickOpponent, qualify: qualify, EXAMPLE: EXAMPLE };
   root.ENV = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

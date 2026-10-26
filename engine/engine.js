@@ -2,7 +2,7 @@
    Optimisations D.1 (overlap, dans geom.js) et D.2 (choix de pose paresseux). */
 (function (root) {
   var rin = GEO.rin, R3 = GEO.R;
-  var VERSION = '1.1.0';
+  var VERSION = '1.2.0';
   var MATCH = 100;
   var DEF = { v: 0.5, va: 0.2, w: 120, vz: 100, trot: 1.5, tvac: 0.5, trel: 0.4, tballs: 4, x0: 250, y0: 1000, h0: 0, gx: 100, gy: 1180, gs: 60, team: 'yellow' };
   var PK = [];
@@ -26,6 +26,39 @@
   function throneOf(team) { return team === 'blue' ? THRONE_B : THRONE; }
   function tx(x, team) { return team === 'blue' ? 3000 - x : x; }
   function th(h, team) { return team === 'blue' ? 180 - h : h; }
+  function mirrorId(id) {
+    var n = parseInt(id.slice(1), 10), p = id[0];
+    if (p === 'M') return 'M' + (n <= 5 ? n + 5 : n - 5);
+    if (p === 'T') return 'T' + (n <= 4 ? n + 4 : n - 4);
+    if (p === 'P') {
+      var map = { P1: 'P4', P2: 'P3', P3: 'P2', P4: 'P1', P5: 'P8', P6: 'P7', P7: 'P6', P8: 'P5', P9: 'P9', P10: 'P10' };
+      return map[id] || id;
+    }
+    return id;
+  }
+  function mirrorStep(st) {
+    var o = {}; Object.keys(st).forEach(function (k) { o[k] = st[k]; });
+    if (o.p) o.p = mirrorId(o.p);
+    if (o.z) o.z = mirrorId(o.z);
+    if (o.s && o.s.indexOf('.') >= 0) o.s = mirrorId(o.s.split('.')[0]) + '.' + o.s.split('.')[1];
+    return o;
+  }
+  function blueParams(base) {
+    base = base || {};
+    var P = Object.assign({}, DEF, base, { team: 'blue' });
+    delete P.oppTaken;
+    P.x0 = 3000 - (base.x0 != null ? base.x0 : DEF.x0);
+    P.h0 = 180 - (base.h0 != null ? base.h0 : DEF.h0);
+    P.gx = 3000 - (base.gx != null ? base.gx : DEF.gx);
+    P.gy = base.gy != null ? base.gy : DEF.gy;
+    return P;
+  }
+  function intensityParams(P, intensity) {
+    var Q = Object.assign({}, P);
+    if (intensity === 'faible') { Q.v = (Q.v || DEF.v) * 0.7; Q.va = (Q.va || DEF.va) * 0.7; Q.w = (Q.w || DEF.w) * 0.85; }
+    if (intensity === 'agressif') { Q.v = (Q.v || DEF.v) * 1.2; Q.va = (Q.va || DEF.va) * 1.15; Q.w = (Q.w || DEF.w) * 1.1; }
+    return Q;
+  }
   function zoneById(id) { for (var i = 0; i < ZM.length; i++) if (ZM[i].id === id) return ZM[i]; for (var j = 0; j < ZT.length; j++) if (ZT[j].id === id) return ZT[j]; return null; }
   function inPoly(x, y, P) { var c = false; for (var i = 0, j = P.length - 1; i < P.length; j = i++) { if (((P[i][1] > y) !== (P[j][1] > y)) && (x < (P[j][0] - P[i][0]) * (y - P[i][1]) / (P[j][1] - P[i][1]) + P[i][0])) c = !c; } return c; }
   function angd(a, b) { return ((b - a) % 360 + 540) % 360 - 180; }
@@ -39,6 +72,22 @@
     opts = opts || {};
     P = Object.assign({}, DEF, P || {});
     var V = P.v * 1000, VA = P.va * 1000, WR = P.w, VZ = P.vz, TV = P.tvac, TL = P.trel, TR = P.trot, GS = P.gs;
+    function oppAt(t) { return opts.oppPoseAt ? opts.oppPoseAt(t) : null; }
+    function lidarXY(p) { var n = nv(p.h); return [p.x - 30 * n[0], p.y - 30 * n[1]]; }
+    function oppBlocks(p, t, dir) {
+      var o = oppAt(t);
+      if (!o || o.x == null) return false;
+      var L = lidarXY(p), dx = o.x - L[0], dy = o.y - L[1], d = Math.hypot(dx, dy);
+      if (d > 400) return false;
+      var m = Math.hypot(dir[0], dir[1]);
+      if (m < 20) return false;
+      return (dx * dir[0] + dy * dir[1]) / m > 0;
+    }
+    function oppOccupies(x, y, t) {
+      var o = oppAt(t);
+      if (!o || o.x == null) return false;
+      return Math.hypot(x - o.x, y - o.y) < (GEO.R + 200);
+    }
     var s = { t: 0, x: P.x0, y: P.y0, h: P.h0, A: { hc: 165, rot: 0, vac: [0, 0, 0] }, B: { hc: 165, rot: 0, vac: [0, 0, 0] } };
     var K = [], segs = [], errors = [], stepInfo = [];
     var stones = [];
@@ -92,6 +141,8 @@
       if (!inTable(tri, 0)) return 'bord de table';
       var fr = frGeo || freeStones(excl).map(function (st) { var g = stoneFoot(st); g.id = st.id; return g; });
       for (var j = 0; j < fr.length; j++) if (overlap(tri, fr[j].foot, 1)) return fr[j].id;
+      var oNow = oppAt(s.t);
+      if (oNow && oNow.x != null && overlap(tri, triPoly(oNow), 1)) return 'robot adverse';
       var hs = [];
       ['A', 'B'].forEach(function (f) { heldStonesOf(f).forEach(function (st) { hs.push(geomHeld(p, f, st.l)); }); });
       for (var i = 0; i < hs.length; i++) {
@@ -112,6 +163,7 @@
       var cache = new Int8Array(GW * GH);
       function free(i, j) {
         var k = j * GW + i; if (cache[k]) return cache[k] > 0;
+        if (oppOccupies((i + 0.5) * CELL, (j + 0.5) * CELL, s.t)) { cache[k] = -1; return false; }
         var p = { x: (i + 0.5) * CELL, y: (j + 0.5) * CELL, h: hGoal, A: cp(s.A), B: cp(s.B) };
         var ok = !collides(p, null, fr); cache[k] = ok ? 1 : -1; return ok;
       }
@@ -141,6 +193,23 @@
       return out;
     }
     function travel(O, h, label, excl, speed) {
+      if (opts.oppPoseAt) {
+        var dir0 = [O[0] - s.x, O[1] - s.y], waits = 0, Vnow = speed || V;
+        while (waits < 4) {
+          var guess = (dist([s.x, s.y], O) < 60) ? [[s.x, s.y], O] : (plan(O, h, excl) || [[s.x, s.y], O]);
+          var hit = oppBlocks({ x: s.x, y: s.y, h: s.h }, s.t, dir0), acc = 0, gi;
+          for (gi = 1; gi < guess.length && !hit; gi++) {
+            acc += dist(guess[gi - 1], guess[gi]);
+            if (oppBlocks({ x: guess[gi][0], y: guess[gi][1], h: h }, s.t + acc / Vnow, [guess[gi][0] - guess[gi - 1][0], guess[gi][1] - guess[gi - 1][1]])) hit = true;
+          }
+          if (!hit) break;
+          var o0 = oppAt(s.t) || { x: 0, y: 0 };
+          adv(2, 'Attente 2 s : adversaire dans le lidar');
+          waits++;
+          var o1 = oppAt(s.t) || o0;
+          if (Math.hypot((o1.x || 0) - o0.x, (o1.y || 0) - o0.y) < 40) break;
+        }
+      }
       var pts = (dist([s.x, s.y], O) < 60) ? null : plan(O, h, excl);
       if (!pts) pts = [[s.x, s.y], O];
       var L = 0; for (var i = 1; i < pts.length; i++) L += dist(pts[i - 1], pts[i]);
@@ -506,7 +575,40 @@
     }
     return K[K.length - 1];
   }
-  var api = { VERSION: VERSION, MATCH: MATCH, DEF: DEF, simulate: simulate, makeSim: makeSim, poseAtK: poseAtK, PK: PK, ZM: ZM, ZT: ZT, THRONE: THRONE, THRONE_B: THRONE_B, CASTLE: CASTLE, CASTLE_B: CASTLE_B, inPoly: inPoly, zoneById: zoneById, throneOf: throneOf, tx: tx, th: th };
+  function extractOpp(R) {
+    var taken = {};
+    (R.stepInfo || []).forEach(function (inf, i) {
+      var st = R.program && R.program[i];
+      if (st && st.a === 'prendre' && !inf.err) taken[st.p] = inf.t1;
+    });
+    return {
+      taken: taken,
+      none: false,
+      result: R,
+      poseAt: function (t) { return poseAtK(R.K, t); }
+    };
+  }
+  function simulateMatch(prog, P, opts) {
+    opts = opts || {};
+    var intensity = opts.intensity || (opts.adversaire && opts.adversaire.intensite) || 'aucun';
+    var oppSrc = opts.opponent;
+    var Ropp = null, ev = { taken: {}, none: true, poseAt: null };
+    if (oppSrc && oppSrc.program && oppSrc.program.length && intensity !== 'aucun' && intensity !== 'none') {
+      var Pb = intensityParams(blueParams(oppSrc.params || P), intensity);
+      Ropp = simulate(oppSrc.program.map(mirrorStep), Pb, { skipContacts: true });
+      ev = extractOpp(Ropp);
+    }
+    var R = simulate(prog, Object.assign({}, P || {}, { oppTaken: ev.taken }), { skipContacts: opts.skipContacts, oppPoseAt: ev.poseAt });
+    R.opponent = Ropp;
+    R.oppEvents = { taken: ev.taken, none: ev.none };
+    return R;
+  }
+  var api = {
+    VERSION: VERSION, MATCH: MATCH, DEF: DEF, simulate: simulate, simulateMatch: simulateMatch, makeSim: makeSim,
+    poseAtK: poseAtK, extractOpp: extractOpp, mirrorId: mirrorId, mirrorStep: mirrorStep, blueParams: blueParams,
+    intensityParams: intensityParams, PK: PK, ZM: ZM, ZT: ZT, THRONE: THRONE, THRONE_B: THRONE_B, CASTLE: CASTLE,
+    CASTLE_B: CASTLE_B, inPoly: inPoly, zoneById: zoneById, throneOf: throneOf, tx: tx, th: th
+  };
   root.ENGINE = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

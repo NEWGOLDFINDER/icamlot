@@ -84,6 +84,7 @@ kbd { font-family: var(--font-mono); font-size: 12px; background: var(--panel-2)
 .pick { left: 50%; top: 12px; transform: translateX(-50%); padding: 6px 12px; font-size: 13px; color: var(--accent); border-color: rgba(245,197,24,0.5); pointer-events: none; white-space: nowrap; }
 .score { right: 12px; top: 60px; padding: 2px 12px; color: var(--muted); font-size: 13px; font-weight: 600; cursor: pointer; }
 .score b { color: var(--accent); font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.score small { display: block; font-size: 11px; font-weight: 600; color: #8ab4ff; margin-top: -2px; }
 .score:hover { border-color: var(--accent); }
 .busy { right: 12px; top: 104px; font-size: 12px; padding: 3px 9px; }
 .tpts { font-weight: 800; color: var(--accent); font-size: 13px; white-space: nowrap; }
@@ -301,10 +302,11 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
           <div class="row"><span>Face A : Z / rot.</span><b id="hA">165 / 0°</b></div>
           <div class="row"><span>Face B : Z / rot.</span><b id="hB">165 / 0°</b></div>
           <div class="row"><span>Boulets</span><b id="hBall">à bord</b></div>
+          <div class="row"><span>Adversaire</span><b id="hOpp">-</b></div>
         </div>
       </div>
       <div class="ov clock"><span id="clk">0,0</span> <small>/ 100 s</small></div>
-      <button type="button" class="ov score" id="score" title="Score estimé : détail dans l'onglet Résultat"><b id="scoreV">-</b> pts</button>
+      <button type="button" class="ov score" id="score" title="Score estimé : détail dans l'onglet Résultat"><b id="scoreV">-</b> pts<small id="scoreOpp" hidden></small></button>
       <div class="ov pick" id="pick" hidden></div>
       <div class="ov busy" id="busy" hidden>Calcul…</div>
       <div class="ov now"><span id="now">Départ</span></div>
@@ -419,10 +421,28 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
     </div>
     <div class="crow"><button type="button" id="bReset">Valeurs par défaut</button></div>
     <div>
+      <h3>Robot adverse</h3>
+      <p class="note">Une stratégie de l'équipe, jouée en miroir sur le château bleu. Les deux robots peuvent viser les mêmes paquets : premier arrivé, premier servi. Notre robot découvre l'absence en arrivant et évite l'adversaire (lidar 40 cm, attente 2 s, puis détour).</p>
+      <div class="pgrid">
+        <label for="pOpp">Stratégie
+          <select id="pOpp" style="width:auto;min-width:160px;text-align:left;font-family:inherit">
+            <option value="">Aucun</option>
+            <option value="exemple" selected>Exemple (miroir)</option>
+          </select>
+        </label>
+      </div>
+      <div class="segc" id="pOppInt" role="group" aria-label="Intensité de l'adversaire" style="margin-top:8px">
+        <button type="button" data-i="faible">Faible</button>
+        <button type="button" data-i="realiste" aria-pressed="true">Réaliste</button>
+        <button type="button" data-i="agressif">Agressif</button>
+      </div>
+    </div>
+    <div>
       <h3>Affichage</h3>
       <div style="display:grid;gap:8px">
         <label class="chk" for="cLab"><input id="cLab" type="checkbox" checked> Repères sur la table (P, M, T)</label>
         <label class="chk" for="cTrail"><input id="cTrail" type="checkbox" checked> Trajet du robot</label>
+        <label class="chk" for="cOppTrail"><input id="cOppTrail" type="checkbox" checked> Trajet de l'adversaire</label>
         <label class="chk" for="cPer"><input id="cPer" type="checkbox" checked> Compter les pierres tenues dans le périmètre</label>
       </div>
     </div>
@@ -462,7 +482,7 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
         <li>Hauteur du robot : 350 mm (règlement général F.3). Objets tenus : 350 mm, ou 430 mm dans les zones de construction et les châteaux (règlement 2027).</li>
         <li>Périmètre : 1200 mm au départ, 1400 mm ensuite (F.3). Boulets comptés s'ils tombent entre 85 et 100 s (E.4). Graal : strictement plus grand qu'un cube de 60 mm (règlement officiel 1.0). Fin : robot dans la salle du trône (E.3).</li>
         <li>Trajets calculés sur une grille de 40 mm avec la forme exacte du robot et des pierres tenues. Sans trajet sans contact, le robot va tout droit et le contact est signalé.</li>
-        <li>Porte : 2 piliers accolés et linteau tenu par de petites ventouses. Tour : la pierre est centrée sur son cercle si la place le permet, sinon décalée (signalé). Robot adverse absent.</li>
+        <li>Porte : 2 piliers accolés et linteau tenu par de petites ventouses. Tour : la pierre est centrée sur son cercle si la place le permet, sinon décalée (signalé). Robot adverse : stratégie en miroir, premier arrivé premier servi, évitement lidar.</li>
         <li>Score : barème du compteur de points, état de la table à 100 s (ou en fin de programme). Seules nos zones comptent. Niveau du Graal estimé d'après sa hauteur. Douves et attaque de PAMI non simulées.</li>
       </ul>
     </div>

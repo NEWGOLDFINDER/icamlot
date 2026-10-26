@@ -249,15 +249,22 @@ def filter_opponents(strats, env: EnvWorker, min_score=70):
     kept = []
     for s in strats:
         try:
-            st = env.reset({"opponent": None, "intensite": "aucun"})
-            # évalue le programme en le rejouant via simulate côté worker : on crée un env
-            # sans adversaire et on joue... trop coûteux ici. On garde toutes les stratégies
-            # non vides ; le filtre score est appliqué si métadonnée présente, sinon plus tard.
-            if s.get("score", 999) >= min_score and s.get("program"):
-                kept.append(s)
+            q = env.call({"cmd": "qualify", "strategy": s})
+            if q.get("ok") and float(q.get("score") or 0) >= min_score:
+                item = dict(s)
+                item["score"] = q["score"]
+                kept.append(item)
         except Exception:
             continue
-    return kept or strats
+    if kept:
+        return kept
+    try:
+        ex = env.call({"cmd": "example"})
+        if ex.get("program"):
+            return [{"name": "Exemple", "program": ex["program"], "score": 85}]
+    except Exception:
+        pass
+    return []
 
 
 def run_evolution(job: Job, env: EnvWorker, cfg, strats):

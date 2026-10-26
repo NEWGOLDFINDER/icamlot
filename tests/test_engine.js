@@ -87,5 +87,22 @@ check('score d\'imitation = simulate', im.score === sc.total, im.score + ' vs ' 
 console.log('\n7. Masque : 106 sorties');
 check('somme des familles', ACTIONS.FAMILLES.reduce(function (a, f) { return a + f.n; }, 0) === 106);
 
+console.log('\n8. Robot adverse');
+check('P1 miroir = P4', ENGINE.mirrorId('P1') === 'P4');
+check('M1 miroir = M6', ENGINE.mirrorId('M1') === 'M6');
+var none = ENGINE.simulateMatch(EXAMPLE, ENGINE.DEF, { opponent: { program: EXAMPLE }, intensity: 'aucun' });
+check('intensité aucun = sans adversaire', !none.opponent && Math.abs(none.T - 65.1) < 0.15, 'T=' + none.T);
+var both = ENGINE.simulateMatch(EXAMPLE, ENGINE.DEF, { opponent: { program: EXAMPLE, name: 'Exemple' }, intensity: 'realiste' });
+check('adversaire simulé', !!both.opponent);
+check('départ bleu x ≈ 2750', both.opponent && Math.abs(both.opponent.params.x0 - 2750) < 1, both.opponent && both.opponent.params.x0);
+check('adversaire a pris des paquets', both.oppEvents && Object.keys(both.oppEvents.taken).length > 0, JSON.stringify(both.oppEvents && both.oppEvents.taken));
+var scOpp = SCORE.scoreAt(both.opponent, both.opponent.params, Math.min(both.opponent.T, 100));
+check('score adverse > 0', scOpp.total > 0, 'score=' + scOpp.total);
+var q = ENV.qualify({ program: EXAMPLE });
+check('exemple qualifie (≥ 70 pts, 0 erreur)', q.ok && q.score >= 70, JSON.stringify(q));
+var envOpp = ENV.create({ skipContacts: true, adversaire: { intensite: 'realiste' } });
+var sOpp = envOpp.reset({ opponent: { program: EXAMPLE, name: 'Exemple' }, intensite: 'realiste' });
+check('lidar adverse non nul', sOpp.obs.length === 37 && (sOpp.obs[35] !== 0 || sOpp.obs[36] !== 0), sOpp.obs.slice(35).join(','));
+
 if (fail) { console.log('\n' + fail + ' échec(s).'); process.exit(1); }
 console.log('\nTous les tests passent.');

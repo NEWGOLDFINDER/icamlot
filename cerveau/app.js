@@ -2,7 +2,8 @@
 (function () {
   var $ = function (id) { return document.getElementById(id); };
   var API = '../api';
-  var current = '', savedSnap = '', delArm = '', brains = [], jobId = null, pollTimer = null, replayProg = null, replayParams = null;
+  var current = '', savedSnap = '', delArm = '', brains = [], jobId = null, pollTimer = null, replayProg = null, replayParams = null, replayOpp = null;
+  var oppPool = [{ name: 'Exemple', program: ENV.EXAMPLE, score: 85 }];
   var cfg = defaultCfg();
   var weights = null;
 
@@ -427,7 +428,7 @@
         var env = makeEnv(), L = layersFor();
         var model = [], rnd = [], scr = [];
         for (var i = 0; i < n; i++) {
-          var scn = { seed: 1000 + i, intensite: cfg.adversaire.intensite };
+          var scn = { seed: 1000 + i, intensite: cfg.adversaire.intensite, opponent: ENV.pickOpponent(oppPool, 1000 + i, cfg.adversaire.intensite) };
           model.push(runPolicy(env, L, scn));
           rnd.push(runRandom(env, scn));
           scr.push(runScripted(env, ENV.EXAMPLE, { seed: 1000 + i, intensite: 'aucun' }));
@@ -444,9 +445,10 @@
       try {
         var env = makeEnv(), L = layersFor();
         var seed = parseInt($('pReplaySeed').value, 10) || 1;
-        var run = runPolicy(env, L, { seed: seed, intensite: cfg.adversaire.intensite });
+        replayOpp = ENV.pickOpponent(oppPool, seed, cfg.adversaire.intensite);
+        var run = runPolicy(env, L, { seed: seed, intensite: cfg.adversaire.intensite, opponent: replayOpp });
         replayProg = run.program; replayParams = Object.assign({}, ENGINE.DEF);
-        $('rProg').hidden = false; $('rProg').textContent = JSON.stringify({ format: 'camelot-strategie', version: 1, program: replayProg, params: replayParams }, null, 2);
+        $('rProg').hidden = false; $('rProg').textContent = JSON.stringify({ format: 'camelot-strategie', version: 1, program: replayProg, params: replayParams, opponent: replayOpp ? { name: replayOpp.name, program: replayOpp.program } : undefined }, null, 2);
         $('rInfo').textContent = 'Programme de ' + replayProg.length + ' étapes · score ' + run.score + ' pts · ' + run.T.toFixed(1) + ' s · ' + run.errors + ' erreur(s).';
         $('bOpenPlateau').disabled = false; $('bSaveStrat').disabled = false;
       } catch (e) { $('rInfo').textContent = 'Erreur : ' + e.message; }
@@ -454,7 +456,7 @@
   });
   $('bOpenPlateau').addEventListener('click', function () {
     if (!replayProg) return;
-    try { sessionStorage.setItem('icamlot-replay', JSON.stringify({ format: 'camelot-strategie', version: 1, name: ($('sName').value.trim() || 'Cerveau') + ' · rejeu', params: replayParams, program: replayProg })); } catch (e) {}
+    try { sessionStorage.setItem('icamlot-replay', JSON.stringify({ format: 'camelot-strategie', version: 1, name: ($('sName').value.trim() || 'Cerveau') + ' · rejeu', params: replayParams, program: replayProg, intensity: cfg.adversaire.intensite, opponent: replayOpp ? { name: replayOpp.name, program: replayOpp.program, params: replayOpp.params } : undefined })); } catch (e) {}
     location.href = '../plateau/';
   });
   $('bSaveStrat').addEventListener('click', function () {
@@ -474,4 +476,18 @@
   cfg = defaultCfg();
   writeUi(); markSaved(false);
   refreshBrains();
+  api('GET', API + '/strategies').then(function (j) {
+    var list = (j.strategies || []).slice(0, 8);
+    return Promise.all(list.map(function (s) {
+      return api('GET', API + '/strategies/' + s.slug).then(function (full) {
+        var q = ENV.qualify(full);
+        if (!q.ok) return null;
+        full.slug = s.slug; full.score = q.score;
+        return full;
+      }, function () { return null; });
+    })).then(function (rows) {
+      var ok = rows.filter(Boolean);
+      if (ok.length) oppPool = ok.concat(oppPool);
+    });
+  }, function () {});
 })();
