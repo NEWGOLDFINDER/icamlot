@@ -104,5 +104,70 @@ var envOpp = ENV.create({ skipContacts: true, adversaire: { intensite: 'realiste
 var sOpp = envOpp.reset({ opponent: { program: EXAMPLE, name: 'Exemple' }, intensite: 'realiste' });
 check('lidar adverse non nul', sOpp.obs.length === 37 && (sOpp.obs[35] !== 0 || sOpp.obs[36] !== 0), sOpp.obs.slice(35).join(','));
 
+console.log('\n9. Jeu en direct (pas un programme figé)');
+function firstValid(obs, mask) {
+  for (var i = 0; i < mask.length; i++) if (mask[i]) return i;
+  return -1;
+}
+function idxOf(cat, pred) {
+  for (var i = 0; i < cat.length; i++) if (pred(cat[i])) return i;
+  return -1;
+}
+var live = ENV.create({ skipContacts: true });
+var seenEarlyThrone = false, seenBallsBefore80 = false;
+live.play(function (obs, mask) {
+  var elapsed = (1 - obs[0]) * 100, cat = live.catalogue, i, j, useful;
+  for (i = 0; i < mask.length; i++) {
+    if (!mask[i]) continue;
+    if (cat[i].a === 'trone' && elapsed < 88) {
+      useful = false;
+      for (j = 0; j < mask.length; j++) if (mask[j] && cat[j].a !== 'trone') useful = true;
+      if (useful) seenEarlyThrone = true;
+    }
+    if (cat[i].a === 'boulets' && elapsed < 79.5) seenBallsBefore80 = true;
+  }
+  return firstValid(obs, mask);
+}, {});
+var Rlive = live.result();
+check('match jusqu\'à au moins 100 s', Rlive.T >= 99.5, 'T=' + Rlive.T);
+check('épisode terminé', live.program().length > 0);
+check('trône masqué tant qu\'il reste des actions avant 88 s', !seenEarlyThrone);
+check('boulets masqués avant 80 s', !seenBallsBefore80);
+
+var zenv = ENV.create({ skipContacts: true });
+zenv.reset({});
+var zcat = zenv.catalogue;
+zenv.step(idxOf(zcat, function (a) { return a.a === 'prendre' && a.f === 'A' && a.p === 'P1'; }));
+var afterMur = zenv.step(idxOf(zcat, function (a) { return a.a === 'mur' && a.f === 'A' && a.z === 'M1' && a.side === 'ext'; }));
+zenv.step(idxOf(zcat, function (a) { return a.a === 'prendre' && a.f === 'A' && a.p === 'P2'; }));
+var afterTake2 = zenv.step(idxOf(zcat, function (a) { return a.a === 'prendre' && a.f === 'B' && a.p === 'P5'; }));
+var m1ok = false, m2ok = false;
+for (var zi = 0; zi < zcat.length; zi++) {
+  if (zcat[zi].a !== 'mur' || zcat[zi].f !== 'A') continue;
+  if (zcat[zi].z === 'M1' && afterTake2.mask[zi]) m1ok = true;
+  if (zcat[zi].z === 'M2' && afterTake2.mask[zi]) m2ok = true;
+}
+check('impossible de reposer un mur sur M1', !m1ok);
+check('M2 encore libre avec une pile', m2ok);
+
+var tenv = ENV.create({ skipContacts: true });
+tenv.reset({});
+var tcat = tenv.catalogue;
+tenv.step(idxOf(tcat, function (a) { return a.a === 'prendre' && a.f === 'A' && a.p === 'P1'; }));
+var afterT0 = tenv.step(idxOf(tcat, function (a) { return a.a === 'tour' && a.f === 'A' && a.z === 'T1' && a.rank === 0; }));
+var iT1 = idxOf(tcat, function (a) { return a.a === 'tour' && a.f === 'A' && a.z === 'T1' && a.rank === 1; });
+check('2e pierre de la même tour encore possible', afterT0.mask[iT1] === 1);
+
+var benv = ENV.create({ skipContacts: true });
+benv.play(function (obs, mask) {
+  var cat = benv.catalogue, i;
+  for (i = 0; i < mask.length; i++) if (mask[i] && cat[i].a === 'boulets') return i;
+  for (i = 0; i < mask.length; i++) if (mask[i] && cat[i].a !== 'trone') return i;
+  for (i = 0; i < mask.length; i++) if (mask[i]) return i;
+  return -1;
+}, {});
+check('les boulets peuvent être tirés en live', benv.program().some(function (s) { return s.a === 'boulets'; }), JSON.stringify(benv.program().map(function (s) { return s.a; })));
+check('durée au moins 100 s avec boulets', benv.result().T >= 99.5, 'T=' + benv.result().T);
+
 if (fail) { console.log('\n' + fail + ' échec(s).'); process.exit(1); }
 console.log('\nTous les tests passent.');

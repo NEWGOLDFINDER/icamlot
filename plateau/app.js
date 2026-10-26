@@ -1,7 +1,8 @@
-/* Simulation du plateau : interface (programme, table 3D, frise, stratégies).
+/* Simulation du plateau : interface (programme, table 3D, frise, stratégies ou cerveau en direct).
    Le moteur (GEO, ENGINE, SCORE) est chargé depuis /engine/ et tourne aussi dans un Web Worker. */
 (function () {
   var $ = function (id) { return document.getElementById(id); };
+  var BrainActs = window.ACTIONS;
   var MATCH = 100;
   var DEF = { v: 0.5, va: 0.2, w: 120, vz: 100, trot: 1.5, tvac: 0.5, trel: 0.4, tballs: 4, x0: 250, y0: 1000, h0: 0, gx: 100, gy: 1180, gs: 60 };
   var PIDS = { v: 'pV', va: 'pVA', w: 'pW', vz: 'pVZ', trot: 'pTR', tvac: 'pTV', trel: 'pTL', tballs: 'pTB', x0: 'pX0', y0: 'pY0', h0: 'pH0', gx: 'pGX', gy: 'pGY', gs: 'pGS' };
@@ -26,6 +27,7 @@
   var PKIDS = ENGINE.PK.map(function (p) { return p.id; }), MIDS = ENGINE.ZM.map(function (z) { return z.id; }), TIDS = ENGINE.ZT.map(function (z) { return z.id; });
   var SIDS = []; PKIDS.forEach(function (p) { for (var l = 1; l <= 3; l++) SIDS.push(p + '.' + l); });
   var prog = [], params = {}, sel = -1;
+  var pilot = { mode: 'strategie', slug: '', name: '', layers: null, cfg: null };
 
   function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
@@ -38,7 +40,7 @@
   }
 
   /* ---------- stockage navigateur (brouillon en cours) ---------- */
-  function saveLocal() { lsSet('camelot-prog-v1', JSON.stringify({ params: params, program: prog })); }
+  function saveLocal() { if (pilot.mode === 'cerveau') return; lsSet('camelot-prog-v1', JSON.stringify({ params: params, program: prog })); }
   function loadLocal() { try { var j = JSON.parse(lsGet('camelot-prog-v1') || 'null'); if (j && Array.isArray(j.program)) return j; } catch (e) {} return null; }
 
   /* ---------- paramètres ---------- */
@@ -70,6 +72,11 @@
 
   var timer = null;
   function changed(rerender) {
+    if (pilot.mode === 'cerveau') {
+      if (rerender) renderSteps();
+      clearTimeout(timer); timer = setTimeout(recompute, 250);
+      return;
+    }
     if (rerender) renderSteps();
     pushHistory(); saveLocal(); updateDirty();
     clearTimeout(timer); timer = setTimeout(recompute, 250);
@@ -158,27 +165,34 @@
   function renderSteps() {
     stepsEl.innerHTML = '';
     if (sel >= prog.length) sel = prog.length - 1;
+    var live = pilot.mode === 'cerveau';
     prog.forEach(function (st, i) {
-      var li = document.createElement('li'); li.className = 'step' + (i === sel ? ' sel' : ''); li.draggable = true; li.dataset.i = i;
+      var li = document.createElement('li'); li.className = 'step' + (i === sel ? ' sel' : ''); li.draggable = !live; li.dataset.i = i;
       var row = document.createElement('div'); row.className = 'srow';
       row.innerHTML = '<span class="grip" title="Glisser pour déplacer">⋮⋮</span><span class="num">' + (i + 1) + '</span><i class="ico fa-solid ' + ICONS[st.a] + '"></i><span class="txt"></span><span class="tm" id="tm' + i + '"></span>';
       row.querySelector('.txt').textContent = describe(st);
       row.addEventListener('click', function () { select(i === sel ? -1 : i, true); });
       li.appendChild(row);
       var er = document.createElement('div'); er.className = 'serr'; er.id = 'er' + i; er.hidden = true; li.appendChild(er);
-      if (i === sel) li.appendChild(editor(st, i));
-      li.addEventListener('dragstart', function (e) { dragFrom = i; li.classList.add('drag'); try { e.dataTransfer.setData('text/plain', String(i)); e.dataTransfer.effectAllowed = 'move'; } catch (x) {} });
-      li.addEventListener('dragend', function () { li.classList.remove('drag'); });
-      li.addEventListener('dragover', function (e) { e.preventDefault(); li.classList.add('over'); });
-      li.addEventListener('dragleave', function () { li.classList.remove('over'); });
-      li.addEventListener('drop', function (e) {
-        e.preventDefault(); li.classList.remove('over'); if (dragFrom < 0 || dragFrom === i) return;
-        var m = prog.splice(dragFrom, 1)[0]; prog.splice(i, 0, m); if (sel === dragFrom) sel = i; dragFrom = -1; changed(true);
-      });
+      if (!live && i === sel) li.appendChild(editor(st, i));
+      if (!live) {
+        li.addEventListener('dragstart', function (e) { dragFrom = i; li.classList.add('drag'); try { e.dataTransfer.setData('text/plain', String(i)); e.dataTransfer.effectAllowed = 'move'; } catch (x) {} });
+        li.addEventListener('dragend', function () { li.classList.remove('drag'); });
+        li.addEventListener('dragover', function (e) { e.preventDefault(); li.classList.add('over'); });
+        li.addEventListener('dragleave', function () { li.classList.remove('over'); });
+        li.addEventListener('drop', function (e) {
+          e.preventDefault(); li.classList.remove('over'); if (dragFrom < 0 || dragFrom === i) return;
+          var m = prog.splice(dragFrom, 1)[0]; prog.splice(i, 0, m); if (sel === dragFrom) sel = i; dragFrom = -1; changed(true);
+        });
+      }
       stepsEl.appendChild(li);
     });
-    if (!prog.length) stepsEl.innerHTML = '<li class="empty"><b>Programme vide</b>Ajoute une première étape avec les boutons du bas, ou charge l\'exemple.</li>';
-    $('palLab').textContent = sel >= 0 ? 'Ajouter après l\'étape ' + (sel + 1) : 'Ajouter à la fin';
+    if (!prog.length) {
+      stepsEl.innerHTML = live
+        ? '<li class="empty"><b>Aucune décision</b>Charge un cerveau : il choisit chaque action d\'après l\'état de la table, jusqu\'à 100 s.</li>'
+        : '<li class="empty"><b>Programme vide</b>Ajoute une première étape avec les boutons du bas, ou charge l\'exemple.</li>';
+    }
+    $('palLab').textContent = live ? 'Décisions du réseau (lecture seule)' : (sel >= 0 ? 'Ajouter après l\'étape ' + (sel + 1) : 'Ajouter à la fin');
     lastPlayIdx = -2;
     showStepInfo(); renderTimeline(); updatePick();
   }
@@ -245,6 +259,7 @@
     return oppLoaded[oppChoice.slug] || null;
   }
   function recompute() {
+    if (pilot.mode === 'cerveau') return recomputeLive();
     readParams(); $('busy').hidden = false;
     var opp = currentOpponent();
     if (oppChoice.slug && oppChoice.slug !== 'exemple' && !opp) {
@@ -257,6 +272,65 @@
     var data = { prog: JSON.parse(JSON.stringify(prog)), P: Object.assign({}, params), id: ++reqId, opponent: opp ? { name: opp.name, program: opp.program, params: opp.params || params } : null, intensity: opp ? oppChoice.intensity : 'aucun' };
     if (worker) worker.postMessage(data);
     else setTimeout(function () { var r = ENGINE.simulateMatch(data.prog, data.P, { opponent: data.opponent, intensity: data.intensity }); accept(r, r.opponent); }, 0);
+  }
+  function simulateProg(list) {
+    var opp = currentOpponent();
+    var data = { prog: JSON.parse(JSON.stringify(list)), P: Object.assign({}, params), id: ++reqId, opponent: opp ? { name: opp.name, program: opp.program, params: opp.params || params } : null, intensity: opp ? oppChoice.intensity : 'aucun' };
+    if (worker) worker.postMessage(data);
+    else setTimeout(function () { var r = ENGINE.simulateMatch(data.prog, data.P, { opponent: data.opponent, intensity: data.intensity }); accept(r, r.opponent); }, 0);
+  }
+  function recomputeLive() {
+    if (!window.ENV || !window.NET || !BrainActs) {
+      $('busy').hidden = true;
+      toast('Moteur du cerveau introuvable.', 'bad');
+      return;
+    }
+    if (!pilot.layers || !pilot.cfg) {
+      $('busy').hidden = true;
+      toast('Charge un cerveau depuis le tiroir Cerveaux.', 'bad');
+      return;
+    }
+    readParams();
+    $('busy').hidden = false;
+    var opp = currentOpponent();
+    if (oppChoice.slug && oppChoice.slug !== 'exemple' && !opp) {
+      api('GET', API + '/' + oppChoice.slug).then(function (j) {
+        oppLoaded[oppChoice.slug] = { name: j.name, program: j.program, params: j.params || params };
+        recomputeLive();
+      }, function () { oppChoice.slug = ''; saveOppChoice(); recomputeLive(); });
+      return;
+    }
+    setTimeout(function () {
+      try {
+        var familles = (pilot.cfg.actions && pilot.cfg.actions.familles) || BrainActs.FAMILLES.map(function (f) { return f.id; });
+        var entrees = pilot.cfg.entrees || window.ENV.GROUPS.map(function (g) { return g.id; });
+        var env = window.ENV.create({
+          entrees: entrees,
+          familles: familles,
+          params: params,
+          adversaire: { intensite: opp ? oppChoice.intensity : 'aucun' },
+          skipContacts: true,
+          onError: 'penalite'
+        });
+        var acts = ((pilot.cfg.reseau && pilot.cfg.reseau.couches) || []).map(function (c) { return c.activation; });
+        var layers = pilot.layers;
+        env.play(function (obs, mask) {
+          return window.NET.choose(window.NET.forward(layers, obs, acts), mask);
+        }, {
+          params: params,
+          intensite: opp ? oppChoice.intensity : 'aucun',
+          opponent: opp ? { name: opp.name, program: opp.program, params: opp.params || params } : null
+        });
+        prog = env.program();
+        sel = -1;
+        lastSnap = snap();
+        renderSteps();
+        simulateProg(prog);
+      } catch (e) {
+        $('busy').hidden = true;
+        toast('Lecture du cerveau impossible : ' + e.message, 'bad');
+      }
+    }, 0);
   }
   function attachAt(res) {
     if (!res) return res;
@@ -705,9 +779,11 @@
     openDrawer = $(id); openDrawer.classList.add('open'); $('scrim').hidden = false;
     var f = openDrawer.querySelector('input, button'); if (f) setTimeout(function () { f.focus(); }, 60);
     if (id === 'dStrats') refreshStrats();
+    if (id === 'dBrains') refreshBrains();
   }
   function closeDrawer() { if (!openDrawer) return; openDrawer.classList.remove('open'); openDrawer = null; $('scrim').hidden = true; }
   $('bStrats').addEventListener('click', function () { showDrawer('dStrats'); });
+  $('bBrains').addEventListener('click', function () { showDrawer('dBrains'); });
   $('bParams').addEventListener('click', function () { showDrawer('dParams'); });
   $('bHelp').addEventListener('click', function () { showDrawer('dHelp'); });
   $('scrim').addEventListener('click', closeDrawer);
@@ -719,6 +795,7 @@
     if (!o || !Array.isArray(o.program)) throw new Error('le JSON doit contenir une liste « program ».');
     var valid = ACTIONS.map(function (a) { return a[0]; });
     var p2 = o.program.filter(function (s) { return s && valid.indexOf(s.a) >= 0; }).map(function (s) { var d = defaults(s.a); for (var k in d) if (s[k] !== undefined) d[k] = s[k]; return d; });
+    setPilotMode('strategie');
     prog = p2; params = Object.assign({}, DEF, o.params || {}); sel = -1; writeParams(); readParams(); changed(true);
     return p2.length;
   }
@@ -758,14 +835,42 @@
   function slugify(s) { return (s || '').normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64); }
   function setCurrent(n) { current = n; lsSet('icamlot-strat-name', n || null); $('sName').value = n; updateDirty(); }
   function stateSnap() { return JSON.stringify({ params: params, program: prog }); }
-  function isDirty() { return stateSnap() !== savedSnap; }
+  function isDirty() { if (pilot.mode === 'cerveau') return false; return stateSnap() !== savedSnap; }
   function markSaved(yes) { savedSnap = yes ? stateSnap() : ''; lsSet('icamlot-strat-saved', savedSnap || null); updateDirty(); }
   function updateDirty() {
     var s = $('state');
+    if (pilot.mode === 'cerveau') {
+      s.textContent = 'en direct'; s.className = 'state saved';
+      document.title = (pilot.name || 'Cerveau') + ' · Simulation du plateau · ICAM LOT';
+      return;
+    }
     if (!current || !savedSnap) { s.textContent = 'non enregistrée'; s.className = 'state' + (prog.length ? ' dirty' : ''); }
     else if (isDirty()) { s.textContent = 'modifiée'; s.className = 'state dirty'; }
     else { s.textContent = 'enregistrée'; s.className = 'state saved'; }
     document.title = (current ? current + ' · ' : '') + 'Simulation du plateau · ICAM LOT';
+  }
+  function setPilotMode(mode, meta) {
+    pilot.mode = mode;
+    if (meta) {
+      pilot.slug = meta.slug || '';
+      pilot.name = meta.name || '';
+      if (meta.layers) pilot.layers = meta.layers;
+      if (meta.cfg) pilot.cfg = meta.cfg;
+    }
+    if (mode !== 'cerveau') { pilot.layers = null; pilot.cfg = null; pilot.slug = ''; pilot.name = ''; }
+    document.body.classList.toggle('pilot-cerveau', mode === 'cerveau');
+    $('tabProg').textContent = mode === 'cerveau' ? 'Décisions' : 'Programme';
+    $('vProg').innerHTML = mode === 'cerveau'
+      ? '<i class="fa-solid fa-brain"></i> Décisions'
+      : '<i class="fa-solid fa-list-ol"></i> Programme';
+    $('sName').placeholder = mode === 'cerveau' ? 'Cerveau en direct' : 'Stratégie sans nom';
+    if (mode === 'cerveau') {
+      $('sName').value = pilot.name || '';
+      $('palette').hidden = true;
+    } else {
+      $('palette').hidden = false;
+    }
+    updateDirty();
   }
   function api(method, url, body) {
     return fetch(url, { method: method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined, cache: 'no-store', credentials: 'same-origin' }).then(function (r) {
@@ -814,6 +919,7 @@
     }, function (e) { toast('Échec de l\'enregistrement : ' + e.message, 'bad'); });
   }
   function save() {
+    if (pilot.mode === 'cerveau') { toast('Un cerveau ne s\'enregistre pas comme stratégie. Il joue en direct.', 'bad'); return; }
     var name = $('sName').value.trim(), slug = slugify(name);
     if (!slug) { $('sName').focus(); toast('Donne d\'abord un nom à la stratégie (en haut).', 'bad'); return; }
     api('GET', API).then(function (j) {
@@ -826,6 +932,7 @@
   function loadStrat(slug) {
     delArm = '';
     api('GET', API + '/' + slug).then(function (j) {
+      setPilotMode('strategie');
       var n = importObj(j); setCurrent(j.name); markSaved(true); renderStrats(); closeDrawer();
       time = 0; setPlaying(true); toast('« ' + j.name + ' » ouverte (' + n + ' étapes)', 'ok');
     }, function (e) { toast('Impossible d\'ouvrir : ' + e.message, 'bad'); });
@@ -839,8 +946,57 @@
   }
   $('sFilter').addEventListener('input', renderStrats);
   $('bNew').addEventListener('click', function () {
-    confirmLoss(function () { prog = []; params = Object.assign({}, DEF); sel = -1; writeParams(); setCurrent(''); markSaved(false); changed(true); closeDrawer(); $('sName').focus(); });
+    confirmLoss(function () {
+      setPilotMode('strategie');
+      prog = []; params = Object.assign({}, DEF); sel = -1; writeParams(); setCurrent(''); markSaved(false); changed(true); closeDrawer(); $('sName').focus();
+    });
   });
+  var brains = [], delBrainArm = '';
+  function renderBrains() {
+    var ul = $('brains'); if (!ul) return; ul.innerHTML = '';
+    if (!brains.length) {
+      ul.innerHTML = '<li class="emptyl">Aucun cerveau enregistré. Entraîne-en un dans l\'Atelier Cerveau.</li>';
+      return;
+    }
+    brains.forEach(function (s) {
+      var li = document.createElement('li'); if (pilot.mode === 'cerveau' && s.slug === pilot.slug) li.className = 'cur';
+      var nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = s.name;
+      var meta = document.createElement('span'); meta.className = 'meta';
+      meta.textContent = (s.n_parametres || '?') + ' param. · ' + (s.methode || '') + (s.entraine ? ' · entraîné' : ' · non entraîné') + ' · ' + fmtDate(s.updated);
+      nm.appendChild(meta); li.appendChild(nm);
+      var act = document.createElement('span'); act.className = 'act';
+      var bl = document.createElement('button'); bl.type = 'button'; bl.textContent = 'Jouer';
+      bl.addEventListener('click', function () { loadBrain(s.slug); });
+      act.appendChild(bl); li.appendChild(act); ul.appendChild(li);
+    });
+  }
+  function refreshBrains() {
+    return api('GET', '../api/cerveaux').then(function (j) { brains = j.cerveaux || []; renderBrains(); }, function () {
+      brains = []; $('brains').innerHTML = '<li class="emptyl bad">Serveur des cerveaux injoignable.</li>';
+    });
+  }
+  function loadBrain(slug) {
+    api('GET', '../api/cerveaux/' + slug).then(function (j) {
+      return api('GET', '../api/cerveaux/' + slug + '/poids').then(function (w) {
+        return { j: j, w: w };
+      }, function () { return { j: j, w: null }; });
+    }).then(function (pair) {
+      var j = pair.j, w = pair.w;
+      if (!window.ENV || !window.NET || !BrainActs) throw new Error('moteur cerveau absent');
+      var couches = (j.reseau && j.reseau.couches) || [{ neurones: 64, activation: 'relu' }, { neurones: 64, activation: 'relu' }];
+      var familles = (j.actions && j.actions.familles) || BrainActs.FAMILLES.map(function (f) { return f.id; });
+      var nIn = window.ENV.nInputs(j.entrees);
+      var nOut = BrainActs.filterByFamilles(familles).length;
+      var layers = (w && w.layers) ? w.layers : window.NET.randomWeights(nIn, couches, nOut, j.graine || 1);
+      setPilotMode('cerveau', { slug: slug, name: j.name, layers: layers, cfg: j });
+      closeDrawer();
+      toast(w && w.layers
+        ? '« ' + j.name + ' » joue en direct'
+        : '« ' + j.name + ' » sans poids entraînés : décisions aléatoires parmi les actions valides', w && w.layers ? 'ok' : 'bad');
+      time = 0; setPlaying(true);
+      recompute();
+    }, function (e) { toast('Impossible d\'ouvrir le cerveau : ' + e.message, 'bad'); });
+  }
   $('bSave').addEventListener('click', save);
   $('fName').addEventListener('submit', function (e) { e.preventDefault(); save(); });
   $('sName').addEventListener('input', function () { $('state').textContent = $('sName').value.trim() && $('sName').value.trim() !== current ? 'nouveau nom' : ''; if (!$('state').textContent) updateDirty(); });
@@ -906,7 +1062,7 @@
   document.querySelectorAll('.tab').forEach(function (t) {
     t.addEventListener('click', function () {
       document.querySelectorAll('.tab').forEach(function (x) { var on = x === t; x.setAttribute('aria-selected', String(on)); $('pane-' + x.dataset.pane).hidden = !on; });
-      $('palette').hidden = t.dataset.pane !== 'prog';
+      $('palette').hidden = pilot.mode === 'cerveau' || t.dataset.pane !== 'prog';
     });
   });
   function setView(v) {
@@ -927,6 +1083,17 @@
     if (mod && key.toLowerCase() === 's') { e.preventDefault(); save(); return; }
     if (key === 'Escape') { if (!$('toast').hidden) hideToast(); else if (openDrawer) closeDrawer(); else if (typing) e.target.blur(); else if (sel >= 0) select(-1); return; }
     if (typing || openDrawer) return;
+    if (pilot.mode === 'cerveau') {
+      if (key === ' ' && tag !== 'BUTTON') { e.preventDefault(); togglePlay(); return; }
+      if (key === 'ArrowLeft' || key === 'ArrowRight') { e.preventDefault(); seek(key === 'ArrowLeft' ? -1 : 1, e.shiftKey); return; }
+      if (key === 'Home') { e.preventDefault(); time = 0; return; }
+      if (key === 'ArrowUp' || key === 'ArrowDown') {
+        if (!prog.length) return; e.preventDefault();
+        var dLive = key === 'ArrowUp' ? -1 : 1;
+        select(sel < 0 ? (dLive > 0 ? 0 : prog.length - 1) : Math.max(0, Math.min(prog.length - 1, sel + dLive)), true);
+      }
+      return;
+    }
     if (mod && !e.shiftKey && key.toLowerCase() === 'z') { e.preventDefault(); doUndo(); return; }
     if (mod && (key.toLowerCase() === 'y' || (e.shiftKey && key.toLowerCase() === 'z'))) { e.preventDefault(); doRedo(); return; }
     if (mod && key.toLowerCase() === 'd') { e.preventDefault(); dupStep(sel); return; }
@@ -951,7 +1118,19 @@
   params = Object.assign({}, DEF, saved && saved.params ? saved.params : {});
   prog = saved ? saved.program : JSON.parse(JSON.stringify(EXAMPLE));
   writeParams(); readParams(); lastSnap = snap(); updateUndoBtns(); renderSteps(); updateDirty(); resize(); fillOppSelect(); refreshStrats(); recompute();
-  (function openReplay() {
+  (function openPilot() {
+    try {
+      var raw = sessionStorage.getItem('icamlot-pilot');
+      if (raw) {
+        sessionStorage.removeItem('icamlot-pilot');
+        var p = JSON.parse(raw);
+        if (p && p.mode === 'cerveau' && p.slug) {
+          if (p.intensity && p.intensity !== 'aucun') oppChoice.intensity = p.intensity;
+          loadBrain(p.slug);
+          return;
+        }
+      }
+    } catch (e) {}
     try {
       var replay = sessionStorage.getItem('icamlot-replay');
       if (replay) {
@@ -965,11 +1144,13 @@
         }
         importObj(o); setCurrent(o.name || ''); markSaved(false);
         fillOppSelect();
-        toast('Programme issu de l\'Atelier Cerveau chargé', 'ok');
+        toast('Programme chargé', 'ok');
       }
     } catch (e) {}
     var m = /[?&]strategie=([a-z0-9-]+)/.exec(location.search);
     if (m) loadStrat(m[1]);
+    var b = /[?&]cerveau=([^&]+)/.exec(location.search);
+    if (b) loadBrain(slugify(decodeURIComponent(b[1])));
   })();
 
   var followOff = new THREE.Vector3(-800, 1000, 800), vT = new THREE.Vector3(), vC = new THREE.Vector3();

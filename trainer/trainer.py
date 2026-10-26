@@ -165,28 +165,20 @@ def weights_from_json(raw):
     return [{"w": np.asarray(l["w"], dtype=np.float32), "b": np.asarray(l["b"], dtype=np.float32)} for l in raw]
 
 
-def play_episode(env: EnvWorker, layers, acts, scenario, max_steps=24, on_error="penalite"):
-    st = env.reset(scenario)
-    total = 0.0
-    steps = 0
-    errors = 0
-    while not st.get("done") and steps < max_steps:
-        a = choose(forward(layers, st["obs"], acts), st["mask"])
-        st = env.step(a)
-        total += float(st.get("reward") or 0)
-        steps += 1
-        if st.get("err"):
-            errors += 1
-            if on_error == "fin":
-                break
-    sc = env.score()
+def play_episode(env: EnvWorker, layers, acts, scenario, max_steps=80, on_error="penalite"):
+    st = env.call({
+        "cmd": "play",
+        "layers": weights_to_json(layers),
+        "acts": acts,
+        "scenario": scenario or {},
+    })
     return {
-        "score": sc.get("score", total),
-        "detail": sc.get("detail") or {},
-        "T": sc.get("T", st.get("t", 0)),
-        "errors": sc.get("errors", errors),
-        "program": sc.get("program") or [],
-        "steps": steps,
+        "score": st.get("score", 0),
+        "detail": st.get("detail") or {},
+        "T": st.get("T", 0),
+        "errors": st.get("errors", 0),
+        "program": st.get("program") or [],
+        "steps": len(st.get("program") or []),
     }
 
 

@@ -54,9 +54,14 @@ kbd { font-family: var(--font-mono); font-size: 12px; background: var(--panel-2)
 .state { font-size: 12px; border-radius: 999px; padding: 2px 9px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
 .state.dirty { color: var(--accent); border-color: rgba(245,197,24,0.45); }
 .state.saved { color: var(--ok); border-color: rgba(60,207,122,0.4); }
-.tbtns { display: flex; gap: 6px; }
-.tbtns button { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
-@media (max-width: 1000px) { .tbtns .lbl, .brand, .sepv { display: none; } }
+  .tbtns { display: flex; gap: 6px; }
+  .tbtns button { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+  @media (max-width: 1000px) { .tbtns .lbl, .brand, .sepv { display: none; } }
+  body.pilot-cerveau .palette { display: none; }
+  body.pilot-cerveau #bUndo, body.pilot-cerveau #bRedo, body.pilot-cerveau #bExample, body.pilot-cerveau #bClear, body.pilot-cerveau #bSave { display: none; }
+  body.pilot-cerveau #sName { pointer-events: none; }
+  body.pilot-cerveau .grip { visibility: hidden; }
+  body.pilot-cerveau .step { cursor: default; }
 
 /* ---------- bascule table / programme (téléphone) ---------- */
 .views { display: none; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
@@ -277,7 +282,8 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
       <span class="state" id="state">non enregistrée</span>
     </form>
     <div class="tbtns">
-      <button type="button" id="bStrats" title="Stratégies de l'équipe"><i class="fa-solid fa-folder-open"></i><span class="lbl">Stratégies</span></button>
+      <button type="button" id="bStrats" title="Stratégies écrites à l'avance"><i class="fa-solid fa-folder-open"></i><span class="lbl">Stratégies</span></button>
+      <button type="button" id="bBrains" title="Cerveaux : le réseau décide en direct"><i class="fa-solid fa-brain"></i><span class="lbl">Cerveaux</span></button>
       <button type="button" class="primary" id="bSave" title="Enregistrer (Ctrl+S)"><i class="fa-solid fa-floppy-disk"></i><span class="lbl">Enregistrer</span></button>
       <button type="button" id="bParams" title="Paramètres du robot"><i class="fa-solid fa-sliders"></i><span class="lbl">Paramètres</span></button>
       <button type="button" id="bHelp" title="Aide, repères et raccourcis"><i class="fa-solid fa-circle-question"></i></button>
@@ -319,7 +325,7 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
 
     <aside class="panel" aria-label="Programme du robot">
       <div class="tabs" role="tablist">
-        <button class="tab" role="tab" type="button" data-pane="prog" aria-selected="true">Programme</button>
+        <button class="tab" role="tab" type="button" data-pane="prog" aria-selected="true" id="tabProg">Programme</button>
         <button class="tab" role="tab" type="button" data-pane="res" aria-selected="false">Résultat</button>
         <button class="tab" role="tab" type="button" data-pane="alerts" aria-selected="false">Alertes <span class="cnt zero" id="nAlerts">0</span></button>
       </div>
@@ -376,6 +382,7 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
     <ul class="strats" id="strats"><li class="emptyl">Chargement…</li></ul>
     <div>
       <h3>Fichier JSON</h3>
+      <p class="note">Une stratégie, c'est une liste d'étapes écrite à l'avance. Pour un réseau qui réagit en direct, ouvre l'onglet Cerveaux.</p>
       <div class="crow">
         <button type="button" id="bExport"><i class="fa-solid fa-download"></i> Exporter</button>
         <label class="filebtn" for="fImport"><i class="fa-solid fa-upload"></i> Importer<input id="fImport" type="file" accept=".json,application/json"></label>
@@ -388,6 +395,14 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
         <button type="button" id="bLoadText" style="margin-top:6px">Charger ce texte</button>
       </details>
     </div>
+  </div>
+</section>
+
+<section class="drawer" id="dBrains" aria-label="Cerveaux de l'équipe">
+  <div class="dhead"><h2>Cerveaux de l'équipe</h2><button type="button" class="ghost" data-close aria-label="Fermer"><i class="fa-solid fa-xmark"></i></button></div>
+  <div class="dbody">
+    <p class="note">Un cerveau décide en direct la prochaine action selon l'état de la table (paquet disparu, zone déjà occupée, boulets à 80 s…). Ce n'est pas une stratégie enregistrée. Entraîne-le dans l'<a href="../cerveau/" style="color:var(--accent);font-weight:600">Atelier Cerveau</a>.</p>
+    <ul class="strats" id="brains"><li class="emptyl">Chargement…</li></ul>
   </div>
 </section>
 
@@ -455,7 +470,7 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
   <div class="dbody">
     <div>
       <h3>Pour aller vite</h3>
-      <p class="note">Sélectionne une étape, puis clique un repère sur la table (paquet P, zone de mur M, tour T ou une pierre) pour la remplir. Les boutons du bas ajoutent une étape juste après celle qui est sélectionnée. Clique la frise pour aller à un instant ou à une étape.</p>
+      <p class="note">Deux façons de piloter le robot : une stratégie (liste d'étapes écrite à l'avance) ou un cerveau (réseau qui choisit chaque action d'après l'état réel, jusqu'à 100 s). En mode stratégie, sélectionne une étape puis clique un repère sur la table. Les boutons du bas ajoutent une étape. Clique la frise pour aller à un instant.</p>
     </div>
     <div>
       <h3>Raccourcis clavier</h3>
@@ -484,6 +499,7 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
         <li>Trajets calculés sur une grille de 40 mm avec la forme exacte du robot et des pierres tenues. Sans trajet sans contact, le robot va tout droit et le contact est signalé.</li>
         <li>Porte : 2 piliers accolés et linteau tenu par de petites ventouses. Tour : la pierre est centrée sur son cercle si la place le permet, sinon décalée (signalé). Robot adverse : stratégie en miroir, premier arrivé premier servi, évitement lidar.</li>
         <li>Score : barème du compteur de points, état de la table à 100 s (ou en fin de programme). Seules nos zones comptent. Niveau du Graal estimé d'après sa hauteur. Douves et attaque de PAMI non simulées.</li>
+        <li>Cerveau : le réseau voit l'état (temps, paquets encore là, constructions, adversaire) et choisit l'action suivante. Pas de programme figé à l'issue de l'entraînement. Murs et portes interdits sur une zone déjà occupée. Boulets seulement à partir de 80 s. Le match va jusqu'à 100 s.</li>
       </ul>
     </div>
     <div class="crow"><button type="button" id="bLogout"><i class="fa-solid fa-right-from-bracket"></i> Se déconnecter</button></div>
@@ -497,6 +513,9 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
 <script src="../engine/geom.js"></script>
 <script src="../engine/engine.js"></script>
 <script src="../engine/score.js"></script>
+<script src="../engine/actions.js"></script>
+<script src="../engine/env.js"></script>
+<script src="../cerveau/net.js"></script>
 <script src="../bareme.js"></script>
 <script src="app.js"></script>
 </body>

@@ -200,14 +200,16 @@
       if (info.err && onError === 'fin') done = true;
       if (t1 >= MATCH) done = true;
       if (!ACTIONS.mask(sim, catalogue).some(function (x, i) { return x && catalogue[i].a !== 'trone'; }) && act.a === 'trone') {
-        /* rester au trône : on avance un peu pour finir le match si plus rien d'utile */
+        /* plus rien d'utile : on attend les boulets (80 s) ou la fin, sans figer une stratégie */
         if (sim.time() < MATCH) {
-          sim.exec({ a: 'attendreJusqua', sec: MATCH });
+          var ballsLeft = sim.balls().t === Infinity && catalogue.some(function (a) { return a.a === 'boulets'; });
+          var until = (ballsLeft && sim.time() < 80) ? 80 : MATCH;
+          finishWait(until);
           t1 = Math.min(sim.time(), MATCH);
           sc = SCORE.scoreAt(sim.result(false), sim.params(), t1);
           reward = sc.total - lastScore + reward;
           lastScore = sc.total;
-          done = true;
+          if (t1 >= MATCH) done = true;
         }
       }
       var s = state();
@@ -219,6 +221,45 @@
       return s;
     }
 
+    function finishWait(sec) {
+      if (!sim || sim.time() >= sec - 0.05) return;
+      var brick = { a: 'attendreJusqua', sec: sec };
+      sim.exec(brick);
+      history.push(brick);
+      var t1 = Math.min(sim.time(), MATCH);
+      lastScore = SCORE.scoreAt(sim.result(false), sim.params(), t1).total;
+      if (t1 >= MATCH) done = true;
+    }
+    function liveMask(st) {
+      var m = st.mask.slice(), t = st.t, useful = false, i, ballsIn = false;
+      for (i = 0; i < m.length; i++) if (m[i] && catalogue[i].a !== 'trone') useful = true;
+      for (i = 0; i < catalogue.length; i++) if (catalogue[i].a === 'boulets') ballsIn = true;
+      /* pas de trône tant qu'il reste à jouer, et pas avant 80 s si les boulets sont encore possibles */
+      if ((useful && t < 88) || (ballsIn && !useful && t < 80)) {
+        for (i = 0; i < catalogue.length; i++) if (catalogue[i].a === 'trone') m[i] = 0;
+      }
+      return m;
+    }
+    /* Le réseau décide après chaque brique, jusqu'à 100 s. Ce n'est pas un programme figé. */
+    function play(chooseFn, scenario) {
+      var st = reset(scenario || {}), n = 0, last = -1, same = 0, max = 80;
+      while (!st.done && n < max && sim.time() < MATCH) {
+        var m = liveMask(st);
+        if (same >= 2 && last >= 0 && m.some(function (x, i) { return x && i !== last; })) m[last] = 0;
+        if (!m.some(function (x) { return x; })) {
+          if (sim.time() < 80) { finishWait(80); st = state(); n++; continue; }
+          break;
+        }
+        var idx = chooseFn(st.obs, m);
+        if (idx == null || idx < 0) break;
+        if (idx === last) same++; else { same = 1; last = idx; }
+        st = step(idx);
+        n++;
+      }
+      if (sim && sim.time() < MATCH - 0.05) finishWait(MATCH);
+      done = true;
+      return state();
+    }
     function imitate(program, scenario) {
       var s0 = reset(scenario || { intensite: 'aucun' });
       var pairs = [];
@@ -254,7 +295,7 @@
       sim.restore(snap.sim); belief = snap.belief; lastScore = snap.lastScore; done = snap.done; history = snap.history;
     }
 
-    return { reset: reset, step: step, imitate: imitate, program: program, result: result, snapshot: snapshot, restore: restore, catalogue: catalogue, groups: groups, nInputs: nInputs(groups), nOutputs: catalogue.length };
+    return { reset: reset, step: step, play: play, imitate: imitate, program: program, result: result, snapshot: snapshot, restore: restore, catalogue: catalogue, groups: groups, nInputs: nInputs(groups), nOutputs: catalogue.length };
   }
 
   var EXAMPLE = [

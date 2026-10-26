@@ -2,7 +2,7 @@
 (function () {
   var $ = function (id) { return document.getElementById(id); };
   var API = '../api';
-  var current = '', savedSnap = '', delArm = '', brains = [], jobId = null, pollTimer = null, replayProg = null, replayParams = null, replayOpp = null;
+  var current = '', savedSnap = '', delArm = '', brains = [], jobId = null, pollTimer = null;
   var oppPool = [{ name: 'Exemple', program: ENV.EXAMPLE, score: 85 }];
   var cfg = defaultCfg();
   var weights = null;
@@ -198,10 +198,12 @@
       var act = document.createElement('span'); act.className = 'act';
       var bl = document.createElement('button'); bl.type = 'button'; bl.textContent = 'Ouvrir';
       bl.addEventListener('click', function () { confirmLoss(function () { loadBrain(s.slug); }); });
+      var bp = document.createElement('button'); bp.type = 'button'; bp.className = 'primary'; bp.textContent = 'Jouer';
+      bp.addEventListener('click', function () { openOnPlateau(s.slug, s.name); });
       var bd = document.createElement('button'); bd.type = 'button'; bd.className = 'danger';
       bd.innerHTML = delArm === s.slug ? 'Confirmer' : '<i class="fa-solid fa-trash-can"></i>';
       bd.addEventListener('click', function () { if (delArm === s.slug) delBrain(s.slug, s.name); else { delArm = s.slug; renderBrains(); } });
-      act.appendChild(bl); act.appendChild(bd); li.appendChild(act); ul.appendChild(li);
+      act.appendChild(bl); act.appendChild(bp); act.appendChild(bd); li.appendChild(act); ul.appendChild(li);
     });
   }
   function refreshBrains() {
@@ -223,7 +225,8 @@
       toast('Ce cerveau a été entraîné avec un ' + j.obsolète.join(' et un ') + ' plus ancien. Réentraîne-le pour coller au règlement actuel.', 'bad');
     }
     weights = null;
-    if (j.entraine) api('GET', API + '/cerveaux/' + slugify(j.name) + '/poids').then(function (w) { weights = w.layers; }, function () {});
+    refreshPlayInfo();
+    if (j.entraine) api('GET', API + '/cerveaux/' + slugify(j.name) + '/poids').then(function (w) { weights = w.layers; refreshPlayInfo(); }, function () { refreshPlayInfo(); });
   }
   function loadBrain(slug) {
     delArm = '';
@@ -377,25 +380,20 @@
     return NET.randomWeights(nIn(), cfg.reseau.couches, nOut(), cfg.graine || 1);
   }
   function acts() { return cfg.reseau.couches.map(function (c) { return c.activation; }); }
-  function runPolicy(env, layers, scenario, maxSteps) {
-    var st = env.reset(scenario || {}), n = 0;
-    while (!st.done && n < (maxSteps || 24)) {
-      var a = NET.choose(NET.forward(layers, st.obs, acts()), st.mask);
-      st = env.step(a); n++;
-    }
+  function runPolicy(env, layers, scenario) {
+    env.play(function (obs, mask) { return NET.choose(NET.forward(layers, obs, acts()), mask); }, scenario || {});
     var R = env.result();
     var sc = SCORE.scoreAt(R, R.params, Math.min(R.T, ENV.MATCH));
     return { score: sc.total, detail: sc.detail, errors: R.errors.length, T: R.T, program: env.program() };
   }
   function runRandom(env, scenario) {
-    var st = env.reset(scenario || {}), n = 0, rng = function () { return Math.random(); };
-    while (!st.done && n < 24) {
-      var valid = []; st.mask.forEach(function (v, i) { if (v) valid.push(i); });
-      st = env.step(valid[Math.floor(rng() * valid.length)] || valid[0] || 0); n++;
-    }
+    env.play(function (obs, mask) {
+      var valid = []; mask.forEach(function (v, i) { if (v) valid.push(i); });
+      return valid[Math.floor(Math.random() * valid.length)] || 0;
+    }, scenario || {});
     var R = env.result();
     var sc = SCORE.scoreAt(R, R.params, Math.min(R.T, ENV.MATCH));
-    return { score: sc.total, detail: sc.detail, errors: R.errors.length };
+    return { score: sc.total, detail: sc.detail, errors: R.errors.length, T: R.T };
   }
   function runScripted(env, program, scenario) {
     return env.imitate(program, scenario || { intensite: 'aucun' });
@@ -439,32 +437,35 @@
     }, 40);
   });
 
-  $('bReplay').addEventListener('click', function () {
-    $('rInfo').textContent = 'Génération…';
-    setTimeout(function () {
-      try {
-        var env = makeEnv(), L = layersFor();
-        var seed = parseInt($('pReplaySeed').value, 10) || 1;
-        replayOpp = ENV.pickOpponent(oppPool, seed, cfg.adversaire.intensite);
-        var run = runPolicy(env, L, { seed: seed, intensite: cfg.adversaire.intensite, opponent: replayOpp });
-        replayProg = run.program; replayParams = Object.assign({}, ENGINE.DEF);
-        $('rProg').hidden = false; $('rProg').textContent = JSON.stringify({ format: 'camelot-strategie', version: 1, program: replayProg, params: replayParams, opponent: replayOpp ? { name: replayOpp.name, program: replayOpp.program } : undefined }, null, 2);
-        $('rInfo').textContent = 'Programme de ' + replayProg.length + ' étapes · score ' + run.score + ' pts · ' + run.T.toFixed(1) + ' s · ' + run.errors + ' erreur(s).';
-        $('bOpenPlateau').disabled = false; $('bSaveStrat').disabled = false;
-      } catch (e) { $('rInfo').textContent = 'Erreur : ' + e.message; }
-    }, 40);
-  });
-  $('bOpenPlateau').addEventListener('click', function () {
-    if (!replayProg) return;
-    try { sessionStorage.setItem('icamlot-replay', JSON.stringify({ format: 'camelot-strategie', version: 1, name: ($('sName').value.trim() || 'Cerveau') + ' · rejeu', params: replayParams, program: replayProg, intensity: cfg.adversaire.intensite, opponent: replayOpp ? { name: replayOpp.name, program: replayOpp.program, params: replayOpp.params } : undefined })); } catch (e) {}
+  function refreshPlayInfo() {
+    var name = $('sName').value.trim() || current;
+    var box = $('rCurrent');
+    if (box) {
+      box.innerHTML = name
+        ? '<b>' + esc(name) + '</b> — ' + (weights ? 'poids chargés, il jouera en direct.' : 'pas encore de poids entraînés : le plateau tirera au sort parmi les actions valides.')
+        : '<b>Aucun cerveau ouvert.</b> Ouvre-en un dans la liste, ou donne un nom à celui-ci et enregistre-le.';
+    }
+    if ($('rInfo')) {
+      $('rInfo').textContent = name
+        ? 'Le plateau charge le réseau et lui demande la prochaine action après chaque brique, jusqu\'à 100 s. Ce n\'est pas une stratégie enregistrée.'
+        : 'Ouvre un cerveau déjà entraîné, ou enregistre celui-ci, puis charge-le. Sur le plateau tu pourras aussi ouvrir une stratégie écrite à la main.';
+    }
+  }
+  function openOnPlateau(slug, name) {
+    if (!slug) { toast('Donne un nom et enregistre le cerveau avant de le jouer.', 'bad'); return; }
+    try {
+      sessionStorage.setItem('icamlot-pilot', JSON.stringify({
+        mode: 'cerveau', slug: slug, name: name || slug, intensity: (cfg.adversaire && cfg.adversaire.intensite) || 'aucun'
+      }));
+    } catch (e) {}
     location.href = '../plateau/';
-  });
-  $('bSaveStrat').addEventListener('click', function () {
-    if (!replayProg) return;
-    var name = ($('sName').value.trim() || 'Cerveau') + ' rejeu';
-    api('PUT', API + '/strategies/' + slugify(name), { name: name, params: replayParams || ENGINE.DEF, program: replayProg }).then(function () {
-      toast('Stratégie « ' + name + ' » enregistrée', 'ok');
-    }, function (e) { toast(e.message, 'bad'); });
+  }
+  $('bPickBrain').addEventListener('click', function () { showDrawer('dList'); });
+  $('bOpenPlateau').addEventListener('click', function () {
+    var name = $('sName').value.trim() || current;
+    var slug = slugify(name);
+    if (!slug) { showDrawer('dList'); toast('Ouvre d\'abord un cerveau enregistré, ou donne-lui un nom.', 'bad'); return; }
+    openOnPlateau(slug, name);
   });
 
   window.addEventListener('keydown', function (e) {
@@ -475,6 +476,7 @@
 
   cfg = defaultCfg();
   writeUi(); markSaved(false);
+  refreshPlayInfo();
   refreshBrains();
   api('GET', API + '/strategies').then(function (j) {
     var list = (j.strategies || []).slice(0, 8);

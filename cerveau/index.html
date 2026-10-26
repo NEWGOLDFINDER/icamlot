@@ -137,7 +137,7 @@ input[type=number], input[type=text], input[type=search] { background: var(--bg)
     <button class="tab" type="button" role="tab" aria-selected="true" data-pane="build" id="tab-build"><i class="fa-solid fa-diagram-project"></i> Construction</button>
     <button class="tab" type="button" role="tab" aria-selected="false" data-pane="train" id="tab-train"><i class="fa-solid fa-dumbbell"></i> Entraînement</button>
     <button class="tab" type="button" role="tab" aria-selected="false" data-pane="eval" id="tab-eval"><i class="fa-solid fa-flag-checkered"></i> Évaluation</button>
-    <button class="tab" type="button" role="tab" aria-selected="false" data-pane="replay" id="tab-replay"><i class="fa-solid fa-clapperboard"></i> Rejouer</button>
+    <button class="tab" type="button" role="tab" aria-selected="false" data-pane="replay" id="tab-replay"><i class="fa-solid fa-play"></i> Jouer</button>
   </div>
   <main class="main">
     <section id="pane-build">
@@ -280,18 +280,14 @@ input[type=number], input[type=text], input[type=search] { background: var(--bg)
 
     <section id="pane-replay" hidden>
       <article class="card">
-        <h2>Rejouer dans le simulateur 3D</h2>
-        <p class="note">Le réseau choisit une suite d'actions sur un scénario. Le programme est au format <code>camelot-strategie</code> version 1, ouvrable dans le plateau.</p>
-        <div class="pgrid" style="max-width:420px">
-          <label>Graine du scénario <input id="pReplaySeed" type="number" min="1" value="1"></label>
-        </div>
+        <h2>Jouer en direct sur le plateau</h2>
+        <p class="note">Le réseau n'écrit pas une stratégie. Il est chargé dans le simulateur et choisit la prochaine action après chaque brique, d'après l'état réel de la table (paquet disparu, mur déjà posé, adversaire…). Le match dure 100 s.</p>
+        <p class="note" id="rCurrent" style="margin-top:10px"><b>Aucun cerveau ouvert.</b></p>
         <div class="crow" style="margin-top:12px">
-          <button type="button" class="primary" id="bReplay"><i class="fa-solid fa-clapperboard"></i> Générer le programme</button>
-          <button type="button" id="bOpenPlateau" disabled><i class="fa-solid fa-chess-rook"></i> Ouvrir dans le plateau</button>
-          <button type="button" id="bSaveStrat" disabled><i class="fa-solid fa-floppy-disk"></i> Enregistrer comme stratégie</button>
+          <button type="button" id="bPickBrain"><i class="fa-solid fa-folder-open"></i> Ouvrir un cerveau</button>
+          <button type="button" class="primary" id="bOpenPlateau"><i class="fa-solid fa-chess-rook"></i> Charger ce cerveau dans le plateau</button>
         </div>
-        <p class="note" id="rInfo" style="margin-top:10px"></p>
-        <pre class="code" id="rProg" hidden></pre>
+        <p class="note" id="rInfo" style="margin-top:10px">Ouvre un cerveau déjà entraîné, ou enregistre celui-ci, puis charge-le. Sur le plateau tu pourras aussi ouvrir une stratégie écrite à la main.</p>
       </article>
     </section>
   </main>

@@ -110,32 +110,36 @@
     if (!h || !h.stack) return false;
     return !!h.stack.filter(function (x) { return x; })[rank];
   }
-  function zoneHasBuild(sim, z) {
-    var zone = ENGINE.zoneById(z); if (!zone) return false;
+  function zoneStoneCount(sim, z) {
+    var zone = ENGINE.zoneById(z); if (!zone) return 0;
     var zr = zone.tan !== undefined ? rectPoly({ cx: zone.c[0], cy: zone.c[1], hl: 200, hn: 100, ang: zone.tan + 90 }) : null;
-    return sim.stones().some(function (st) {
-      if (st.cur.k !== 'free') return false;
-      var g = st.cur.geo; if (!g) return false;
-      if (zr) return overlap(g.foot, zr, 0);
+    var n = 0;
+    sim.stones().forEach(function (st) {
+      if (st.cur.k !== 'free') return;
+      var g = st.cur.geo; if (!g) return;
+      if (zr) { if (overlap(g.foot, zr, 0)) n++; return; }
       var d = 1e9, P = g.foot;
-      if (ENGINE.inPoly(zone.c[0], zone.c[1], P)) return true;
+      if (ENGINE.inPoly(zone.c[0], zone.c[1], P)) { n++; return; }
       for (var i = 0; i < P.length; i++) {
         var a = P[i], b = P[(i + 1) % P.length], dx = b[0] - a[0], dy = b[1] - a[1], L = dx * dx + dy * dy;
         var u = L ? Math.max(0, Math.min(1, ((zone.c[0] - a[0]) * dx + (zone.c[1] - a[1]) * dy) / L)) : 0;
         d = Math.min(d, Math.hypot(zone.c[0] - a[0] - u * dx, zone.c[1] - a[1] - u * dy));
       }
-      return d < 100;
+      if (d < 100) n++;
     });
+    return n;
   }
+  function zoneHasBuild(sim, z) { return zoneStoneCount(sim, z) > 0; }
+  function towerComplete(sim, z) { return zoneStoneCount(sim, z) >= 3; }
 
   function valid(act, sim) {
     switch (act.famille) {
       case 'prendre': return faceEmpty(sim, act.f) && packetStacked(sim, act.p);
-      case 'mur': return faceStackFlat(sim, act.f);
-      case 'tour': return stoneHeldRank(sim, act.f, act.rank);
-      case 'porte': return faceStackFlat(sim, act.f);
-      case 'boulets': return sim.balls().t === Infinity;
-      case 'prendreGraal': return faceEmpty(sim, act.f) && sim.graal().cur.k !== 'held';
+      case 'mur': return faceStackFlat(sim, act.f) && !zoneHasBuild(sim, act.z);
+      case 'tour': return stoneHeldRank(sim, act.f, act.rank) && !towerComplete(sim, act.z);
+      case 'porte': return faceStackFlat(sim, act.f) && !zoneHasBuild(sim, act.z);
+      case 'boulets': return sim.balls().t === Infinity && sim.time() >= 80;
+      case 'prendreGraal': return faceEmpty(sim, act.f) && sim.graal().cur.k === 'home';
       case 'poserGraal': return faceHoldsGraal(sim, act.f) && zoneHasBuild(sim, act.z);
       case 'trone': return true;
       default: return false;
