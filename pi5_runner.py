@@ -73,8 +73,12 @@ class Pi5EurobotAgent:
         self.input_names = [inp.name for inp in self.session.get_inputs()]
         self.output_names = [out.name for out in self.session.get_outputs()]
 
-        # Dimension de l'état caché (64 pour notre GRU)
-        self.hidden_dim = 64
+        # Dimension de l'état caché (détectée dynamiquement depuis le modèle ONNX)
+        try:
+            h_shape = self.session.get_inputs()[1].shape
+            self.hidden_dim = int(h_shape[1]) if len(h_shape) > 1 and isinstance(h_shape[1], (int, np.integer)) else 128
+        except Exception:
+            self.hidden_dim = 128
         self.hidden = np.zeros((1, self.hidden_dim), dtype=np.float32)
 
         # Table des 106 actions

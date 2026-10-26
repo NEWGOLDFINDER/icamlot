@@ -1,6 +1,6 @@
 """Exportateur de modèle PyTorch vers ONNX pour Raspberry Pi 5.
 
-Permet d'exporter l'Acteur GRU en un fichier .onnx compact (~140 Ko),
+Permet d'exporter l'Acteur GRU en un fichier .onnx compact (~620 Ko),
 vérifié avec onnx.checker et benchmarqué sur CPU avec ONNX Runtime.
 """
 from __future__ import annotations
@@ -33,12 +33,14 @@ from trainer.models import RecurrentActorCritic, Pi5ActorWrapper
 def export_pi5_onnx(
     model: RecurrentActorCritic,
     output_path: Union[str, Path],
-    hidden_dim: int = 64,
+    hidden_dim: Optional[int] = None,
     benchmark_runs: int = 500,
 ) -> dict:
     """Exporte l'Acteur GRU en format ONNX prêt pour Raspberry Pi 5."""
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    hidden_dim = hidden_dim or getattr(model, "hidden_dim", 128)
 
     # Passer en mode évaluation sur CPU
     cpu_model = RecurrentActorCritic(n_in=model.n_in, n_out=model.n_out, hidden_dim=hidden_dim)
@@ -109,6 +111,6 @@ def export_pi5_onnx(
 
 
 if __name__ == "__main__":
-    # Test d'export d'un modèle aléatoire
-    model = RecurrentActorCritic(n_in=37, n_out=106, hidden_dim=64)
-    export_pi5_onnx(model, ".data/weights/test_brain_pi5.onnx")
+    # Test d'export d'un modèle aléatoire V2
+    model = RecurrentActorCritic(n_in=37, n_out=106, hidden_dim=128)
+    export_pi5_onnx(model, ".data/weights/best_brain_pi5.onnx", hidden_dim=128)

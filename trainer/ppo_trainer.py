@@ -44,7 +44,7 @@ class PPOTrainer:
         self,
         env_batch_size: int = 256,
         rollout_len: int = 32,
-        hidden_dim: int = 64,
+        hidden_dim: int = 128,
         lr: float = 3e-4,
         gamma: float = 0.99,
         gae_lambda: float = 0.95,
@@ -503,7 +503,7 @@ def main():
     parser.add_argument("--batch-size", type=int, default=256, help="Taille du batch d'environnements parallèles")
     parser.add_argument("--rollout-len", type=int, default=32, help="Longueur d'un rollout par env")
     parser.add_argument("--lr", type=float, default=3e-4, help="Taux d'apprentissage")
-    parser.add_argument("--hidden-dim", type=int, default=64, help="Dimension de la mémoire GRU")
+    parser.add_argument("--hidden-dim", type=int, default=128, help="Dimension de la mémoire GRU (défaut: 128)"))
     parser.add_argument("--eval-every", type=int, default=5, help="Fréquence d'évaluation (en rollouts)")
     parser.add_argument("--pretrain-imitation", action="store_true", default=True, help="Pré-entraîner par imitation avant PPO")
     parser.add_argument("--out-pt", type=str, default=".data/weights/ppo_best.pt", help="Fichier de sortie .pt")
