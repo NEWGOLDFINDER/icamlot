@@ -531,7 +531,7 @@ class Handler(SimpleHTTPRequestHandler):
                 info["cuda"] = bool(torch.cuda.is_available())
                 if info["cuda"]:
                     info["device"] = "cuda"
-                    info["name"] = torch.cuda.get_device_name(0)
+                    info["name"] = torch.cuda.get_device_name(0) + " (détecté, non utilisé : calcul sur processeur)"
             except ImportError:
                 info["torch"] = False
                 info["cuda"] = False

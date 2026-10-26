@@ -45,7 +45,8 @@ def device_info():
     if HAS_TORCH and torch.cuda.is_available():
         name = torch.cuda.get_device_name(0)
         mem = torch.cuda.get_device_properties(0).total_memory
-        return {"device": "cuda", "name": name, "vram_mo": round(mem / 1024 / 1024)}
+        # La carte est détectée, mais le calcul (réseau, mutations, matchs simulés) tourne en NumPy sur le processeur.
+        return {"device": "cuda", "name": name + " (détecté, non utilisé : calcul sur processeur)", "vram_mo": round(mem / 1024 / 1024)}
     return {"device": "cpu", "name": "CPU (NumPy)" + (" + PyTorch" if HAS_TORCH else ""), "vram_mo": 0}
 
 
