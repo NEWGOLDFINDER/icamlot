@@ -23,9 +23,11 @@ except ImportError:  # pragma: no cover
 try:
     import torch
     HAS_TORCH = True
+    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 except ImportError:
     torch = None
     HAS_TORCH = False
+    DEVICE = None
 
 
 def atomic_write(path: Path, obj) -> None:
@@ -45,9 +47,43 @@ def device_info():
     if HAS_TORCH and torch.cuda.is_available():
         name = torch.cuda.get_device_name(0)
         mem = torch.cuda.get_device_properties(0).total_memory
-        # La carte est détectée, mais le calcul (réseau, mutations, matchs simulés) tourne en NumPy sur le processeur.
-        return {"device": "cuda", "name": name + " (détecté, non utilisé : calcul sur processeur)", "vram_mo": round(mem / 1024 / 1024)}
-    return {"device": "cpu", "name": "CPU (NumPy)" + (" + PyTorch" if HAS_TORCH else ""), "vram_mo": 0}
+        return {"device": "cuda", "name": name + " (GPU actif)", "vram_mo": round(mem / 1024 / 1024)}
+    return {"device": "cpu", "name": "CPU (PyTorch/NumPy)" + (" + PyTorch" if HAS_TORCH else ""), "vram_mo": 0}
+
+
+if HAS_TORCH:
+    class TorchNet(torch.nn.Module):
+        def __init__(self, sizes, acts, init_layers=None):
+            super().__init__()
+            self.linears = torch.nn.ModuleList()
+            self.acts = acts
+            for i, (a, b) in enumerate(zip(sizes[:-1], sizes[1:])):
+                lin = torch.nn.Linear(a, b, device=DEVICE)
+                if init_layers:
+                    with torch.no_grad():
+                        lin.weight.copy_(torch.tensor(init_layers[i]["w"].T, dtype=torch.float32, device=DEVICE))
+                        lin.bias.copy_(torch.tensor(init_layers[i]["b"], dtype=torch.float32, device=DEVICE))
+                self.linears.append(lin)
+
+        def forward(self, x):
+            h = x
+            for i, lin in enumerate(self.linears):
+                h = lin(h)
+                if i < len(self.linears) - 1:
+                    act = self.acts[i] if i < len(self.acts) else "relu"
+                    if act == "tanh":
+                        h = torch.tanh(h)
+                    elif act == "sigmoid":
+                        h = torch.sigmoid(h)
+                    else:
+                        h = torch.relu(h)
+            return h
+
+        def export_layers(self):
+            return [
+                {"w": lin.weight.detach().cpu().numpy().T, "b": lin.bias.detach().cpu().numpy()}
+                for lin in self.linears
+            ]
 
 
 class EnvWorker:
@@ -166,7 +202,7 @@ def weights_from_json(raw):
     return [{"w": np.asarray(l["w"], dtype=np.float32), "b": np.asarray(l["b"], dtype=np.float32)} for l in raw]
 
 
-def play_episode(env: EnvWorker, layers, acts, scenario, max_steps=80, on_error="penalite"):
+def play_episode(env, layers, acts, scenario, max_steps=80, on_error="penalite"):
     st = env.call({
         "cmd": "play",
         "layers": weights_to_json(layers),
@@ -183,7 +219,7 @@ def play_episode(env: EnvWorker, layers, acts, scenario, max_steps=80, on_error=
     }
 
 
-def play_scripted(env: EnvWorker, program, scenario):
+def play_scripted(env, program, scenario):
     """Rejoue un programme en suivant les briques (imitation : paires état/action)."""
     st = env.reset(scenario)
     pairs = []
@@ -238,7 +274,7 @@ def load_strategies(folder: Path):
     return out
 
 
-def filter_opponents(strats, env: EnvWorker, min_score=70):
+def filter_opponents(strats, env, min_score=70):
     kept = []
     for s in strats:
         try:
@@ -260,7 +296,7 @@ def filter_opponents(strats, env: EnvWorker, min_score=70):
     return []
 
 
-def run_evolution(job: Job, env: EnvWorker, cfg, strats):
+def run_evolution(job: Job, env, cfg, strats):
     regl = cfg.get("reglages") or {}
     pop_n = int(regl.get("population") or 20)
     gens = int(regl.get("generations") or 30)
@@ -350,7 +386,7 @@ def run_evolution(job: Job, env: EnvWorker, cfg, strats):
     return best_w, best_sc, history
 
 
-def run_imitation(job: Job, env: EnvWorker, cfg, strats):
+def run_imitation(job: Job, env, cfg, strats):
     regl = cfg.get("reglages") or {}
     epochs = int(regl.get("epoques") or 40)
     lr = float(regl.get("taux_apprentissage") or 0.02)
@@ -383,69 +419,43 @@ def run_imitation(job: Job, env: EnvWorker, cfg, strats):
     if not xs:
         job.logline("Pas de paires (état, action) collectées.")
         return layers, 0, []
-    X = np.asarray(xs, dtype=np.float32)
-    Y = np.asarray(ys, dtype=np.int64)
-    n = len(Y)
+
+    X_tensor = torch.tensor(xs, dtype=torch.float32, device=DEVICE)
+    Y_tensor = torch.tensor(ys, dtype=torch.long, device=DEVICE)
+    n = len(ys)
     t0 = time.time()
     history = []
-    job.logline(f"{n} paires collectées, {epochs} époques.")
+
+    net = TorchNet(sizes, acts, layers)
+    optimizer = torch.optim.SGD(net.parameters(), lr=lr)
+    criterion = torch.nn.CrossEntropyLoss()
+
+    job.logline(f"{n} paires collectées, {epochs} époques sur {device_info()['device']}.")
+
     for ep in range(1, epochs + 1):
         if job.wait_if_paused():
             job.data["status"] = "stopped"
             job.save()
-            return layers, 0, history
-        perm = rng.permutation(n)
+            return net.export_layers(), 0, history
+
+        perm = torch.randperm(n, device=DEVICE)
         total_loss = 0.0
         seen = 0
+
+        net.train()
         for i0 in range(0, n, batch):
             idx = perm[i0:i0 + batch]
-            xb, yb = X[idx], Y[idx]
-            # forward + softmax CE, rétropropagation manuelle
-            hs = [xb]
-            h = xb
-            pre = []
-            for i, layer in enumerate(layers):
-                z = h @ layer["w"] + layer["b"]
-                pre.append(z)
-                if i < len(layers) - 1:
-                    h = act_fn(acts[i] if i < len(acts) else "relu", z)
-                else:
-                    h = z
-                hs.append(h)
-            z = pre[-1]
-            z = z - z.max(axis=1, keepdims=True)
-            exp = np.exp(z)
-            p = exp / exp.sum(axis=1, keepdims=True)
-            loss = 0.0
-            dz = p.copy()
-            for r, y in enumerate(yb):
-                loss += -np.log(max(p[r, y], 1e-8))
-                dz[r, y] -= 1
-            loss /= max(len(yb), 1)
-            dz /= max(len(yb), 1)
-            total_loss += loss * len(yb)
+            xb, yb = X_tensor[idx], Y_tensor[idx]
+
+            optimizer.zero_grad()
+            logits = net(xb)
+            loss = criterion(logits, yb)
+            loss.backward()
+            optimizer.step()
+
+            total_loss += loss.item() * len(yb)
             seen += len(yb)
-            # backprop
-            grads = [None] * len(layers)
-            for i in range(len(layers) - 1, -1, -1):
-                x_in = hs[i]
-                grads[i] = {"w": x_in.T @ dz, "b": dz.sum(axis=0)}
-                if i == 0:
-                    break
-                dh = dz @ layers[i]["w"].T
-                name = acts[i - 1] if i - 1 < len(acts) else "relu"
-                zprev = pre[i - 1]
-                if name == "tanh":
-                    dh = dh * (1 - np.tanh(zprev) ** 2)
-                elif name == "sigmoid":
-                    sig = 1 / (1 + np.exp(-np.clip(zprev, -30, 30)))
-                    dh = dh * sig * (1 - sig)
-                else:
-                    dh = dh * (zprev > 0)
-                dz = dh
-            for i, layer in enumerate(layers):
-                layer["w"] -= lr * grads[i]["w"]
-                layer["b"] -= lr * grads[i]["b"]
+
         mean_loss = total_loss / max(seen, 1)
         history.append({"g": ep, "best": None, "mean": mean_loss, "worst": None, "loss": mean_loss})
         elapsed = time.time() - t0
@@ -467,7 +477,8 @@ def run_imitation(job: Job, env: EnvWorker, cfg, strats):
         if elapsed > t_max:
             job.logline("Durée maximale atteinte, on s'arrête.")
             break
-    return layers, 0, history
+
+    return net.export_layers(), 0, history
 
 
 def main():
@@ -515,7 +526,8 @@ def main():
         job.logline("Erreur : " + str(e))
         raise
     finally:
-        env.close()
+        if hasattr(env, 'close'):
+            env.close()
 
 
 if __name__ == "__main__":
