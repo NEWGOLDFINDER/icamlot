@@ -372,6 +372,31 @@ class TorchEnv:
         hits_obstacle = ((dist_to_packs < 235.0) & is_obstacle).any(dim=-1)
         mask = mask & (~hits_obstacle)
 
+        # 10. ANTICIPATION DU RETOUR AU TRÔNE : Laisser place et passage dégagé vers le trône
+        T_pos = torch.tensor([250.0, 1000.0], device=self.device).unsqueeze(0).unsqueeze(1).unsqueeze(2)
+        BT_vec = T_pos - B_tgt
+        L2_ret = (BT_vec ** 2).sum(dim=-1, keepdim=True).clamp(min=1e-6)
+        BC_vec = C_packs - B_tgt
+        u_ret = ((BC_vec * BT_vec).sum(dim=-1, keepdim=True) / L2_ret).clamp(0.0, 1.0)
+        P_proj_ret = B_tgt + u_ret * BT_vec
+        dist_to_throne = torch.hypot(C_packs[..., 0] - P_proj_ret[..., 0], C_packs[..., 1] - P_proj_ret[..., 1]).squeeze(-1)
+
+        # Pour les actions hors trône et boulets, le chemin de retour doit être libre
+        blocks_throne = ((dist_to_throne < 235.0) & is_obstacle).any(dim=-1)
+        not_throne_act = (fam_t.squeeze(-1) != 4) & (fam_t.squeeze(-1) != 7)
+        mask = mask & (~(blocks_throne & not_throne_act))
+
+        # 11. BUDGET TEMPS D'ANTICIPATION : Garantir le temps de rentrer et tirer les boulets (<= 100s)
+        dist_AB = torch.hypot(B_tgt[..., 0].squeeze(-1) - A_pos[..., 0].squeeze(-1),
+                              B_tgt[..., 1].squeeze(-1) - A_pos[..., 1].squeeze(-1))
+        dt_action = dist_AB / SPEED_LIN + self.action_mech.unsqueeze(0)
+        dist_to_throne_ret = torch.hypot(250.0 - self.action_tx.unsqueeze(0), 1000.0 - self.action_ty.unsqueeze(0))
+        dt_throne_ret = dist_to_throne_ret / SPEED_LIN + 0.5
+        dt_tir_requis = torch.where(~self.balls_fired, 6.1, 0.0).unsqueeze(1)
+        t_previsionnel = self.t.unsqueeze(1) + dt_action + dt_throne_ret + dt_tir_requis
+        out_of_time = (t_previsionnel > 100.0) & not_throne_act
+        mask = mask & (~out_of_time)
+
         # Si aucune action n'est libre, le trône permet le désengagement
         none_valid = ~mask.any(dim=1)
         mask[none_valid, 105] = True

@@ -162,6 +162,15 @@ def test_torch_rules_reinforcement():
     assert new_errors > old_errors, "Trajectoire traversant une caisse doit déclencher une collision"
     print("  ok  Détection de collision : robot ne peut plus passer à travers les caisses")
 
+    # D. Anticipation spatio-temporelle : se laisser place et temps de retourner au trône pour les boulets
+    env.reset()
+    # Si t=92.0 s (fin de match imminente), les actions secondaires lointaines sont masquées
+    env.t[0] = 92.0
+    mask_late = env.get_mask()
+    assert not mask_late[0, 0].item(), "À t=92s, prendre P1 doit être masqué car impossible de rentrer et tirer avant 100s"
+    assert mask_late[0, 105].item(), "À t=92s, le repli vers le trône doit rester garanti et prioritaire"
+    print("  ok  Anticipation du trône : place et budget temps garantis pour tirer les boulets (<= 100s)")
+
 
 if __name__ == "__main__":
     test_torch_env_reset()

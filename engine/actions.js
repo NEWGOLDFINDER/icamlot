@@ -237,11 +237,52 @@
       var dist = Math.hypot(cx - px, cy - py);
       if (dist < 235) return true;
     }
+
+    // 2. Trajet retour vers le trône (depuis la cible) : se laisser place de rentrer
+    if (act.famille !== 'boulets' && act.famille !== 'trone') {
+      var thX = isBlue ? 2750 : 250, thY = 1000;
+      var btx = thX - tx, bty = thY - ty;
+      var l2_ret = btx * btx + bty * bty;
+      if (l2_ret >= 1e-4) {
+        for (var k2 = 0; k2 < 10; k2++) {
+          var pkId2 = 'P' + (k2 + 1);
+          if (pkId2 === targetPk) continue;
+          var active2 = stones.some(function (st) {
+            return st.pk === k2 && st.cur && st.cur.k === 'home';
+          });
+          if (!active2) continue;
+
+          var cx2 = PACK_CENTERS[k2][0], cy2 = PACK_CENTERS[k2][1];
+          var bcx = cx2 - tx, bcy = cy2 - ty;
+          var u_ret = Math.max(0, Math.min(1, (bcx * btx + bcy * bty) / l2_ret));
+          var px_ret = tx + u_ret * btx, py_ret = ty + u_ret * bty;
+          var dist_ret = Math.hypot(cx2 - px_ret, cy2 - py_ret);
+          if (dist_ret < 235) return true;
+        }
+      }
+    }
+
     return false;
   }
 
   function valid(act, sim) {
     if (hitsCrates(act, sim)) return false;
+
+    // Anticipation temporelle : budget temps pour rentrer au trône et tirer les boulets (<= 100s)
+    if (act.famille !== 'boulets' && act.famille !== 'trone' && typeof sim.pose === 'function' && typeof sim.time === 'function') {
+      var rawTgt = getActionTarget(act);
+      if (rawTgt) {
+        var s = sim.pose();
+        var isBlue = (sim.params && sim.params().team === 'blue');
+        var tx = isBlue ? 3000 - rawTgt[0] : rawTgt[0], ty = rawTgt[1];
+        var thX = isBlue ? 2750 : 250, thY = 1000;
+        var dt_act = Math.hypot(tx - s.x, ty - s.y) / 500.0 + 1.0;
+        var dt_throne = Math.hypot(thX - tx, thY - ty) / 500.0 + 0.5;
+        var ballsFired = sim.balls && sim.balls().shots;
+        var dt_tir = ballsFired ? 0.0 : 6.1;
+        if (sim.time() + dt_act + dt_throne + dt_tir > 100.0) return false;
+      }
+    }
     act = real(act, sim);
     switch (act.famille) {
       case 'prendre': return faceEmpty(sim, act.f) && packetStacked(sim, act.p);

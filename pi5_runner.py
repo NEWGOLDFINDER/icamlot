@@ -279,6 +279,68 @@ class Pi5EurobotAgent:
                     mask[act_idx] = False
                     break
 
+        # 10. Anticipation spatiale du retour au trône : se laisser la place de rentrer
+        throne_x, throne_y = 250.0, 1000.0
+        for act_idx in range(106):
+            if not mask[act_idx]:
+                continue
+            act = self.actions[act_idx]
+            a_fam = act.get("a", "")
+            if a_fam in ("boulets", "tir", "trone"):
+                continue
+
+            tx = float(act.get("tx", 250.0))
+            ty = float(act.get("ty", 1000.0))
+            bt_x = throne_x - tx
+            bt_y = throne_y - ty
+            l2_ret = bt_x * bt_x + bt_y * bt_y
+            if l2_ret < 1e-4:
+                continue
+
+            target_pk = -1
+            if a_fam == "prendre":
+                p_str = act.get("p", "")
+                if p_str.startswith("P"):
+                    target_pk = int(p_str[1:]) - 1
+
+            for pk_idx in range(10):
+                if pk_idx == target_pk or packs[pk_idx] <= 0:
+                    continue
+                cx, cy = pack_centers[pk_idx]
+                bc_x = cx - tx
+                bc_y = cy - ty
+                u_ret = max(0.0, min(1.0, (bc_x * bt_x + bc_y * bt_y) / l2_ret))
+                px_ret = tx + u_ret * bt_x
+                py_ret = ty + u_ret * bt_y
+                dist_ret = math.hypot(cx - px_ret, cy - py_ret)
+                if dist_ret < 235.0:
+                    mask[act_idx] = False
+                    break
+
+        # 11. Anticipation temporelle : Budget temps pour rentrer au trône et tirer les boulets
+        dt_tir = 6.1 if not balls_fired else 0.0
+        for act_idx in range(106):
+            if not mask[act_idx]:
+                continue
+            act = self.actions[act_idx]
+            a_fam = act.get("a", "")
+            if a_fam in ("boulets", "tir", "trone"):
+                continue
+
+            tx = float(act.get("tx", 250.0))
+            ty = float(act.get("ty", 1000.0))
+            mech = float(act.get("mech", 1.0))
+
+            dist_ab = math.hypot(tx - rx, ty - ry)
+            dt_act = dist_ab / 500.0 + mech
+
+            dist_throne = math.hypot(throne_x - tx, throne_y - ty)
+            dt_throne = dist_throne / 500.0 + 0.5
+
+            t_previsionnel = t + dt_act + dt_throne + dt_tir
+            if t_previsionnel > 100.0:
+                mask[act_idx] = False
+
         # Si absolument aucune action valide, le trône est autorisé
         if not np.any(mask):
             mask[105] = True
