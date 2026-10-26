@@ -149,6 +149,60 @@
   $('bDefNet').addEventListener('click', function () {
     cfg.reseau.couches = [{ neurones: 64, activation: 'relu' }, { neurones: 64, activation: 'relu' }]; renderLayers(); refreshNet(); updateDirty();
   });
+
+  function applyBestNetConfig() {
+    cfg.name = cfg.name || 'Cerveau-V2-Champion';
+    // 1. Activer toutes les 37 entrées
+    cfg.entrees = ENV.GROUPS.map(function (g) { return g.id; });
+    // 2. Activer toutes les 106 actions
+    cfg.actions = {
+      familles: ACTIONS.FAMILLES.map(function (f) { return f.id; }),
+      cotes: ['ext', 'int']
+    };
+    // 3. Architecture optimale du meilleur réseau (5 couches profondes, 66 090 paramètres)
+    cfg.reseau = {
+      couches: [
+        { neurones: 256, activation: 'relu' },
+        { neurones: 128, activation: 'relu' },
+        { neurones: 64, activation: 'relu' },
+        { neurones: 64, activation: 'relu' },
+        { neurones: 64, activation: 'relu' }
+      ],
+      sortie: 'softmax'
+    };
+    // 4. Adversaire réaliste
+    cfg.adversaire = { actif: true, intensite: 'realiste' };
+    // 5. Méthode d'évolution optimisée
+    cfg.methode = 'evolution';
+    cfg.reglages = {
+      population: 40,
+      generations: 50,
+      mutation: 0.08,
+      scenarios_par_evaluation: 3,
+      graine: 42,
+      duree_max: 600,
+      epoques: 100,
+      taux_apprentissage: 0.003,
+      lot: 64,
+      mode: 'rapide'
+    };
+    // 6. Récompenses et sécurité Eurobot (pénalités pour 0 faute / 0 contact)
+    cfg.recompense = {
+      base: 'score',
+      penalite_erreur: 20.0,
+      penalite_contact: 20.0,
+      sur_erreur: 'penalite'
+    };
+    cfg.graine = 42;
+
+    writeUi();
+    updateDirty();
+    toast('Paramètres optimaux du meilleur réseau (V2 Champion · 66 090 params · 37 entrées / 106 sorties) appliqués !', 'ok');
+  }
+  var bBestNet = $('bBestNet');
+  if (bBestNet) bBestNet.addEventListener('click', applyBestNetConfig);
+  var bBestTop = $('bBestTop');
+  if (bBestTop) bBestTop.addEventListener('click', applyBestNetConfig);
   $('pSeed').addEventListener('change', function () { cfg.graine = parseInt($('pSeed').value, 10) || 1; updateDirty(); });
 
   function setMethode(m, silent) {

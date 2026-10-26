@@ -129,6 +129,7 @@ input[type=number], input[type=text], input[type=search] { background: var(--bg)
       <span class="state" id="state">non enregistré</span>
     </form>
     <div class="tbtns">
+      <button type="button" class="primary" id="bBestTop" title="Appliquer les paramètres optimaux du meilleur réseau (Champion V2)"><i class="fa-solid fa-crown"></i><span class="lbl">Meilleur Réseau</span></button>
       <button type="button" id="bList" title="Cerveaux enregistrés"><i class="fa-solid fa-folder-open"></i><span class="lbl">Cerveaux</span></button>
       <button type="button" class="primary" id="bSave" title="Enregistrer (Ctrl+S)"><i class="fa-solid fa-floppy-disk"></i><span class="lbl">Enregistrer</span></button>
     </div>
@@ -167,11 +168,12 @@ input[type=number], input[type=text], input[type=search] { background: var(--bg)
         <div>
           <article class="card">
             <h2>Architecture</h2>
-            <p class="note">Ajoute ou retire des couches. La sortie softmax est imposée. Plafond : 8 couches, 256 neurones, 100 000 paramètres.</p>
+            <p class="note">Ajoute ou retire des couches. La sortie softmax est imposée. Plafond : 8 couches, 256 neurones, 250 000 paramètres.</p>
             <div class="layers" id="layers"></div>
             <div class="crow" style="margin-top:8px">
               <button type="button" id="bAddLayer"><i class="fa-solid fa-plus"></i> Couche</button>
               <button type="button" id="bDefNet">2 × 64 ReLU</button>
+              <button type="button" class="primary" id="bBestNet" title="Charger les paramètres optimaux du meilleur réseau (Champion V2)"><i class="fa-solid fa-crown"></i> Meilleur Réseau (V2)</button>
             </div>
             <div class="pgrid" style="margin-top:12px">
               <label>Graine d'init. <input id="pSeed" type="number" min="1" step="1" value="1"></label>

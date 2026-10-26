@@ -1,6 +1,6 @@
 /* Réseau : comptage, dessin, code PyTorch, inférence (mêmes poids que l'entraîneur NumPy). */
 (function (root) {
-  var MAX_LAYERS = 8, MAX_NEURONS = 256, MAX_PARAMS = 100000;
+  var MAX_LAYERS = 8, MAX_NEURONS = 256, MAX_PARAMS = 250000;
   function sizes(nIn, couches, nOut) {
     return [nIn].concat(couches.map(function (c) { return c.neurones; })).concat([nOut]);
   }
