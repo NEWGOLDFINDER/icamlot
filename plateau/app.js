@@ -4,30 +4,55 @@
   var $ = function (id) { return document.getElementById(id); };
   var BrainActs = window.ACTIONS;
   var MATCH = 100;
-  var DEF = { v: 0.5, va: 0.2, w: 120, vz: 100, trot: 1.5, tvac: 0.5, trel: 0.4, tballs: 4, x0: 250, y0: 1000, h0: 0, gx: 100, gy: 1180, gs: 60 };
-  var PIDS = { v: 'pV', va: 'pVA', w: 'pW', vz: 'pVZ', trot: 'pTR', tvac: 'pTV', trel: 'pTL', tballs: 'pTB', x0: 'pX0', y0: 'pY0', h0: 'pH0', gx: 'pGX', gy: 'pGY', gs: 'pGS' };
+  var DEF = { v: 0.5, va: 0.2, w: 120, vz: 100, trot: 1.5, tvac: 0.5, trel: 0.4, x0: 250, y0: 1000, h0: 0, gx: 100, gy: 1180, gs: 60, zmin: 140, zmax: 0, pgap: 5, ovl: 8,
+    tx: 250, ty: 1000, cl: 80, cw: 60, bn: 10, brate: 2, bdep: 1, bspin: 0.5, bel: 35, bh: 250, btx: 2625, bmode: 'arret',
+    bm: 2, bcd: 0.47, be: 0.5, bmu: 0.3, bcr: 0.05, bdv: 5, bdaz: 2, bdel: 2, bseed: 1 };
+  var PIDS = { v: 'pV', va: 'pVA', w: 'pW', vz: 'pVZ', trot: 'pTR', tvac: 'pTV', trel: 'pTL', x0: 'pX0', y0: 'pY0', h0: 'pH0', gx: 'pGX', gy: 'pGY', gs: 'pGS', zmin: 'pZmin', zmax: 'pZmax', pgap: 'pPGap', ovl: 'pOvl',
+    tx: 'pTX', ty: 'pTY', cl: 'pCL', cw: 'pCW', bn: 'pBN', brate: 'pBRate', bdep: 'pBDep', bspin: 'pBSpin', bel: 'pBEl', bh: 'pBH', btx: 'pBTx', bmode: 'pBMode',
+    bm: 'pBM', bcd: 'pBCd', be: 'pBE', bmu: 'pBMu', bcr: 'pBCr', bdv: 'pBDv', bdaz: 'pBDaz', bdel: 'pBDel', bseed: 'pBSeed' };
+  /* paramètres qui peuvent valoir 0 */
+  var ZERO_OK = ['tvac', 'trel', 'x0', 'y0', 'h0', 'gx', 'gy', 'zmin', 'zmax', 'pgap', 'ovl', 'tx', 'ty', 'cl', 'cw', 'bn', 'bdep', 'bspin', 'bel', 'be', 'bmu', 'bcr', 'bdv', 'bdaz', 'bdel', 'bseed'];
   var EXAMPLE = [
     { a: 'prendre', f: 'A', p: 'P1' }, { a: 'prendre', f: 'B', p: 'P9' },
     { a: 'mur', f: 'A', z: 'M1', side: 'ext' }, { a: 'mur', f: 'B', z: 'M2', side: 'ext' },
     { a: 'prendre', f: 'A', p: 'P5' }, { a: 'prendre', f: 'B', p: 'P10' },
     { a: 'mur', f: 'A', z: 'M5', side: 'ext' }, { a: 'mur', f: 'B', z: 'M4', side: 'ext' },
-    { a: 'prendre', f: 'A', p: 'P4' }, { a: 'boulets' },
+    { a: 'prendre', f: 'A', p: 'P4' },
     { a: 'porte', f: 'A', z: 'M3', side: 'int' },
     { a: 'prendreGraal', f: 'B' }, { a: 'poserGraal', f: 'B', z: 'M3' },
-    { a: 'trone' }
+    { a: 'tir' }
   ];
   var ACTIONS = [
-    ['prendre', 'Prendre le paquet'], ['mur', 'Poser en mur'], ['tour', 'Faire une tour'], ['porte', 'Faire une porte'],
-    ['boulets', 'Lâcher les boulets (cour adverse)'], ['prendreGraal', 'Prendre le Graal'], ['poserGraal', 'Poser le Graal sur'],
-    ['attendre', 'Attendre (s)'], ['attendreJusqua', 'Attendre jusqu\'à (s)'], ['trone', 'Aller dans la salle du trône']
+    ['prendre', 'Prendre (paquet ou pierre)'], ['deposer', 'Déposer en x, y, angle'], ['mur', 'Poser en mur'], ['tour', 'Faire une tour'], ['porte', 'Faire une porte'],
+    ['tir', 'Commencer la séance de tir (canon, face C)'], ['prendreGraal', 'Prendre le Graal'], ['poserGraal', 'Poser le Graal sur'],
+    ['traj', 'Trajectoire (points cliqués)'], ['lacher', 'Lâcher sur place'], ['tourner', 'Tourner la pince (0, 90, 180°)'], ['attendre', 'Attendre (s)'], ['attendreJusqua', 'Attendre jusqu\'à (s)'], ['trone', 'Aller dans la salle du trône']
   ];
-  var SHORT = { prendre: 'Prendre', mur: 'Mur', tour: 'Tour', porte: 'Porte', boulets: 'Boulets', prendreGraal: 'Prendre Graal', poserGraal: 'Poser Graal', attendre: 'Attendre', attendreJusqua: 'Attendre jusqu\'à', trone: 'Trône' };
-  var ICONS = { prendre: 'fa-hand', mur: 'fa-grip-lines', tour: 'fa-chess-rook', porte: 'fa-archway', boulets: 'fa-bowling-ball', prendreGraal: 'fa-trophy', poserGraal: 'fa-award', attendre: 'fa-hourglass-half', attendreJusqua: 'fa-clock', trone: 'fa-crown' };
-  var FIELDS = { prendre: ['f', 'p'], mur: ['f', 'zm', 'side'], tour: ['f', 'zt', 's'], porte: ['f', 'zm', 'side'], boulets: [], prendreGraal: ['f'], poserGraal: ['f', 'zmt'], attendre: ['sec'], attendreJusqua: ['sec'], trone: [] };
+  var SHORT = { prendre: 'Prendre', deposer: 'Déposer', mur: 'Mur', tour: 'Tour', porte: 'Porte', tir: 'Tir', prendreGraal: 'Prendre Graal', poserGraal: 'Poser Graal', traj: 'Trajectoire', lacher: 'Lâcher', tourner: 'Tourner', attendre: 'Attendre', attendreJusqua: 'Attendre jusqu\'à', trone: 'Trône' };
+  var ICONS = { prendre: 'fa-hand', deposer: 'fa-location-crosshairs', mur: 'fa-grip-lines', tour: 'fa-chess-rook', porte: 'fa-archway', tir: 'fa-bullseye', prendreGraal: 'fa-trophy', poserGraal: 'fa-award', traj: 'fa-route', lacher: 'fa-hand-holding', tourner: 'fa-rotate-right', attendre: 'fa-hourglass-half', attendreJusqua: 'fa-clock', trone: 'fa-crown' };
+  var FIELDS = { prendre: ['f', 'mode', 'p', 's', 'v', 'tm'], deposer: ['f', 'q', 'xy', 'ang', 'r', 'drop', 'tm'], tourner: ['f', 'r', 'tm'], lacher: ['f', 'q'], traj: ['fa', 'pts'], mur: ['f', 'zm', 'pm', 'side', 'xy', 'ang'], tour: ['f', 'zt', 's', 'pm', 'xy', 'ang', 'tm'], porte: ['f', 'zm', 'pm', 'side', 'xy', 'ang', 'tm'], tir: [], prendreGraal: ['f', 'tm'], poserGraal: ['f', 'gm', 'zmt', 'xy', 'side', 'tm'], attendre: ['sec'], attendreJusqua: ['sec'], trone: [] };
   var PKIDS = ENGINE.PK.map(function (p) { return p.id; }), MIDS = ENGINE.ZM.map(function (z) { return z.id; }), TIDS = ENGINE.ZT.map(function (z) { return z.id; });
   var SIDS = []; PKIDS.forEach(function (p) { for (var l = 1; l <= 3; l++) SIDS.push(p + '.' + l); });
   var prog = [], params = {}, sel = -1;
   var pilot = { mode: 'strategie', slug: '', name: '', layers: null, cfg: null };
+  /* angle de pince d'un dépôt (ancien champ o : plat / debout) */
+  function rotOf(st) { return st.r != null ? +st.r : st.o === 'debout' ? 90 : 0; }
+  /* la case Lâcher n'est disponible que si la face tient une pierre saisie avant */
+  function updateDrop() {
+    var cb = document.getElementById('cbDrop'); if (!cb || sel < 0 || !prog[sel] || prog[sel].a !== 'deposer') return;
+    var inf = R && R.stepInfo[sel], n = inf && inf.held ? inf.held[prog[sel].f] : null;
+    cb.disabled = n === 0 && !cb.checked; cb.parentNode.title = n === 0 ? 'Aucune pierre saisie avant cette étape sur la face ' + prog[sel].f : '';
+    cb.parentNode.style.opacity = cb.disabled ? '0.5' : '';
+  }
+  /* champs affichés : la prise montre soit le paquet, soit la pierre et sa ventouse */
+  function fieldsOf(st) {
+    return (FIELDS[st.a] || []).filter(function (k) {
+      if (st.a === 'poserGraal') return st.gm === 'xy' ? k !== 'zmt' : k !== 'xy';
+      /* constructions : position manuelle seulement en mode manuel, côté d'approche seulement en placement parfait */
+      if (st.a === 'mur' || st.a === 'tour' || st.a === 'porte') { if ((k === 'xy' || k === 'ang') && st.pm !== 'manuel') return false; if (k === 'side' && st.pm && st.pm !== 'parfait') return false; return true; }
+      if (st.a !== 'prendre') return true;
+      return st.mode === 'pierre' || st.mode === 'deux' ? k !== 'p' : k !== 's' && k !== 'v';
+    });
+  }
 
   function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
@@ -41,14 +66,16 @@
 
   /* ---------- stockage navigateur (brouillon en cours) ---------- */
   function saveLocal() { if (pilot.mode === 'cerveau') return; lsSet('camelot-prog-v1', JSON.stringify({ params: params, program: prog })); }
-  function loadLocal() { try { var j = JSON.parse(lsGet('camelot-prog-v1') || 'null'); if (j && Array.isArray(j.program)) return j; } catch (e) {} return null; }
+  function loadLocal() { try { var j = JSON.parse(lsGet('camelot-prog-v1') || 'null'); if (j && Array.isArray(j.program)) { j.program.forEach(upgradeStep); return j; } } catch (e) {} return null; }
+  function upgradeStep(st) { if (st && st.a === 'boulets') st.a = 'tir'; return st; }
 
   /* ---------- paramètres ---------- */
   function writeParams() { for (var k in PIDS) $(PIDS[k]).value = params[k]; }
   function readParams() {
     for (var k in PIDS) {
-      var v = parseFloat($(PIDS[k]).value), zeroOk = (k === 'tvac' || k === 'trel' || k === 'x0' || k === 'y0' || k === 'h0' || k === 'gx' || k === 'gy');
-      params[k] = isFinite(v) && (zeroOk ? true : v > 0) ? v : DEF[k];
+      if (typeof DEF[k] === 'string') { params[k] = $(PIDS[k]).value || DEF[k]; continue; }
+      var v = parseFloat($(PIDS[k]).value), zeroOk = ZERO_OK.indexOf(k) >= 0;
+      params[k] = isFinite(v) && (zeroOk ? v >= 0 || k === 'h0' : v > 0) ? v : DEF[k];
     }
   }
 
@@ -83,17 +110,23 @@
   }
 
   /* ---------- description d'une étape ---------- */
+  function pmTxt(st) { return st.pm === 'proche' ? ' · au plus proche' : st.pm === 'manuel' ? ' · manuel (' + Math.round(st.x) + ', ' + Math.round(st.y) + ', ' + fmt(+st.ang || 0) + '°)' : ''; }
   function sideTxt(s) { return s === 'ext' ? ' · de l\'extérieur' : s === 'int' ? ' · de l\'intérieur' : ''; }
   function describe(st) {
     var f = st.f ? ' · face ' + st.f : '';
     switch (st.a) {
-      case 'prendre': return 'Prendre ' + st.p + f;
-      case 'mur': return 'Mur en ' + st.z + f + sideTxt(st.side);
-      case 'tour': return 'Tour ' + st.z + ' avec ' + st.s + f;
-      case 'porte': return 'Porte en ' + st.z + f + sideTxt(st.side);
-      case 'boulets': return 'Lâcher les boulets';
+      case 'prendre': return st.mode === 'pierre' ? 'Prendre la pierre ' + st.s + f : st.mode === 'deux' ? 'Prendre les 2 pierres du dessus (' + st.s + ' et celle dessous)' + f : 'Prendre ' + st.p + f;
+      case 'deposer': var rd = rotOf(st); return 'Déposer ' + (st.q === 'pile' ? 'la pile' : st.q) + ' en ' + Math.round(st.x) + ', ' + Math.round(st.y) + ', ' + fmt(st.ang) + '° · ' + (rd === 90 ? 'debout' : rd === 180 ? 'à plat retournée' : 'à plat') + (st.drop ? ' · lâcher' : '') + f;
+      case 'traj': var tp = st.pts || [], la = tp.length ? tp[tp.length - 1] : null;
+        return 'Trajectoire : ' + tp.length + ' point' + (tp.length > 1 ? 's' : '') + (la ? ' → ' + Math.round(la.x) + ', ' + Math.round(la.y) + (la.a != null && la.a !== '' ? ', face ' + (st.fa || 'A') + ' à ' + fmt(+la.a) + '°' : '') : '');
+      case 'lacher': return 'Lâcher ' + (st.q === 'pile' ? 'la pile' : st.q) + ' sur place' + f;
+      case 'tourner': return 'Tourner la pince ' + st.f + ' à ' + (+st.r || 0) + '°' + (st.tm ? ' · pendant le trajet suivant' : '');
+      case 'mur': return 'Mur en ' + st.z + pmTxt(st) + f + (st.pm && st.pm !== 'parfait' ? '' : sideTxt(st.side));
+      case 'tour': return 'Tour ' + st.z + ' avec ' + st.s + pmTxt(st) + f;
+      case 'porte': return 'Porte en ' + st.z + pmTxt(st) + f + (st.pm && st.pm !== 'parfait' ? '' : sideTxt(st.side));
+      case 'tir': return 'Séance de tir : salle du trône, face C vers le camp adverse (à partir de 85 s)';
       case 'prendreGraal': return 'Prendre le Graal' + f;
-      case 'poserGraal': return 'Poser le Graal sur ' + st.z + f;
+      case 'poserGraal': return (st.gm === 'xy' ? 'Poser le Graal en ' + Math.round(st.x) + ', ' + Math.round(st.y) : 'Poser le Graal sur ' + st.z) + f + sideTxt(st.side);
       case 'attendre': return 'Attendre ' + fmt(st.sec) + ' s';
       case 'attendreJusqua': return 'Attendre jusqu\'à ' + fmt(st.sec) + ' s';
       case 'trone': return 'Aller dans la salle du trône';
@@ -105,7 +138,10 @@
     var st = { a: a };
     FIELDS[a].forEach(function (k) {
       if (k === 'f') st.f = 'A'; if (k === 'p') st.p = 'P1'; if (k === 'zm') st.z = 'M1'; if (k === 'zt') st.z = 'T1'; if (k === 'zmt') st.z = 'M3';
-      if (k === 'side') st.side = 'auto'; if (k === 's') st.s = 'P1.1'; if (k === 'sec') st.sec = a === 'attendreJusqua' ? 85 : 1;
+      if (k === 'side') st.side = 'auto'; if (k === 's') st.s = a === 'prendre' ? 'P1.3' : 'P1.1'; if (k === 'sec') st.sec = a === 'attendreJusqua' ? 85 : 1;
+      if (k === 'mode') st.mode = 'paquet'; if (k === 'gm') st.gm = 'zone'; if (k === 'v') st.v = 'auto'; if (k === 'tm') st.tm = true;
+      if (k === 'q') st.q = 'pile'; if (k === 'xy') { if (a === 'deposer' || a === 'poserGraal') { st.x = 1200; st.y = 1000; } else { st.x = null; st.y = null; } } if (k === 'pm') st.pm = 'parfait'; if (k === 'ang') st.ang = 0;
+      if (k === 'r') st.r = a === 'tourner' ? 90 : 0; if (k === 'drop') st.drop = false; if (k === 'fa') st.fa = 'A'; if (k === 'pts') st.pts = [];
     });
     return st;
   }
@@ -132,17 +168,79 @@
   function setField(i, k, v) { prog[i][k] = v; changed(); refreshRow(i); }
   function refreshRow(i) { var li = stepsEl.children[i]; if (li) { var t = li.querySelector('.txt'); if (t) t.textContent = describe(prog[i]); } renderTimeline(); }
 
+  /* liste des points d'une trajectoire : x, y, angle facultatif ; clic sur la table pour en ajouter */
+  function ptsEditor(st, i) {
+    var box = document.createElement('div'); box.className = 'ptsl';
+    var P = st.pts || (st.pts = []);
+    if (!P.length) { var e0 = document.createElement('div'); e0.className = 'muted'; e0.textContent = 'Aucun point : clique sur la table pour en ajouter.'; box.appendChild(e0); }
+    P.forEach(function (q, j) {
+      var row = document.createElement('div'); row.className = 'ptr';
+      var lb = document.createElement('span'); lb.className = 'muted'; lb.textContent = j === P.length - 1 ? 'Arr.' : String(j + 1); row.appendChild(lb);
+      [['x', 'x', 0, 3000], ['y', 'y', 0, 2000], ['a', 'angle', -360, 360]].forEach(function (c) {
+        var inp = document.createElement('input'); inp.type = 'number'; inp.step = '5'; inp.min = String(c[2]); inp.max = String(c[3]);
+        inp.value = q[c[0]] == null ? '' : q[c[0]]; inp.setAttribute('aria-label', 'Point ' + (j + 1) + ' : ' + c[1]); if (c[0] === 'a') inp.placeholder = 'libre';
+        function read() { var v = parseFloat(inp.value); return c[0] === 'a' ? (isFinite(v) ? v : null) : (isFinite(v) ? Math.max(c[2], Math.min(c[3], v)) : q[c[0]]); }
+        inp.addEventListener('input', function () { q[c[0]] = read(); updateGhost(); });
+        inp.addEventListener('change', function () { q[c[0]] = read(); changed(); refreshRow(i); });
+        row.appendChild(inp);
+      });
+      row.appendChild(iconBtn('fa-arrow-up', '', 'Monter le point', function () { if (j > 0) { P.splice(j - 1, 0, P.splice(j, 1)[0]); changed(true); } }));
+      row.appendChild(iconBtn('fa-xmark', '', 'Supprimer le point', function () { P.splice(j, 1); changed(true); }, 'danger'));
+      box.appendChild(row);
+    });
+    if (P.length) box.appendChild(iconBtn('fa-eraser', 'Effacer les points', 'Effacer tous les points', function () { st.pts = []; changed(true); }));
+    return box;
+  }
   function editor(st, i) {
     var d = document.createElement('div'); d.className = 'sedit';
     d.appendChild(fld('Action', mkSel('Action', ACTIONS, st.a, function (v) { prog[i] = defaults(v); changed(true); })));
-    (FIELDS[st.a] || []).forEach(function (k) {
+    fieldsOf(st).forEach(function (k) {
       if (k === 'f') d.appendChild(fld('Face', mkSeg('Face', [['A', 'Face A'], ['B', 'Face B']], st.f, function (v) { setField(i, 'f', v); })));
       if (k === 'p') d.appendChild(fld('Paquet', mkSel('Paquet', PKIDS.map(function (p) { return [p, p]; }), st.p, function (v) { setField(i, 'p', v); })));
       if (k === 'zm') d.appendChild(fld('Zone', mkSel('Zone de mur', MIDS.map(function (z) { return [z, zoneLabel(z)]; }), st.z, function (v) { setField(i, 'z', v); })));
       if (k === 'zt') d.appendChild(fld('Tour', mkSel('Tour', TIDS.map(function (z) { return [z, z]; }), st.z, function (v) { setField(i, 'z', v); })));
       if (k === 'zmt') d.appendChild(fld('Sur', mkSel('Construction', MIDS.concat(TIDS).map(function (z) { return [z, zoneLabel(z)]; }), st.z, function (v) { setField(i, 'z', v); })));
       if (k === 'side') d.appendChild(fld('Côté', mkSeg('Côté', [['auto', 'Auto'], ['ext', 'Extérieur'], ['int', 'Intérieur']], st.side, function (v) { setField(i, 'side', v); })));
-      if (k === 's') d.appendChild(fld('Pierre', mkSel('Pierre', SIDS.map(function (p) { return [p, 'Pierre ' + p]; }), st.s, function (v) { setField(i, 's', v); })));
+      if (k === 's') d.appendChild(fld(st.mode === 'deux' ? 'Dessus' : 'Pierre', mkSel('Pierre', SIDS.map(function (p) { return [p, 'Pierre ' + p]; }), st.s, function (v) { setField(i, 's', v); })));
+      if (k === 'mode') d.appendChild(fld('Prendre', mkSeg('Prendre', [['paquet', 'Paquet (3)'], ['deux', 'Deux du dessus'], ['pierre', 'Une pierre (dessus)']], st.mode || 'paquet', function (v) { prog[i].mode = v; changed(true); })));
+      if (k === 'v') d.appendChild(fld('Ventouse', mkSel('Ventouse', [['auto', 'Auto (pince au plus près de 165 mm)'], ['1', 'Ventouse 1 (bas)'], ['2', 'Ventouse 2 (milieu)'], ['3', 'Ventouse 3 (haut)']], st.v || 'auto', function (v) { setField(i, 'v', v); })));
+      if (k === 'q') d.appendChild(fld('Quoi', mkSel('Pierres déposées', [['pile', 'Toute la pile tenue']].concat(SIDS.map(function (p) { return [p, 'Pierre ' + p]; })), st.q, function (v) { setField(i, 'q', v); })));
+      if (k === 'gm') d.appendChild(fld('Poser', mkSeg('Poser le Graal', [['zone', 'Sur une construction'], ['xy', 'En x, y']], st.gm || 'zone', function (v) { prog[i].gm = v; changed(true); })));
+      if (k === 'r') d.appendChild(fld(st.a === 'tourner' ? 'Angle' : 'Pince', mkSeg('Angle de la pince', st.a === 'tourner' ? [['0', '0°'], ['90', '90°'], ['180', '180°']] : [['0', '0° à plat'], ['90', '90° debout'], ['180', '180° retournée']], String(rotOf(st)), function (v) { delete prog[i].o; setField(i, 'r', +v); })));
+      if (k === 'pm') d.appendChild(fld('Placement', mkSeg('Placement de la construction', [['parfait', 'Parfait'], ['proche', 'Au plus proche'], ['manuel', 'Manuel']], st.pm || 'parfait', function (v) {
+        var q = prog[i]; q.pm = v;
+        if (v === 'manuel' && (q.x == null || q.y == null)) { var zz = ENGINE.zoneById(q.z); q.x = zz ? Math.round(zz.c[0]) : 1200; q.y = zz ? Math.round(zz.c[1]) : 1000; q.ang = zz && zz.tan !== undefined ? zz.tan : 0; }
+        changed(true);
+      })));
+      if (k === 'fa') d.appendChild(fld('Angles de', mkSeg('Face orientée par les angles', [['A', 'Face A'], ['B', 'Face B'], ['C', 'Face C']], st.fa || 'A', function (v) { setField(i, 'fa', v); })));
+      if (k === 'pts') d.appendChild(fld('Points', ptsEditor(st, i)));
+      if (k === 'drop') {
+        var lbd = document.createElement('label'); lbd.className = 'chk';
+        var cbd = document.createElement('input'); cbd.type = 'checkbox'; cbd.id = 'cbDrop'; cbd.checked = !!st.drop;
+        cbd.addEventListener('change', function () { setField(i, 'drop', cbd.checked); });
+        lbd.appendChild(cbd); lbd.appendChild(document.createTextNode(' Lâcher : si la pince ne descend pas assez, la pierre tombe (à plat seulement)'));
+        d.appendChild(lbd); setTimeout(updateDrop, 0);
+      }
+      if (k === 'xy' || k === 'ang') {
+        var w2 = document.createElement('div'); w2.className = 'crow';
+        (k === 'xy' ? [['x', 'x', 0, 3000, 5, 'mm'], ['y', 'y', 0, 2000, 5, 'mm']] : [['ang', 'Angle', -360, 360, 5, '°']]).forEach(function (q) {
+          var inp2 = document.createElement('input'); inp2.type = 'number'; inp2.min = String(q[2]); inp2.max = String(q[3]); inp2.step = String(q[4]); inp2.value = st[q[0]]; inp2.setAttribute('aria-label', q[1] + ' (' + q[5] + ')');
+          /* la prévisualisation suit la saisie, le calcul est relancé à la validation */
+          inp2.addEventListener('input', function () { var v = parseFloat(inp2.value); if (isFinite(v)) { prog[i][q[0]] = v; updateGhost(); } });
+          inp2.addEventListener('change', function () { var v = parseFloat(inp2.value); setField(i, q[0], isFinite(v) ? Math.max(q[2], Math.min(q[3], v)) : 0); inp2.value = prog[i][q[0]]; });
+          var u2 = document.createElement('span'); u2.className = 'muted'; u2.textContent = (k === 'xy' ? q[1] + ' ' : '') + q[5];
+          if (k === 'xy') w2.appendChild(u2); w2.appendChild(inp2); if (k !== 'xy') w2.appendChild(u2);
+        });
+        d.appendChild(fld(k === 'xy' ? 'Position' : 'Angle', w2));
+        if (k === 'ang') { var nt = document.createElement('div'); nt.className = 'muted'; nt.style.fontSize = '12px'; nt.textContent = st.a === 'deposer' ? 'Angle du grand côté de la pierre (ou de la rangée debout) : 0° le long de x, positif vers +y, comme l\'orientation de départ.' : 'Centre de la construction et angle de son grand côté (mur, rangée des piliers) : 0° le long de x, positif vers +y. Hors de la zone : avertissement, pas de points.'; d.appendChild(nt); }
+      }
+      if (k === 'tm') {
+        var lb = document.createElement('label'); lb.className = 'chk';
+        var cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !!st.tm;
+        cb.addEventListener('change', function () { setField(i, 'tm', cb.checked); });
+        lb.appendChild(cb); lb.appendChild(document.createTextNode(st.a === 'tourner' ? ' Temps masqué : la rotation se fait pendant le prochain trajet' : ' Temps masqué : la pince monte, descend et tourne pendant le trajet'));
+        d.appendChild(lb);
+      }
       if (k === 'sec') {
         var w = document.createElement('div'); w.className = 'crow';
         var inp = document.createElement('input'); inp.type = 'number'; inp.min = '0'; inp.step = '0.5'; inp.value = st.sec; inp.setAttribute('aria-label', 'Secondes');
@@ -237,95 +335,89 @@
 
   /* ---------- calcul (Web Worker si possible) ---------- */
   var worker = null, reqId = 0, R = null;
-  (function () {
-    function attach(w) {
-      worker = w;
+  /* le Web Worker charge le même moteur que la page (adresses des balises <script>, version comprise) */
+  function scriptUrl(name) { var s = document.querySelector('script[src*="' + name + '"]'); return s ? s.src : '../' + name; }
+  var workerSrc = Promise.all([fetch(scriptUrl('engine/geom.js')), fetch(scriptUrl('engine/engine.js'))]).then(function (rs) {
+    return Promise.all(rs.map(function (r) { return r.text(); }));
+  }).then(function (src) {
+    return src[0] + '\n' + src[1] + '\nonmessage=function(e){var r=ENGINE.simulateMatch(e.data.prog,e.data.P,{opponent:e.data.opponent,intensity:e.data.intensity});var opp=r.opponent||null;if(opp){delete opp.poseAt;delete opp.stoneAt;}r.opponent=null;delete r.poseAt;delete r.stoneAt;postMessage({id:e.data.id,r:r,opp:opp});};';
+  });
+  workerSrc.then(function (code) {
+    try {
+      worker = new Worker(URL.createObjectURL(new Blob([code], { type: 'text/javascript' })));
       worker.onmessage = function (e) { if (e.data.id === reqId) accept(e.data.r, e.data.opp); };
       worker.onerror = function () { worker = null; };
-    }
-    try {
-      Promise.all([
-        fetch('../engine/geom.js').then(function (r) { return r.text(); }),
-        fetch('../engine/engine.js').then(function (r) { return r.text(); })
-      ]).then(function (src) {
-        var code = src[0] + '\n' + src[1] + '\nonmessage=function(e){var r=ENGINE.simulateMatch(e.data.prog,e.data.P,{opponent:e.data.opponent,intensity:e.data.intensity});var opp=r.opponent||null;if(opp){delete opp.poseAt;delete opp.stoneAt;}r.opponent=null;delete r.poseAt;delete r.stoneAt;postMessage({id:e.data.id,r:r,opp:opp});};';
-        attach(new Worker(URL.createObjectURL(new Blob([code], { type: 'text/javascript' }))));
-      }, function () { worker = null; });
     } catch (e) { worker = null; }
-  })();
+  }, function () { worker = null; });
+  /* adversaire : { name, program, params } (stratégie) ou { name, brain: { layers, acts, entrees, familles } } (cerveau) */
   function currentOpponent() {
     if (!oppChoice.slug) return null;
     if (oppChoice.slug === 'exemple') return { name: 'Exemple', program: EXAMPLE, params: params };
     return oppLoaded[oppChoice.slug] || null;
   }
-  function recompute() {
-    if (pilot.mode === 'cerveau') return recomputeLive();
-    readParams(); $('busy').hidden = false;
-    var opp = currentOpponent();
-    if (oppChoice.slug && oppChoice.slug !== 'exemple' && !opp) {
-      api('GET', API + '/' + oppChoice.slug).then(function (j) {
-        oppLoaded[oppChoice.slug] = { name: j.name, program: j.program, params: j.params || params };
-        recompute();
-      }, function () { oppChoice.slug = ''; saveOppChoice(); recompute(); });
-      return;
+  function currentOpponentName() { var o = currentOpponent(); return o && o.name; }
+  function oppData(o) { return o ? (o.brain ? { name: o.name, brain: o.brain, params: o.params || params } : { name: o.name, program: o.program, params: o.params || params }) : null; }
+  /* cerveau ou stratégie manquante : chargée depuis le serveur, puis on relance fn */
+  function ensureOpponent(fn) {
+    var slug = oppChoice.slug;
+    if (!slug || slug === 'exemple' || oppLoaded[slug]) return false;
+    if (slug.indexOf('cerveau:') === 0) {
+      loadOppBrain(slug.slice(8)).then(fn, function () { oppChoice.slug = ''; saveOppChoice(); fillOppSelect(); fn(); });
+    } else {
+      api('GET', API + '/' + slug).then(function (j) {
+        oppLoaded[slug] = { name: j.name, program: j.program, params: j.params || params };
+        fn();
+      }, function () { oppChoice.slug = ''; saveOppChoice(); fn(); });
     }
-    var data = { prog: JSON.parse(JSON.stringify(prog)), P: Object.assign({}, params), id: ++reqId, opponent: opp ? { name: opp.name, program: opp.program, params: opp.params || params } : null, intensity: opp ? oppChoice.intensity : 'aucun' };
-    if (worker) worker.postMessage(data);
-    else setTimeout(function () { var r = ENGINE.simulateMatch(data.prog, data.P, { opponent: data.opponent, intensity: data.intensity }); accept(r, r.opponent); }, 0);
+    return true;
   }
-  function simulateProg(list) {
+  function recompute() {
+    readParams(); $('busy').hidden = false;
+    if (ensureOpponent(recompute)) return;
     var opp = currentOpponent();
-    var data = { prog: JSON.parse(JSON.stringify(list)), P: Object.assign({}, params), id: ++reqId, opponent: opp ? { name: opp.name, program: opp.program, params: opp.params || params } : null, intensity: opp ? oppChoice.intensity : 'aucun' };
+    /* un cerveau (le nôtre ou celui d'en face) décide en direct : le moteur joue les deux robots, puis la page rejoue le tout */
+    if (pilot.mode === 'cerveau' || (opp && opp.brain)) return recomputeLive(opp);
+    var data = { prog: JSON.parse(JSON.stringify(prog)), P: Object.assign({}, params), id: ++reqId, opponent: oppData(opp), intensity: opp ? oppChoice.intensity : 'aucun' };
     if (worker) worker.postMessage(data);
     else setTimeout(function () { var r = ENGINE.simulateMatch(data.prog, data.P, { opponent: data.opponent, intensity: data.intensity }); accept(r, r.opponent); }, 0);
   }
-  function recomputeLive() {
+  /* rejeu : notre programme et ce que l'adversaire a joué, avec contacts et trajectoires */
+  function simulateProg(list, oppProg) {
+    var opp = currentOpponent();
+    var o = opp ? { name: opp.name, program: oppProg || opp.program, params: opp.params || params } : null;
+    var data = { prog: JSON.parse(JSON.stringify(list)), P: Object.assign({}, params), id: ++reqId, opponent: o, intensity: opp ? oppChoice.intensity : 'aucun' };
+    if (worker) worker.postMessage(data);
+    else setTimeout(function () { var r = ENGINE.simulateMatch(data.prog, data.P, { opponent: data.opponent, intensity: data.intensity }); accept(r, r.opponent); }, 0);
+  }
+  function brainSpec(name, layers, cfg) {
+    var familles = (cfg.actions && cfg.actions.familles) || BrainActs.FAMILLES.map(function (f) { return f.id; });
+    return { name: name, brain: { layers: layers, acts: ((cfg.reseau && cfg.reseau.couches) || []).map(function (c) { return c.activation; }), entrees: cfg.entrees || window.ENV.GROUPS.map(function (g) { return g.id; }), familles: familles } };
+  }
+  function recomputeLive(opp) {
     if (!window.ENV || !window.NET || !BrainActs) {
       $('busy').hidden = true;
       toast('Moteur du cerveau introuvable.', 'bad');
       return;
     }
-    if (!pilot.layers || !pilot.cfg) {
+    if (pilot.mode === 'cerveau' && (!pilot.layers || !pilot.cfg)) {
       $('busy').hidden = true;
       toast('Charge un cerveau depuis le tiroir Cerveaux.', 'bad');
       return;
     }
-    readParams();
-    $('busy').hidden = false;
-    var opp = currentOpponent();
-    if (oppChoice.slug && oppChoice.slug !== 'exemple' && !opp) {
-      api('GET', API + '/' + oppChoice.slug).then(function (j) {
-        oppLoaded[oppChoice.slug] = { name: j.name, program: j.program, params: j.params || params };
-        recomputeLive();
-      }, function () { oppChoice.slug = ''; saveOppChoice(); recomputeLive(); });
-      return;
-    }
     setTimeout(function () {
       try {
-        var familles = (pilot.cfg.actions && pilot.cfg.actions.familles) || BrainActs.FAMILLES.map(function (f) { return f.id; });
-        var entrees = pilot.cfg.entrees || window.ENV.GROUPS.map(function (g) { return g.id; });
-        var env = window.ENV.create({
-          entrees: entrees,
-          familles: familles,
-          params: params,
-          adversaire: { intensite: opp ? oppChoice.intensity : 'aucun' },
-          skipContacts: true,
-          onError: 'penalite'
-        });
-        var acts = ((pilot.cfg.reseau && pilot.cfg.reseau.couches) || []).map(function (c) { return c.activation; });
-        var layers = pilot.layers;
-        env.play(function (obs, mask) {
-          return window.NET.choose(window.NET.forward(layers, obs, acts), mask);
-        }, {
-          params: params,
-          intensite: opp ? oppChoice.intensity : 'aucun',
-          opponent: opp ? { name: opp.name, program: opp.program, params: opp.params || params } : null
-        });
-        prog = env.program();
-        sel = -1;
-        lastSnap = snap();
-        renderSteps();
-        simulateProg(prog);
+        var inten = opp ? oppChoice.intensity : 'aucun', oppSpec = oppData(opp), ours, theirs;
+        if (pilot.mode === 'cerveau') {
+          var bs = brainSpec(pilot.name, pilot.layers, pilot.cfg);
+          var env = window.ENV.create({ entrees: bs.brain.entrees, familles: bs.brain.familles, params: params, adversaire: { intensite: inten }, skipContacts: true, onError: 'penalite' });
+          env.play(window.ENV.chooserFromLayers(bs.brain.layers, bs.brain.acts), { params: params, intensite: inten, opponent: oppSpec });
+          ours = env.program(); theirs = env.opponentProgram();
+        } else {
+          var pm = window.ENV.playProgram(prog, params, oppSpec, inten, true);
+          ours = pm.program; theirs = pm.opponentProgram;
+        }
+        if (pilot.mode === 'cerveau') { prog = ours; sel = -1; lastSnap = snap(); renderSteps(); }
+        simulateProg(ours, opp ? theirs : null);
       } catch (e) {
         $('busy').hidden = true;
         toast('Lecture du cerveau impossible : ' + e.message, 'bad');
@@ -341,26 +433,30 @@
   function accept(r, opp) {
     attachAt(r);
     r.opponent = attachAt(opp || r.opponent || null);
-    R = r; $('busy').hidden = true;
+    R = r; $('busy').hidden = true; updateDrop();
+    R.outZone = {}; try { var oz = outcome(Math.min(R.T, MATCH)); R.stones.forEach(function (st) { if (/^[wtpl]/.test(st.tag || '') && oz.fin[st.id] && !oz.fin[st.id].home && !oz.inZ[st.id]) R.outZone[st.id] = 1; }); } catch (x) {}
     TEND = Math.max(MATCH, Math.ceil(R.T + 1));
     $('track').setAttribute('aria-valuemax', String(TEND));
     var tot = $('tot'), nErr = R.errors.length;
     tot.textContent = 'Durée ' + fmt(R.T) + ' s' + (R.T <= MATCH ? '' : ' (+' + fmt(R.T - MATCH) + ' s)');
     tot.className = 'tot ' + (R.T <= MATCH && !nErr ? 'ok' : 'bad');
-    showStepInfo(); buildTrail(); buildOppTrail(); computeBad(); drawStrip(); renderResults(); renderAlerts(); renderTimeline();
+    showStepInfo(); buildTrail(); buildOppTrail(); buildShots(); updateCannon(); computeBad(); drawStrip(); renderResults(); renderAlerts(); renderTimeline();
     if (them) them.group.visible = !!R.opponent;
     if (graalOpp) graalOpp.visible = !!R.opponent;
-    if (ballsOpp) ballsOpp.forEach(function (b) { b.visible = !!R.opponent; });
     if (time > TEND) time = TEND;
   }
 
-  /* ---------- géométrie / score (modules partagés) ---------- */
+  /* ---------- géométrie / score (modules partagés : engine/score.js) ---------- */
   var BARS = SCORE.BARS;
   function gripTop(g) { return SCORE.gripTop(g); }
   function hullPer(P) { return SCORE.hullPer(P); }
   function inCastle(x, y) { return SCORE.inCastle(x, y); }
+  /* empreinte du robot : triangle, + canon de la face C une fois déployé (séance de tir) */
+  function canOut(t) { return R && R.balls.tDeploy != null && t >= R.balls.tDeploy; }
+  function robotFoot(p, t) { return SCORE.robotFoot(R, params, p, t); }
   var countPer = true;
   function graalAt(t) { return SCORE.graalAt(R, t); }
+  function graalPos(t) { return SCORE.graalPos(R, params, t); }
   function checks(t) { return SCORE.checks(R, params, t, countPer); }
 
   /* ---------- scène ---------- */
@@ -431,13 +527,58 @@
   var stoneMeshes = [];
   ENGINE.PK.forEach(function (pk, qi) {
     for (var l = 0; l < 3; l++) {
-      var m = box(320, 110, 110, stoneMat[l]);
+      var m = box(320, 110, 110, stoneMat[l].clone());
       m.add(new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry), edgeMat));
       [55.5, -55.5].forEach(function (z) { var t = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), tagMat); t.position.z = z; if (z < 0) t.rotation.y = Math.PI; m.add(t); });
       var w = W(pk.x, pk.y); m.userData = { home: { x: w[0], y: 55 + 110 * l, z: w[1], ry: pk.tan ? Math.PI / 2 : 0 }, l: l, pk: pk.id };
       scene.add(m); stoneMeshes.push(m);
     }
   });
+
+  /* prévisualisation du dépôt : pierres fantômes, rouges si l'étape est en erreur (contact, course de pince, appui...) */
+  var ghostMat = new THREE.MeshStandardMaterial({ color: 0x2fbf71, transparent: true, opacity: 0.45, depthWrite: false });
+  var ghostEdge = new THREE.LineBasicMaterial({ color: 0x2fbf71 });
+  var ghosts = [0, 1, 2].map(function () {
+    var m = new THREE.Mesh(new THREE.BoxGeometry(320, 110, 110), ghostMat);
+    m.add(new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry), ghostEdge)); m.visible = false; scene.add(m); return m;
+  });
+  var ghostG = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), ghostMat); ghostG.add(new THREE.LineSegments(new THREE.EdgesGeometry(ghostG.geometry), ghostEdge)); ghostG.visible = false; scene.add(ghostG);
+  /* trajectoire de l'étape sélectionnée : ligne, points et robot à l'arrivée (flèche : face des angles) */
+  var trajG = new THREE.Group(); scene.add(trajG); var trajKey = '';
+  function updateTraj(st, inf) {
+    var key = st && st.a === 'traj' && R && inf ? JSON.stringify([st.pts, st.fa, inf.t0, inf.t1, R.T, !!inf.err]) : '';
+    if (key === trajKey) return; trajKey = key;
+    trajG.children.slice().forEach(function (o) { trajG.remove(o); if (o.geometry) o.geometry.dispose(); });
+    if (!key) return;
+    var p0 = R.poseAt(inf.t0), w0 = W(p0.x, p0.y), pts = [new THREE.Vector3(w0[0], 6, w0[1])];
+    var col = inf.err ? 0xd62f2f : 0x4fc3f7, lm = new THREE.LineBasicMaterial({ color: col }), dm = new THREE.MeshBasicMaterial({ color: col });
+    (st.pts || []).forEach(function (q, j) {
+      var w = W(+q.x, +q.y); pts.push(new THREE.Vector3(w[0], 6, w[1]));
+      var dot = new THREE.Mesh(new THREE.SphereGeometry(j === st.pts.length - 1 ? 16 : 11, 12, 8), dm); dot.position.set(w[0], 8, w[1]); trajG.add(dot);
+    });
+    trajG.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), lm));
+    var pe = R.poseAt(inf.t1), tri = triPoly(pe).map(function (v) { var w = W(v[0], v[1]); return new THREE.Vector3(w[0], 7, w[1]); });
+    tri.push(tri[0].clone()); trajG.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(tri), lm));
+    var a = nv(pe.h + 120 * ({ A: 0, B: 1, C: 2 }[st.fa] || 0)), we = W(pe.x, pe.y), wf = W(pe.x + 260 * a[0], pe.y + 260 * a[1]);
+    trajG.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(we[0], 9, we[1]), new THREE.Vector3(wf[0], 9, wf[1])]), new THREE.LineBasicMaterial({ color: 0xf5c518 })));
+  }
+  function updateGhost() {
+    var stT = sel >= 0 ? prog[sel] : null; updateTraj(stT, stT && R ? R.stepInfo[sel] : null);
+    var st = sel >= 0 ? prog[sel] : null, isG = st && st.a === 'poserGraal' && st.gm === 'xy';
+    var isC = st && (st.a === 'mur' || st.a === 'tour' || st.a === 'porte');
+    var inf = st && (st.a === 'deposer' || isG || isC) && R ? R.stepInfo[sel] : null, gh = inf && inf.ghost;
+    /* position du fantôme : la saisie (dépôt, construction manuelle) ou celle calculée par le moteur */
+    var bx = isC && st.pm !== 'manuel' && gh && gh.T ? gh.T[0] : st && st.x, by = isC && st.pm !== 'manuel' && gh && gh.T ? gh.T[1] : st && st.y, ba = isC && st.pm !== 'manuel' && gh && gh.T ? gh.ang : st && +st.ang || 0;
+    ghostG.visible = !!(isG && gh);
+    if (ghostG.visible) { var gw = W(st.x, st.y); ghostG.scale.setScalar(params.gs); ghostG.position.set(gw[0], gh.feet[0].zc, gw[1]); }
+    ghosts.forEach(function (m, j) {
+      var ft = !isG && gh && gh.feet[j]; m.visible = !!ft; if (!ft) return;
+      var a = ba * Math.PI / 180, u = [Math.cos(a), Math.sin(a)], v = [-Math.sin(a), Math.cos(a)];
+      var w = W(bx + ft.u * u[0] + ft.v * v[0], by + ft.u * u[1] + ft.v * v[1]);
+      m.position.set(w[0], ft.zc, w[1]); m.rotation.set(0, -a, ft.vertical ? Math.PI / 2 : 0);
+    });
+    var c = inf && inf.err ? 0xd62f2f : 0x2fbf71; ghostMat.color.setHex(c); ghostEdge.color.setHex(c);
+  }
 
   /* robots (jaune = nous, bleu = adversaire en miroir) */
   var yellow = mat(0xf2b600, 0.5, 0.1), blue = mat(0x3a6fd0, 0.55, 0.15), dark = mat(0x39414e, 0.5, 0.3), black = mat(0x1d2128, 0.8, 0);
@@ -495,8 +636,40 @@
   var ballMat = new THREE.MeshStandardMaterial({ color: 0xf2b600, roughness: 0.8 }), balls = [];
   var ballMatOpp = new THREE.MeshStandardMaterial({ color: 0x3a6fd0, roughness: 0.8 }), ballsOpp = [];
   for (var bi = 0; bi < 10; bi++) { var bm = new THREE.Mesh(new THREE.SphereGeometry(22.5, 16, 12), ballMat); bm.castShadow = true; scene.add(bm); balls.push(bm); }
+  /* position d'un boulet tg secondes après son tir (points enregistrés toutes les 20 ms) */
+  function ballAt(b, tg) {
+    var P = b.pts; if (tg >= P[P.length - 1][0]) return P[P.length - 1].slice(1);
+    var lo = 0, hi = P.length - 1; while (hi - lo > 1) { var mid = (lo + hi) >> 1; if (P[mid][0] <= tg) lo = mid; else hi = mid; }
+    var a = P[lo], c = P[hi], u = c[0] > a[0] ? (tg - a[0]) / (c[0] - a[0]) : 0;
+    return [a[1] + (c[1] - a[1]) * u, a[2] + (c[2] - a[2]) * u, a[3] + (c[3] - a[3]) * u];
+  }
   for (var bj = 0; bj < 10; bj++) { var bo = new THREE.Mesh(new THREE.SphereGeometry(22.5, 16, 12), ballMatOpp); bo.castShadow = true; bo.visible = false; scene.add(bo); ballsOpp.push(bo); }
-  var BSEED = []; for (var bk = 0; bk < 10; bk++) BSEED.push([((bk * 37) % 10) / 10 - 0.5, ((bk * 53) % 10) / 10 - 0.5]);
+  /* canon sur la face C (dimensions et élévation des paramètres), pour chacun des deux robots */
+  function makeCannon(bot) {
+    var g = new THREE.Group(); g.rotation.y = -240 * Math.PI / 180; bot.group.add(g);
+    var tube = cyl(1, 1, 1, mat(0x5a6170, 0.4, 0.6), 20); g.add(tube);
+    return tube;
+  }
+  function setCannon(tube, P) {
+    var L = P.cl || 0, Wd = P.cw || 40, el = (P.bel || 0) * Math.PI / 180, len = Math.max(60, L + 120);
+    tube.scale.set(Wd / 2, len, Wd / 2); tube.rotation.set(0, 0, -(Math.PI / 2 - el));
+    tube.position.set(GEO.rin + L - Math.cos(el) * len / 2, (P.bh || 250) - Math.sin(el) * len / 2, 0);
+  }
+  var canTube = makeCannon(us), canTubeOpp = makeCannon(them);
+  function updateCannon() { setCannon(canTube, params); if (R && R.opponent) setCannon(canTubeOpp, R.opponent.params); }
+  var shotLines = null, shotLinesOpp = null;
+  function buildShots() {
+    [shotLines, shotLinesOpp].forEach(function (g) { if (g) { scene.remove(g); g.children.forEach(function (l) { l.geometry.dispose(); }); } });
+    function lines(res, colIn) {
+      var grp = new THREE.Group(); grp.visible = showTrail; scene.add(grp);
+      ((res && res.balls.shots) || []).forEach(function (b) {
+        var pts = b.pts.map(function (q) { var w = W(q[1], q[2]); return new THREE.Vector3(w[0], q[3], w[1]); });
+        grp.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: b.cour ? colIn : 0xff6b6b, transparent: true, opacity: 0.6 })));
+      });
+      return grp;
+    }
+    shotLines = lines(R, 0xf2b600); shotLinesOpp = lines(R.opponent, 0x4aa3ff);
+  }
   var trail = null, trailOpp = null, showTrail = true, showOppTrail = true;
   function buildTrail() {
     if (trail) { scene.remove(trail); trail.geometry.dispose(); }
@@ -516,15 +689,15 @@
   /* ---------- choix d'un repère en cliquant sur la table ---------- */
   function targetKinds(st) {
     var k = [];
-    (FIELDS[st.a] || []).forEach(function (f) {
-      if (f === 'p') k.push('P'); if (f === 'zm') k.push('M'); if (f === 'zt') k.push('T'); if (f === 'zmt') k.push('M', 'T'); if (f === 's') k.push('S');
+    fieldsOf(st).forEach(function (f) {
+      if (f === 'xy') k.push('XY'); if (f === 'pts') k.push('PT'); if (f === 'p') k.push('P'); if (f === 'zm') k.push('M'); if (f === 'zt') k.push('T'); if (f === 'zmt') k.push('M', 'T'); if (f === 's') k.push('S');
     });
     return k;
   }
   function pickText(kinds) {
     var w = [];
     if (kinds.indexOf('P') >= 0) w.push('un paquet (P)'); if (kinds.indexOf('M') >= 0) w.push('une zone de mur (M)');
-    if (kinds.indexOf('T') >= 0) w.push('une tour (T)'); if (kinds.indexOf('S') >= 0) w.push('une pierre');
+    if (kinds.indexOf('T') >= 0) w.push('une tour (T)'); if (kinds.indexOf('S') >= 0) w.push('une pierre'); if (kinds.indexOf('XY') >= 0) w.push('le point de dépôt'); if (kinds.indexOf('PT') >= 0) return 'Clique sur la table pour ajouter un point à la trajectoire';
     return 'Clique ' + w.join(' ou ') + ' sur la table';
   }
   function curKinds() { return sel >= 0 && prog[sel] ? targetKinds(prog[sel]) : []; }
@@ -545,6 +718,11 @@
     var r = canvas.getBoundingClientRect();
     ndc.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
     ray.setFromCamera(ndc, camera);
+    if (kinds.indexOf('XY') >= 0 || kinds.indexOf('PT') >= 0) {
+      var hp = ray.intersectObjects([topM].concat(stoneMeshes), false)[0]; if (!hp) return null;
+      var px = Math.round((hp.point.x + 1500) / 5) * 5, py = Math.round((hp.point.z + 1000) / 5) * 5;
+      return px >= 0 && px <= 3000 && py >= 0 && py <= 2000 ? { kind: kinds.indexOf('PT') >= 0 ? 'PT' : 'XY', x: px, y: py } : null;
+    }
     var objs = markers.filter(function (m) { return labels.visible && kinds.indexOf(m.userData.kind) >= 0; });
     if (kinds.indexOf('S') >= 0 || kinds.indexOf('P') >= 0) objs = objs.concat(stoneMeshes);
     var hits = ray.intersectObjects(objs, false);
@@ -563,6 +741,8 @@
   }
   function applyPick(h) {
     var st = prog[sel], f = { P: 'p', M: 'z', T: 'z', S: 's' }[h.kind];
+    if (h.kind === 'PT') { (st.pts || (st.pts = [])).push({ x: h.x, y: h.y, a: null }); changed(true); toast('Point ' + st.pts.length + ' ajouté : ' + h.x + ', ' + h.y); return; }
+    if (h.kind === 'XY') { st.x = h.x; st.y = h.y; changed(true); toast('Étape ' + (sel + 1) + ' : ' + describe(st)); return; }
     if (st[f] === h.id) return;
     st[f] = h.id; changed(true); toast('Étape ' + (sel + 1) + ' : ' + describe(st));
   }
@@ -645,7 +825,8 @@
     rows.push(['Pierres dans une zone', Object.keys(o.inZ).length + ' (dont ' + Object.keys(o.inOwn).length + ' chez nous)', null]);
     var adv = o.walls.concat(o.towers, o.doors).filter(function (z) { return !own(z); });
     rows.push(['Constructions côté adverse', adv.length ? adv.join(', ') + ' (non comptées)' : 'aucune', adv.length ? false : null]);
-    rows.push(['Boulets', R.balls.t < Infinity ? 'lâchés de ' + fmt(R.balls.t) + ' à ' + fmt(R.balls.t + R.balls.d) + ' s' : 'non lâchés', R.balls.t < Infinity ? o.nBalls === 10 : null]);
+    var sh = R.balls.shots;
+    rows.push(['Boulets', sh ? sh.length + ' tirés de ' + fmt(sh.length ? sh[0].t : R.balls.t0) + ' à ' + fmt(sh.length ? sh[sh.length - 1].t : R.balls.t0) + ' s, vitesse de sortie ' + R.balls.v0.toFixed(2).replace('.', ',') + ' m/s' :'pas de séance de tir', sh ? o.nBalls === sh.length : null]);
     var badT = badMap.filter(function (b, i) { return b.bad && i * 0.2 <= T; }).length * 0.2;
     rows.push(['Temps hors règlement', badT ? 'environ ' + fmt(badT) + ' s (voir Alertes)' : 'aucun', !badT]);
     rows.push(['Contacts robot-pierre', R.collisions.length ? R.collisions.length + ' (voir Alertes)' : 'aucun', !R.collisions.length]);
@@ -679,10 +860,11 @@
 
   /* ---------- mise à jour de la vue ---------- */
   var red = new THREE.Color(0xd62f2f), green = new THREE.Color(0x2fbf71), dragging = false, lastPlayIdx = -2;
-  function placeGraal(mesh, ge, holder, homeX, homeY, gs, pHold) {
+  function placeGraal(mesh, ge, holder, homeX, homeY, gs, pHold, ride) {
     mesh.scale.setScalar(gs / 60);
     if (!ge || ge.k === 'home') { var gw = W(homeX, homeY); mesh.position.set(gw[0], gs / 2, gw[1]); mesh.rotation.set(0, 0, 0); return; }
     if (ge.k === 'held') holder.fromGrip(mesh, ge.f, gs / 2, -110, 0);
+    else if (ge.k === 'ride' && ride) { var gw2 = W(ride.c[0], ride.c[1]); mesh.position.set(gw2[0], ride.top - gs / 2, gw2[1]); mesh.rotation.set(0, -ride.ang * Math.PI / 180, 0); }
     else {
       if (!ge._p) { holder.place(ge.pose); holder.fromGrip(mesh, ge.f, gs / 2, -110, 0); ge._p = mesh.position.clone(); ge._q = mesh.quaternion.clone(); if (pHold) holder.place(pHold); }
       mesh.position.copy(ge._p); mesh.quaternion.copy(ge._q);
@@ -699,6 +881,9 @@
         else { m.visible = false; return; }
       }
       if (e.k === 'gone') { m.visible = false; return; }
+      var outZ = holder === us && e.k === 'free' && R.outZone && R.outZone[st.id];
+      if (m.userData.col == null) m.userData.col = m.material.color.getHex();
+      m.material.color.setHex(outZ ? 0xe03b3b : m.userData.col); m.material.emissive.setHex(outZ ? 0x5a0000 : 0x000000);
       if (e.k === 'home') { var h = m.userData.home; m.position.set(h.x, h.y, h.z); m.rotation.set(0, h.ry, 0); return; }
       if (e.k === 'free') {
         if (!e._p) { holder.place(e.pose); holder.fromGrip(m, e.f, 55, 110 * (e.l - 1), Math.PI / 2); e._p = m.position.clone(); e._q = m.quaternion.clone(); }
@@ -711,23 +896,27 @@
     var po = opp ? opp.poseAt(Math.min(t, opp.T)) : null;
     if (opp) them.place(po);
     groups.forEach(function (g) { g[2].fromGrip(g[0], g[1].f, 55, 110 * (g[1].l - 1), Math.PI / 2); });
-    placeGraal(graalM, ge, us, params.gx, params.gy, params.gs, p);
-    if (opp) placeGraal(graalOpp, SCORE.graalAt(opp, Math.min(t, opp.T)), them, opp.params.gx, opp.params.gy, opp.params.gs || params.gs, po);
+    placeGraal(graalM, ge, us, params.gx, params.gy, params.gs, p, ge.k === 'ride' ? graalPos(tt) : null);
+    if (opp) { var tO = Math.min(t, opp.T), geO = SCORE.graalAt(opp, tO); placeGraal(graalOpp, geO, them, opp.params.gx, opp.params.gy, opp.params.gs || params.gs, po, geO.k === 'ride' ? SCORE.graalPos(opp, opp.params, tO) : null); }
     ['A', 'B'].forEach(function (f) { for (var j = 0; j < 3; j++) { var on = p[f].vac[j]; us.MOD[f].mats[j].color.copy(on ? green : red); us.MOD[f].mats[j].emissive.copy(green).multiplyScalar(on ? 0.2 : 0); } });
     if (po) ['A', 'B'].forEach(function (f) { if (!po[f]) return; for (var j = 0; j < 3; j++) { var on = po[f].vac[j]; them.MOD[f].mats[j].color.copy(on ? green : red); them.MOD[f].mats[j].emissive.copy(green).multiplyScalar(on ? 0.2 : 0); } });
-    var ba = R.balls.at, bw = ba ? W(ba[0], ba[1]) : [0, 0];
-    balls.forEach(function (bm, i) {
-      var ti = R.balls.t + (i + 0.5) * R.balls.d / 10;
-      if (tt < ti) bm.position.copy(new THREE.Vector3(-76 + (i % 5) * 18, 245, (Math.floor(i / 5) - 0.5) * 30).applyMatrix4(us.group.matrixWorld));
-      else { var k = Math.min(1, (tt - ti) / 0.35); bm.position.set(bw[0] + BSEED[i][0] * 160 * k, 200 + (22.5 - 200) * k * k, bw[1] + BSEED[i][1] * 160 * k); }
-    });
-    if (opp) {
-      var bao = opp.balls.at, bwo = bao ? W(bao[0], bao[1]) : [0, 0], tto = Math.min(t, opp.T);
-      ballsOpp.forEach(function (bm, i) {
-        var ti = opp.balls.t + (i + 0.5) * opp.balls.d / 10;
-        if (tto < ti) bm.position.copy(new THREE.Vector3(-76 + (i % 5) * 18, 245, (Math.floor(i / 5) - 0.5) * 30).applyMatrix4(them.group.matrixWorld));
-        else { var k = Math.min(1, (tto - ti) / 0.35); bm.position.set(bwo[0] + BSEED[i][0] * 160 * k, 200 + (22.5 - 200) * k * k, bwo[1] + BSEED[i][1] * 160 * k); }
+    var shots = R.balls.shots || [], nOn = 0, nIn = 0;
+    canTube.visible = canOut(t);
+    function flyBalls(meshes, res, bot, tb, count) {
+      var sh = res.balls.shots || [], nO = 0, nI = 0;
+      meshes.forEach(function (bm, i) {
+        var b = sh[i];
+        bm.visible = i < (sh.length || Math.min(10, Math.round(count)));
+        if (!b || tb < b.t) { nO++; bm.position.copy(new THREE.Vector3(-76 + (i % 5) * 18, 245, (Math.floor(i / 5) - 0.5) * 30).applyMatrix4(bot.group.matrixWorld)); return; }
+        var q = ballAt(b, tb - b.t), w = W(q[0], q[1]); bm.position.set(w[0], q[2], w[1]);
+        if (tb - b.t >= b.tStop && b.cour) nI++;
       });
+      return { on: nO, in: nI };
+    }
+    var fb = flyBalls(balls, R, us, Math.min(t, TEND), params.bn); nOn = fb.on; nIn = fb.in;
+    if (opp) {
+      canTubeOpp.visible = opp.balls.tDeploy != null && Math.min(t, opp.T) >= opp.balls.tDeploy;
+      flyBalls(ballsOpp, opp, them, Math.min(t, opp.T), opp.params.bn);
     }
     var hR = $('hR'), hS = $('hS'), hP = $('hP'), hB = $('hBall');
     hR.textContent = Math.round(c.robotH) + ' mm ' + (c.robotH <= 350.5 ? '✓' : '✗'); hR.className = c.robotH <= 350.5 ? 'ok' : 'bad';
@@ -736,11 +925,11 @@
     $('hA').textContent = Math.round(p.A.hc) + ' / ' + Math.round(p.A.rot) + '°'; $('hB').textContent = Math.round(p.B.hc) + ' / ' + Math.round(p.B.rot) + '°';
     var hOpp = $('hOpp');
     if (opp) {
-      var oName = (currentOpponent() && currentOpponent().name) || 'en miroir';
+      var oName = (currentOpponentName()) || 'en miroir';
       hOpp.textContent = oName; hOpp.className = '';
     } else { hOpp.textContent = 'aucun'; hOpp.className = 'muted'; }
-    if (tt < R.balls.t) { hB.textContent = 'à bord'; hB.className = ''; }
-    else { var nb = Math.min(10, Math.floor((tt - R.balls.t) / (R.balls.d / 10) + 0.5)), okB = R.balls.t >= 85 && R.balls.t + R.balls.d <= 100; hB.textContent = nb + ' / 10 ' + (okB ? '✓' : '✗'); hB.className = okB ? 'ok' : 'bad'; }
+    if (!shots.length || t < shots[0].t) { hB.textContent = 'à bord'; hB.className = ''; }
+    else { hB.textContent = (shots.length - nOn) + ' tirés · ' + nIn + ' dans la cour'; hB.className = nIn >= 3 ? 'ok' : ''; }
     var clk = $('clk'); clk.textContent = fmt(Math.min(t, TEND)); clk.className = t > MATCH ? 'bad' : '';
     $('clk2').textContent = fmt(Math.min(t, TEND)) + ' / ' + TEND + ' s';
     var lab = 'Fin du programme', stepN = '-';
@@ -756,6 +945,7 @@
     $('track').setAttribute('aria-valuenow', String(Math.round(t)));
     if (trail) trail.geometry.setDrawRange(0, Math.max(2, Math.floor(tt / 0.1)));
     if (trailOpp) trailOpp.geometry.setDrawRange(0, Math.max(2, Math.floor(Math.min(t, opp ? opp.T : 0) / 0.1)));
+    updateGhost();
   }
 
   /* ---------- message éphémère ---------- */
@@ -794,7 +984,8 @@
   function importObj(o) {
     if (!o || !Array.isArray(o.program)) throw new Error('le JSON doit contenir une liste « program ».');
     var valid = ACTIONS.map(function (a) { return a[0]; });
-    var p2 = o.program.filter(function (s) { return s && valid.indexOf(s.a) >= 0; }).map(function (s) { var d = defaults(s.a); for (var k in d) if (s[k] !== undefined) d[k] = s[k]; return d; });
+    o.program.forEach(upgradeStep);
+    var p2 = o.program.filter(function (s) { return s && valid.indexOf(s.a) >= 0; }).map(function (s) { var d = defaults(s.a); for (var k in d) if (s[k] !== undefined) d[k] = s[k]; if (s.tm === undefined && d.tm !== undefined) d.tm = false; if (s.a === 'deposer' && s.r === undefined) d.r = s.o === 'debout' ? 90 : 0; return d; });
     setPilotMode('strategie');
     prog = p2; params = Object.assign({}, DEF, o.params || {}); sel = -1; writeParams(); readParams(); changed(true);
     return p2.length;
@@ -887,7 +1078,11 @@
       var li = document.createElement('li'); if (s.slug === slugify(current)) li.className = 'cur';
       var nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = s.name; nm.title = s.name;
       var meta = document.createElement('span'); meta.className = 'meta'; meta.textContent = s.steps + ' étape' + (s.steps > 1 ? 's' : '') + ' · ' + fmtDate(s.updated);
-      nm.appendChild(meta); li.appendChild(nm);
+      var kpi = document.createElement('span'), stt = statOf(s); kpi.className = 'kpi';
+      if (stt) { kpi.innerHTML = '<b></b> · <b></b>'; kpi.children[0].textContent = stt.pts + ' pts'; kpi.children[1].textContent = fmt(stt.T) + ' s'; if (stt.T > MATCH) kpi.children[1].className = 'bad'; kpi.title = 'Score estimé et durée du programme, calculés avec le simulateur actuel'; }
+      else if (stt === false) kpi.textContent = 'points non calculés';
+      else { kpi.textContent = 'calcul des points…'; queueStat(s); }
+      nm.appendChild(kpi); nm.appendChild(meta); li.appendChild(nm);
       var act = document.createElement('span'); act.className = 'act';
       var bl = document.createElement('button'); bl.type = 'button'; bl.textContent = 'Ouvrir'; bl.setAttribute('aria-label', 'Ouvrir ' + s.name);
       bl.addEventListener('click', function () { confirmLoss(function () { loadStrat(s.slug); }); });
@@ -901,11 +1096,51 @@
     var sel_ = $('pOpp'), cur = oppChoice.slug, html = '<option value="">Aucun</option><option value="exemple">Exemple (miroir)</option>';
     if (oppLoaded.cerveau) html += '<option value="cerveau">' + esc(oppLoaded.cerveau.name || 'Rejeu Cerveau') + '</option>';
     strats.forEach(function (s) { html += '<option value="' + esc(s.slug) + '">' + esc(s.name) + '</option>'; });
+    brains.forEach(function (b) { html += '<option value="cerveau:' + esc(b.slug) + '">Cerveau · ' + esc(b.name) + '</option>'; });
     sel_.innerHTML = html;
-    if (cur && cur !== 'exemple' && !strats.some(function (s) { return s.slug === cur; })) cur = 'exemple';
+    if (cur && cur !== 'exemple' && cur !== 'cerveau' && !strats.some(function (s) { return s.slug === cur; }) && !(cur.indexOf('cerveau:') === 0 && !brainsLoaded) && !brains.some(function (b) { return 'cerveau:' + b.slug === cur; })) cur = 'exemple';
     sel_.value = cur || '';
     document.querySelectorAll('#pOppInt button').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.i === oppChoice.intensity)); });
     $('pOppInt').hidden = !sel_.value;
+  }
+  /* points et durée de chaque stratégie enregistrée : simulées ici, une à la fois, dans un worker à part */
+  var statCache = {}, statQ = [], statBusy = false, statWorker = null, statId = 0;
+  workerSrc.then(function (code) { try { statWorker = new Worker(URL.createObjectURL(new Blob([code], { type: 'text/javascript' }))); statWorker.onerror = function () { statWorker = null; }; } catch (e) { statWorker = null; } });
+  /* les points mémorisés sont liés à la version du moteur : recalculés dès que le simulateur change */
+  var ENG_VER = ENGINE.VERSION + '.' + (scriptUrl('engine/engine.js').split('?v=')[1] || 'dev');
+  function statKey(s) { return 'icamlot-stat-' + ENG_VER + '-' + s.slug + '-' + s.updated; }
+  try { for (var li = localStorage.length - 1; li >= 0; li--) { var lk = localStorage.key(li); if (/^icamlot-stat-/.test(lk) && lk.indexOf('icamlot-stat-' + ENG_VER + '-') !== 0) localStorage.removeItem(lk); } } catch (e) {}
+  if (/__V__/.test($('verNote').textContent)) $('verNote').hidden = true;
+  function statOf(s) {
+    var k = statKey(s); if (statCache[k] !== undefined) return statCache[k];
+    try { var j = JSON.parse(lsGet(k) || 'null'); if (j && isFinite(j.pts)) return (statCache[k] = j); } catch (e) {}
+    return null;
+  }
+  /* score à 100 s (ou en fin de programme) et durée, avec les fonctions de la page appliquées au résultat r */
+  function statFrom(r, P) {
+    r.poseAt = function (t) { return ENGINE.poseAtK(r.K, t); };
+    r.stoneAt = function (st, t) { var e = st.tl[0]; for (var i = 0; i < st.tl.length; i++) if (st.tl[i].t <= t) e = st.tl[i]; return e; };
+    var sR = R, sP = params; R = r; params = P;
+    try { return { pts: scoreOf(outcome(Math.min(r.T, MATCH))).total, T: r.T }; } finally { R = sR; params = sP; }
+  }
+  function queueStat(s) { if (!statQ.some(function (q) { return statKey(q) === statKey(s); })) statQ.push(s); nextStat(); }
+  function nextStat() {
+    if (statBusy || !statQ.length) return;
+    var s = statQ.shift(); if (statOf(s) !== null) return nextStat();
+    statBusy = true;
+    function done(st) {
+      statBusy = false;
+      statCache[statKey(s)] = st || false; if (st) lsSet(statKey(s), JSON.stringify(st));
+      renderStrats(); nextStat();
+    }
+    api('GET', API + '/' + s.slug).then(function (j) {
+      var P = Object.assign({}, DEF, j.params || {}), pr = Array.isArray(j.program) ? j.program : [];
+      if (statWorker) {
+        var id = ++statId;
+        statWorker.onmessage = function (e) { if (e.data.id === id) { var st = null; try { st = statFrom(e.data.r, P); } catch (x) {} done(st); } };
+        statWorker.postMessage({ prog: pr, P: P, id: id });
+      } else setTimeout(function () { var st = null; try { st = statFrom(ENGINE.simulate(pr, P), P); } catch (x) {} done(st); }, 0);
+    }, function () { done(null); });
   }
   function refreshStrats() {
     return api('GET', API).then(function (j) { strats = j.strategies || []; renderStrats(); fillOppSelect(); }, function () {
@@ -918,10 +1153,30 @@
       setCurrent(name); markSaved(true); toast('« ' + name + ' » enregistrée', 'ok'); refreshStrats();
     }, function (e) { toast('Échec de l\'enregistrement : ' + e.message, 'bad'); });
   }
+  /* Enregistrer : sous le nom affiché en haut (la stratégie ouverte) ; sans nom, demande un nom comme « Enregistrer sous » */
   function save() {
     if (pilot.mode === 'cerveau') { toast('Un cerveau ne s\'enregistre pas comme stratégie. Il joue en direct.', 'bad'); return; }
-    var name = $('sName').value.trim(), slug = slugify(name);
-    if (!slug) { $('sName').focus(); toast('Donne d\'abord un nom à la stratégie (en haut).', 'bad'); return; }
+    var name = $('sName').value.trim() || current;
+    if (!slugify(name)) { saveAs(); return; }
+    saveNamed(name);
+  }
+  /* Enregistrer sous : copie sous un nouveau nom, qui devient la stratégie ouverte ; l'ancienne reste telle quelle */
+  function saveAs() {
+    var d = $('dSaveAs'), inp = $('sAsName'), base = $('sName').value.trim() || current;
+    inp.value = base ? base + ' (copie)' : '';
+    $('asNote').hidden = !current;
+    if (typeof d.showModal !== 'function') { var n = window.prompt('Enregistrer sous', inp.value); if (n && slugify(n.trim())) saveNamed(n.trim()); return; }
+    d.showModal(); inp.focus(); inp.select();
+  }
+  $('fSaveAs').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var n = $('sAsName').value.trim();
+    if (!slugify(n)) { $('sAsName').focus(); return; }
+    $('dSaveAs').close(); saveNamed(n);
+  });
+  $('bAsCancel').addEventListener('click', function () { $('dSaveAs').close(); });
+  function saveNamed(name) {
+    var slug = slugify(name);
     api('GET', API).then(function (j) {
       strats = j.strategies || [];
       var clash = strats.filter(function (s) { return s.slug === slug; })[0];
@@ -951,7 +1206,7 @@
       prog = []; params = Object.assign({}, DEF); sel = -1; writeParams(); setCurrent(''); markSaved(false); changed(true); closeDrawer(); $('sName').focus();
     });
   });
-  var brains = [], delBrainArm = '';
+  var brains = [], delBrainArm = '', brainsLoaded = false;
   function renderBrains() {
     var ul = $('brains'); if (!ul) return; ul.innerHTML = '';
     if (!brains.length) {
@@ -971,8 +1226,8 @@
     });
   }
   function refreshBrains() {
-    return api('GET', '../api/cerveaux').then(function (j) { brains = j.cerveaux || []; renderBrains(); }, function () {
-      brains = []; $('brains').innerHTML = '<li class="emptyl bad">Serveur des cerveaux injoignable.</li>';
+    return api('GET', '../api/cerveaux').then(function (j) { brains = j.cerveaux || []; brainsLoaded = true; renderBrains(); fillOppSelect(); }, function () {
+      brains = []; brainsLoaded = true; fillOppSelect(); $('brains').innerHTML = '<li class="emptyl bad">Serveur des cerveaux injoignable.</li>';
     });
   }
   function loadBrain(slug) {
@@ -997,7 +1252,23 @@
       recompute();
     }, function (e) { toast('Impossible d\'ouvrir le cerveau : ' + e.message, 'bad'); });
   }
+  /* cerveau adverse : même réseau qu'un cerveau du joueur, mais il pilote le robot bleu (repère miroir) */
+  function loadOppBrain(slug) {
+    return api('GET', '../api/cerveaux/' + slug).then(function (j) {
+      return api('GET', '../api/cerveaux/' + slug + '/poids').then(function (w) { return { j: j, w: w }; }, function () { return { j: j, w: null }; });
+    }).then(function (pair) {
+      var j = pair.j, w = pair.w;
+      if (!window.ENV || !window.NET || !BrainActs) throw new Error('moteur cerveau absent');
+      var couches = (j.reseau && j.reseau.couches) || [{ neurones: 64, activation: 'relu' }, { neurones: 64, activation: 'relu' }];
+      var familles = (j.actions && j.actions.familles) || BrainActs.FAMILLES.map(function (f) { return f.id; });
+      var layers = (w && w.layers) ? w.layers : window.NET.randomWeights(window.ENV.nInputs(j.entrees), couches, BrainActs.filterByFamilles(familles).length, j.graine || 1);
+      var spec = brainSpec(j.name, layers, j);
+      oppLoaded['cerveau:' + slug] = { name: 'Cerveau · ' + j.name, brain: spec.brain, params: params };
+      if (!(w && w.layers)) toast('« ' + j.name + ' » sans poids entraînés : décisions aléatoires parmi les actions valides', 'bad');
+    });
+  }
   $('bSave').addEventListener('click', save);
+  $('bSaveAs').addEventListener('click', saveAs);
   $('fName').addEventListener('submit', function (e) { e.preventDefault(); save(); });
   $('sName').addEventListener('input', function () { $('state').textContent = $('sName').value.trim() && $('sName').value.trim() !== current ? 'nouveau nom' : ''; if (!$('state').textContent) updateDirty(); });
   $('bLogout').addEventListener('click', function () {
@@ -1031,12 +1302,13 @@
     b.addEventListener('click', function () { camMode = b.dataset.cam; setCam(camMode); document.querySelectorAll('[data-cam]').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); }); });
   });
   $('cLab').addEventListener('change', function (e) { labels.visible = e.target.checked; });
-  $('cTrail').addEventListener('change', function (e) { showTrail = e.target.checked; if (trail) trail.visible = showTrail; });
+  $('cTrail').addEventListener('change', function (e) { showTrail = e.target.checked; if (trail) trail.visible = showTrail; if (shotLines) shotLines.visible = showTrail; if (shotLinesOpp) shotLinesOpp.visible = showTrail; });
   $('cOppTrail').addEventListener('change', function (e) { showOppTrail = e.target.checked; if (trailOpp) trailOpp.visible = showOppTrail; });
   $('cPer').addEventListener('change', function (e) { countPer = e.target.checked; if (R) { computeBad(); drawStrip(); renderAlerts(); renderResults(); } });
   $('pOpp').addEventListener('change', function () {
     oppChoice.slug = $('pOpp').value;
     $('pOppInt').hidden = !oppChoice.slug;
+    if (oppChoice.slug.indexOf('cerveau:') === 0 && !brains.length) refreshBrains();
     saveOppChoice(); recompute();
   });
   document.querySelectorAll('#pOppInt button').forEach(function (b) {
@@ -1080,7 +1352,8 @@
   /* raccourcis clavier */
   document.addEventListener('keydown', function (e) {
     var tag = e.target.tagName, typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT', mod = e.ctrlKey || e.metaKey, key = e.key;
-    if (mod && key.toLowerCase() === 's') { e.preventDefault(); save(); return; }
+    if (mod && key.toLowerCase() === 's') { e.preventDefault(); if ($('dSaveAs').open) return; if (e.shiftKey) saveAs(); else save(); return; }
+    if ($('dSaveAs').open) return;  /* la boîte « Enregistrer sous » gère ses touches (Échap la ferme) */
     if (key === 'Escape') { if (!$('toast').hidden) hideToast(); else if (openDrawer) closeDrawer(); else if (typing) e.target.blur(); else if (sel >= 0) select(-1); return; }
     if (typing || openDrawer) return;
     if (pilot.mode === 'cerveau') {
@@ -1117,7 +1390,7 @@
   var saved = loadLocal();
   params = Object.assign({}, DEF, saved && saved.params ? saved.params : {});
   prog = saved ? saved.program : JSON.parse(JSON.stringify(EXAMPLE));
-  writeParams(); readParams(); lastSnap = snap(); updateUndoBtns(); renderSteps(); updateDirty(); resize(); fillOppSelect(); refreshStrats(); recompute();
+  writeParams(); readParams(); lastSnap = snap(); updateUndoBtns(); renderSteps(); updateDirty(); resize(); fillOppSelect(); refreshStrats(); refreshBrains(); recompute();
   (function openPilot() {
     try {
       var raw = sessionStorage.getItem('icamlot-pilot');

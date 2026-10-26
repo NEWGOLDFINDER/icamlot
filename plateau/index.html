@@ -137,6 +137,10 @@ kbd { font-family: var(--font-mono); font-size: 12px; background: var(--panel-2)
 .fld { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 8px; align-items: center; }
 .fld > span { color: var(--muted); font-size: 12.5px; }
 .fld select { width: 100%; padding: 5px 8px; }
+.ptsl { display: grid; gap: 4px; }
+.ptr { display: grid; grid-template-columns: 26px repeat(3, minmax(0, 1fr)) auto auto; gap: 4px; align-items: center; min-width: 0; }
+.fld .ptr input[type=number] { width: 100%; min-width: 0; padding: 4px 6px; }
+.ptr button { padding: 4px 7px; }
 .fld input[type=number] { width: 90px; }
 .segc { display: inline-flex; background: var(--bg); border: 1px solid var(--line); border-radius: 999px; padding: 2px; gap: 2px; flex-wrap: wrap; }
 .segc button { border: none; background: transparent; border-radius: 999px; padding: 4px 11px; font-size: 13px; color: var(--muted); }
@@ -195,6 +199,8 @@ kbd { font-family: var(--font-mono); font-size: 12px; background: var(--panel-2)
 .strats li.cur { border-color: var(--accent); }
 .strats .nm { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .strats .meta { display: block; color: var(--muted); font-size: 12px; font-weight: 400; }
+.strats .kpi { display: block; font-size: 13px; font-weight: 400; color: var(--muted); margin-top: 2px; }
+.strats .kpi b { color: var(--fg); font-weight: 600; } .strats .kpi b.bad { color: var(--bad); }
 .strats .act { display: flex; gap: 4px; }
 .strats .act button { padding: 4px 9px; font-size: 12.5px; }
 .strats .emptyl { display: block; border: none; background: none; color: var(--muted); text-align: center; }
@@ -217,6 +223,12 @@ textarea { width: 100%; font-family: var(--font-mono); font-size: 12px; resize: 
 details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
 
 /* ---------- message ---------- */
+.dlg { background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 14px; padding: 18px; width: min(420px, calc(100% - 32px)); box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
+.dlg::backdrop { background: rgba(0,0,0,0.5); }
+.dlg form { display: grid; gap: 10px; }
+.dlg h3 { margin: 0; font-size: 16px; }
+.dlg label { font-size: 13px; color: var(--muted); }
+.dlg input { width: 100%; padding: 8px 10px; background: var(--panel-2); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; font-size: 14px; }
 .toast { position: fixed; left: 50%; bottom: 76px; transform: translateX(-50%); z-index: 300; background: #232633; border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; display: flex; gap: 10px; align-items: center; box-shadow: 0 12px 30px rgba(0,0,0,0.45); max-width: calc(100% - 24px); }
 .toast.bad { border-color: rgba(255,107,107,0.6); }
 .toast.ok { border-color: rgba(60,207,122,0.5); }
@@ -285,6 +297,7 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
       <button type="button" id="bStrats" title="Stratégies écrites à l'avance"><i class="fa-solid fa-folder-open"></i><span class="lbl">Stratégies</span></button>
       <button type="button" id="bBrains" title="Cerveaux : le réseau décide en direct"><i class="fa-solid fa-brain"></i><span class="lbl">Cerveaux</span></button>
       <button type="button" class="primary" id="bSave" title="Enregistrer (Ctrl+S)"><i class="fa-solid fa-floppy-disk"></i><span class="lbl">Enregistrer</span></button>
+      <button type="button" id="bSaveAs" title="Enregistrer sous un autre nom (Ctrl+Maj+S)"><i class="fa-regular fa-copy"></i><span class="lbl">Enregistrer sous</span></button>
       <button type="button" id="bParams" title="Paramètres du robot"><i class="fa-solid fa-sliders"></i><span class="lbl">Paramètres</span></button>
       <button type="button" id="bHelp" title="Aide, repères et raccourcis"><i class="fa-solid fa-circle-question"></i></button>
     </div>
@@ -420,7 +433,10 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
         <label for="pTR">Rotation 90° de la pince <span><input id="pTR" type="number" min="0.1" max="10" step="0.1"> s</span></label>
         <label for="pTV">Mise sous vide <span><input id="pTV" type="number" min="0" max="5" step="0.1"> s</span></label>
         <label for="pTL">Lâcher (vide coupé) <span><input id="pTL" type="number" min="0" max="5" step="0.1"> s</span></label>
-        <label for="pTB">Déchargement des 10 boulets <span><input id="pTB" type="number" min="0.5" max="20" step="0.5"> s</span></label>
+        <label for="pOvl">Au plus proche : chevauchement minimal avec la zone <span><input id="pOvl" type="number" min="0" max="100" step="1"> mm</span></label>
+        <label for="pPGap">Porte : écart du linteau au-dessus des piliers <span><input id="pPGap" type="number" min="0" max="50" step="1"> mm</span></label>
+        <label for="pZmin">Pince : hauteur mini <span><input id="pZmin" type="number" min="0" max="600" step="5"> mm</span></label>
+        <label for="pZmax">Pince : hauteur maxi (0 = sans limite) <span><input id="pZmax" type="number" min="0" max="600" step="5"> mm</span></label>
       </div>
     </div>
     <div>
@@ -434,12 +450,45 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
         <label for="pGS">Graal (cube) <span><input id="pGS" type="number" min="20" max="200" step="5"> mm</span></label>
       </div>
     </div>
+    <div>
+      <h3>Canon (face C)</h3>
+      <p class="note" style="margin-bottom:8px">Tir uniquement depuis la salle du trône, face C vers le camp adverse, à partir de 85 s. Le canon reste replié jusqu'à la séance de tir (périmètre de départ limité à 1200 mm) et se déploie au début de la séance. La vitesse de sortie est calculée pour amener la balle au point visé.</p>
+      <div class="pgrid">
+        <label for="pTX">Position de tir x <span><input id="pTX" type="number" min="0" max="500" step="5"> mm</span></label>
+        <label for="pTY">Position de tir y <span><input id="pTY" type="number" min="750" max="1250" step="5"> mm</span></label>
+        <label for="pCL">Canon : dépassement hors robot <span><input id="pCL" type="number" min="0" max="300" step="5"> mm</span></label>
+        <label for="pCW">Canon : largeur <span><input id="pCW" type="number" min="0" max="200" step="5"> mm</span></label>
+        <label for="pBH">Hauteur de sortie <span><input id="pBH" type="number" min="30" max="350" step="5"> mm</span></label>
+        <label for="pBEl">Élévation du tir <span><input id="pBEl" type="number" min="0" max="80" step="1"> °</span></label>
+        <label for="pBTx">Point visé x (cour adverse) <span><input id="pBTx" type="number" min="2250" max="3000" step="5"> mm</span></label>
+        <label for="pBMode">Le point visé est <span><select id="pBMode"><option value="arret">l'arrêt de la balle</option><option value="impact">le 1er impact au sol</option></select></span></label>
+        <label for="pBN">Boulets tirés <span><input id="pBN" type="number" min="0" max="10" step="1"></span></label>
+        <label for="pBRate">Cadence de tir <span><input id="pBRate" type="number" min="0.1" max="20" step="0.1"> /s</span></label>
+        <label for="pBDep">Déploiement du canon <span><input id="pBDep" type="number" min="0" max="10" step="0.1"> s</span></label>
+        <label for="pBSpin">Mise en route avant le 1er tir <span><input id="pBSpin" type="number" min="0" max="10" step="0.1"> s</span></label>
+      </div>
+    </div>
+    <div>
+      <h3>Boulets (balle en mousse de 45 mm)</h3>
+      <p class="note" style="margin-bottom:8px">Valeurs estimées, à remplacer par des mesures. Chaque tir varie au hasard (tirage reproductible) dans les écarts indiqués.</p>
+      <div class="pgrid">
+        <label for="pBM">Masse <span><input id="pBM" type="number" min="0.5" max="50" step="0.5"> g</span></label>
+        <label for="pBCd">Coefficient de traînée <span><input id="pBCd" type="number" min="0.1" max="2" step="0.01"></span></label>
+        <label for="pBE">Rebond (vitesse gardée) <span><input id="pBE" type="number" min="0" max="1" step="0.05"></span></label>
+        <label for="pBMu">Perte horizontale par rebond <span><input id="pBMu" type="number" min="0" max="1" step="0.05"></span></label>
+        <label for="pBCr">Résistance au roulement <span><input id="pBCr" type="number" min="0" max="1" step="0.01"></span></label>
+        <label for="pBDv">Écart de vitesse <span><input id="pBDv" type="number" min="0" max="50" step="0.5"> ± %</span></label>
+        <label for="pBDaz">Écart de direction <span><input id="pBDaz" type="number" min="0" max="20" step="0.5"> ± °</span></label>
+        <label for="pBDel">Écart d'élévation <span><input id="pBDel" type="number" min="0" max="20" step="0.5"> ± °</span></label>
+        <label for="pBSeed">Tirage n° <span><input id="pBSeed" type="number" min="0" max="9999" step="1"></span></label>
+      </div>
+    </div>
     <div class="crow"><button type="button" id="bReset">Valeurs par défaut</button></div>
     <div>
       <h3>Robot adverse</h3>
-      <p class="note">Une stratégie de l'équipe, jouée en miroir sur le château bleu. Les deux robots peuvent viser les mêmes paquets : premier arrivé, premier servi. Notre robot découvre l'absence en arrivant et évite l'adversaire (lidar 40 cm, attente 2 s, puis détour).</p>
+      <p class="note">Une stratégie ou un cerveau de l'équipe, joué en miroir sur le château bleu en même temps que nous. Les deux robots partagent la même table : une pierre déjà prise (ou réservée) par l'un n'existe plus pour l'autre (premier engagé, premier servi), les pierres qu'ils posent leur servent d'obstacles, et les robots ne se traversent pas : ils s'attendent, ou renoncent au trajet s'il reste bloqué.</p>
       <div class="pgrid">
-        <label for="pOpp">Stratégie
+        <label for="pOpp">Adversaire
           <select id="pOpp" style="width:auto;min-width:160px;text-align:left;font-family:inherit">
             <option value="">Aucun</option>
             <option value="exemple" selected>Exemple (miroir)</option>
@@ -470,7 +519,7 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
   <div class="dbody">
     <div>
       <h3>Pour aller vite</h3>
-      <p class="note">Deux façons de piloter le robot : une stratégie (liste d'étapes écrite à l'avance) ou un cerveau (réseau qui choisit chaque action d'après l'état réel, jusqu'à 100 s). En mode stratégie, sélectionne une étape puis clique un repère sur la table. Les boutons du bas ajoutent une étape. Clique la frise pour aller à un instant.</p>
+      <p class="note">Deux façons de piloter le robot : une stratégie (liste d'étapes écrite à l'avance) ou un cerveau (réseau qui choisit chaque action d'après l'état réel, jusqu'à 100 s). En mode stratégie : sélectionne une étape, puis clique un repère sur la table (paquet P, zone de mur M, tour T, une pierre, ou le point de dépôt) pour la remplir. Les boutons du bas ajoutent une étape juste après celle qui est sélectionnée. Clique la frise pour aller à un instant ou à une étape.</p>
     </div>
     <div>
       <h3>Raccourcis clavier</h3>
@@ -484,6 +533,7 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
         <dt><kbd>Suppr</kbd></dt><dd>Supprimer l'étape</dd>
         <dt><kbd>Ctrl</kbd> + <kbd>Z</kbd> / <kbd>Y</kbd></dt><dd>Annuler / rétablir</dd>
         <dt><kbd>Ctrl</kbd> + <kbd>S</kbd></dt><dd>Enregistrer sur le serveur</dd>
+        <dt><kbd>Ctrl</kbd> + <kbd>Maj</kbd> + <kbd>S</kbd></dt><dd>Enregistrer sous un autre nom</dd>
       </dl>
     </div>
     <div>
@@ -495,28 +545,48 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
       <h3>Règles contrôlées</h3>
       <ul class="rules">
         <li>Hauteur du robot : 350 mm (règlement général F.3). Objets tenus : 350 mm, ou 430 mm dans les zones de construction et les châteaux (règlement 2027).</li>
-        <li>Périmètre : 1200 mm au départ, 1400 mm ensuite (F.3). Boulets comptés s'ils tombent entre 85 et 100 s (E.4). Graal : strictement plus grand qu'un cube de 60 mm (règlement officiel 1.0). Fin : robot dans la salle du trône (E.3).</li>
-        <li>Trajets calculés sur une grille de 40 mm avec la forme exacte du robot et des pierres tenues. Sans trajet sans contact, le robot va tout droit et le contact est signalé.</li>
-        <li>Porte : 2 piliers accolés et linteau tenu par de petites ventouses. Tour : la pierre est centrée sur son cercle si la place le permet, sinon décalée (signalé). Robot adverse : stratégie en miroir, premier arrivé premier servi, évitement lidar.</li>
+        <li>Périmètre : 1200 mm au départ, 1400 mm ensuite (F.3). Boulets (E.4) : tirés au canon depuis la salle du trône à partir de 85 s, comptés s'ils sont arrêtés dans la cour adverse (derrière les zones de muraille, salle du trône comprise) à 100 s. Vol avec résistance de l'air, rebonds et roulement ; les pierres et constructions ne sont pas des obstacles pour les boulets. Graal : plus grand qu'un cube de 100 mm (contraintes PAMI). Fin : robot dans la salle du trône (E.3).</li>
+        <li>Trajets calculés sur une grille de 40 mm avec la forme exacte du robot, du canon et des pierres tenues, en gardant si possible 25 mm d'écart avec les pierres. Chaque trajet est vérifié pas à pas (10 mm, 1,5°, et au millimètre près là où le robot frôle une pierre), avec la position réelle des pinces au même instant ; si besoin le robot pivote sur place dans un endroit dégagé, et la pince bouge au départ, en fin de trajet ou avant de partir. Les mouvements de pince sur place sont aussi vérifiés. S'il n'existe aucun passage sans contact, l'étape est signalée en erreur.</li>
+        <li>Prise : un paquet entier, les deux pierres du dessus (empilées à plat et alignées), ou une seule pierre si rien n'est posé dessus (ventouse au choix). Dépôt en x, y, angle : toute la pile tenue ou une pierre, pince à 0° (à plat), 90° (debout) ou 180° (à plat, pile retournée), sur la table ou sur d'autres pierres. À plat, seule la pierre du bas de la pince peut être posée seule. La hauteur de pince doit rester dans sa course (Paramètres) ; sinon, la case « Lâcher » laisse tomber les pierres à plat depuis la position la plus basse de la pince.</li>
+        <li>Étape « Lâcher » : coupe le vide sur place, sans bouger ; les pierres tombent droit sur le sol ou sur les pierres en dessous (debout : seulement au contact de l'appui).</li>
+        <li>Poser le Graal : côté au choix, de l'intérieur (robot dans le château) ou de l'extérieur.</li>
+        <li>Étape « Trajectoire » : le robot suit les points cliqués sur la table, depuis sa position, en ligne droite d'un point à l'autre. Angle facultatif à chaque point (orientation de la face choisie, 0° le long de x, positif vers +y) ; sans angle, la rotation est répartie selon la distance. Les contacts sont signalés, le tracé n'est pas corrigé.</li>
+        <li>Pince : rotation dans un seul sens, à 0°, 90° ou 180° (180° prend deux fois le temps de 90°). Étape « Tourner la pince » : tout de suite, ou en temps masqué pendant le prochain trajet.</li>
+        <li>Temps masqué (case dans l'étape) : la pince monte, descend et tourne pendant le trajet ; le robot attend la pince si elle est plus lente. Les étapes enregistrées avant cette option restent sans temps masqué.</li>
+        <li>Mur, tour, porte : placement parfait (centré dans la zone), au plus proche (la position qui touche encore la zone, avec un chevauchement minimal réglable, et que le robot atteint le plus vite, orientation libre) ou manuel (centre et angle saisis ou cliqués, avec aperçu). Une pierre compte dès que sa projection touche la zone, ou si elle repose sur une pierre valide (E.1). Pierres d'une construction hors zone : en rouge, sans points.</li>
+        <li>Porte : 2 piliers accolés posés debout, puis le robot recule juste assez, met le linteau à plat en restant bas et ne le monte qu'à la hauteur des piliers (+ l'écart réglable) pour le poser : la pince reste sous le plafond de 350 mm. Linteau tenu par de petites ventouses. Tour : la pierre est centrée sur son cercle si la place le permet, sinon décalée (signalé). Robot adverse absent.</li>
+        <li>Robot adverse : un cerveau ou une stratégie joue en miroir sur le château bleu, en même temps que nous. Même table pour les deux : un paquet pris par l'un disparaît pour l'autre (premier servi), les deux robots ne se traversent pas (contact signalé, lidar à 400 mm : attente de 2 s).</li>
         <li>Score : barème du compteur de points, état de la table à 100 s (ou en fin de programme). Seules nos zones comptent. Niveau du Graal estimé d'après sa hauteur. Douves et attaque de PAMI non simulées.</li>
         <li>Cerveau : le réseau voit l'état (temps, paquets encore là, constructions, adversaire) et choisit l'action suivante. Pas de programme figé à l'issue de l'entraînement. Murs et portes interdits sur une zone déjà occupée. Boulets seulement à partir de 80 s. Le match va jusqu'à 100 s.</li>
       </ul>
     </div>
+    <p class="note" id="verNote">Version du simulateur : <b>__V__</b></p>
     <div class="crow"><button type="button" id="bLogout"><i class="fa-solid fa-right-from-bracket"></i> Se déconnecter</button></div>
   </div>
 </section>
+
+<dialog class="dlg" id="dSaveAs" aria-labelledby="hSaveAs">
+  <form id="fSaveAs">
+    <h3 id="hSaveAs">Enregistrer sous</h3>
+    <label for="sAsName">Nom de la nouvelle stratégie</label>
+    <input id="sAsName" type="text" maxlength="80" autocomplete="off" spellcheck="false">
+    <p class="note" id="asNote">La stratégie actuelle reste enregistrée sous son nom ; la copie devient la stratégie ouverte.</p>
+    <div class="crow"><button type="submit" class="primary">Enregistrer</button><button type="button" id="bAsCancel">Annuler</button></div>
+  </form>
+</dialog>
 
 <div class="toast" id="toast" role="status" hidden><span id="toastMsg"></span><span class="tb" id="toastBtns"></span></div>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-<script src="../engine/geom.js"></script>
-<script src="../engine/engine.js"></script>
-<script src="../engine/score.js"></script>
-<script src="../engine/actions.js"></script>
-<script src="../engine/env.js"></script>
-<script src="../cerveau/net.js"></script>
-<script src="../bareme.js"></script>
-<script src="app.js"></script>
+<script src="../engine/geom.js?v=__V__"></script>
+<script src="../engine/engine.js?v=__V__"></script>
+<script src="../engine/score.js?v=__V__"></script>
+<script src="../engine/actions.js?v=__V__"></script>
+<script src="../engine/env.js?v=__V__"></script>
+<script src="../cerveau/net.js?v=__V__"></script>
+<!-- ?v=__V__ : remplacé par le numéro de version à l'installation (deploy/install.sh), pour ne jamais servir un ancien fichier -->
+<script src="../bareme.js?v=__V__"></script>
+<script src="app.js?v=__V__"></script>
 </body>
 </html>

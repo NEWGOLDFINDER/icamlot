@@ -51,33 +51,17 @@ rl.on('line', function (line) {
     if (cmd === 'example') return reply({ program: ctx.ENV.EXAMPLE });
     if (cmd === 'play') {
       if (!env) make(msg.config || {});
-      var layers = msg.layers, acts = msg.acts || [];
-      function choose(obs, mask) {
-        var h = obs.slice(), i, j, k;
-        for (i = 0; i < layers.length; i++) {
-          var w = layers[i].w, b = layers[i].b, next = [];
-          for (j = 0; j < b.length; j++) {
-            var s = b[j];
-            for (k = 0; k < h.length; k++) s += h[k] * w[k][j];
-            if (i < layers.length - 1) {
-              var name = acts[i] || 'relu';
-              if (name === 'tanh') s = Math.tanh(s);
-              else if (name === 'sigmoid') s = 1 / (1 + Math.exp(-Math.max(-30, Math.min(30, s))));
-              else s = s > 0 ? s : 0;
-            }
-            next[j] = s;
-          }
-          h = next;
-        }
-        var best = -1, bestv = -1e99;
-        for (i = 0; i < h.length; i++) if (mask[i] && h[i] > bestv) { bestv = h[i]; best = i; }
-        if (best < 0) { for (i = 0; i < mask.length; i++) if (mask[i]) return i; }
-        return best;
-      }
+      var choose = ctx.ENV.chooserFromLayers(msg.layers, msg.acts || []);
       var st = env.play(choose, msg.scenario || {});
       var R = env.result();
       var sc = ctx.SCORE.scoreAt(R, R.params, Math.min(R.T, ctx.ENV.MATCH));
-      return reply({ score: sc.total, detail: sc.detail, T: R.T, errors: R.errors.length, program: env.program(), done: st.done });
+      var out = { score: sc.total, detail: sc.detail, T: R.T, errors: R.errors.length, program: env.program(), done: st.done };
+      if (R.opponent) {
+        var so = ctx.SCORE.scoreAt(R.opponent, R.opponent.params, Math.min(R.opponent.T, ctx.ENV.MATCH));
+        out.adversaire = { score: so.total, detail: so.detail, T: R.opponent.T, errors: R.opponent.errors.length, program: env.opponentProgram() };
+        out.contacts = R.collisions.length;
+      }
+      return reply(out);
     }
     if (cmd === 'close') { env = null; return reply({ ok: true }); }
     reply({ error: 'Commande inconnue : ' + cmd });

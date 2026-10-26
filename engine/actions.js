@@ -76,6 +76,7 @@
   }
   function toProgramStep(act, sim) {
     var st = { a: act.a === 'boulets' ? 'tir' : act.a };
+    var blue = teamOf(sim) === 'blue';
     if (act.f) st.f = act.f;
     if (act.p) st.p = act.p;
     if (act.z) st.z = act.z;
@@ -84,7 +85,8 @@
       var held = sim.held()[act.f];
       var stack = held && held.stack ? held.stack : [];
       var target = stack.filter(function (x) { return x; })[act.rank];
-      st.s = target ? target.id : 'P1.1';
+      /* le programme est écrit dans le repère du cerveau : un robot bleu le rejouera par mirrorStep */
+      st.s = target ? (blue ? ENGINE.mirrorId(target.id.split('.')[0]) + '.' + target.id.split('.')[1] : target.id) : 'P1.1';
     }
     return st;
   }
@@ -101,7 +103,7 @@
     var idx = -1; ENGINE.PK.forEach(function (pk, i) { if (pk.id === p) idx = i; });
     if (idx < 0) return false;
     var sts = sim.stones().filter(function (st) { return st.pk === idx; });
-    if (sts.some(function (x) { return x.cur.k === 'held' || x.cur.k === 'gone'; })) return false;
+    if (sts.some(function (x) { return x.cur.k === 'held' || x.cur.k === 'gone' || (sim.claimed && sim.claimed(x.id)); })) return false;
     var tag = sts[0] && sts[0].tag;
     return sts.length === 3 && sts.every(function (x) { return x.tag === tag; }) && (tag === 'home' || (sts[0].cur.geo && !sts[0].cur.geo.vertical));
   }
@@ -114,9 +116,11 @@
     var zone = ENGINE.zoneById(z); if (!zone) return 0;
     var zr = zone.tan !== undefined ? rectPoly({ cx: zone.c[0], cy: zone.c[1], hl: 200, hn: 100, ang: zone.tan + 90 }) : null;
     var n = 0;
-    sim.stones().forEach(function (st) {
-      if (st.cur.k !== 'free') return;
-      var g = st.cur.geo; if (!g) return;
+    /* pierres posées par ce robot, puis celles de l'autre robot (la zone est occupée aussi) */
+    var all = [];
+    sim.stones().forEach(function (st) { if (st.cur.k === 'free' && st.cur.geo) all.push(st.cur.geo); });
+    (sim.foreign ? sim.foreign() : []).forEach(function (g) { all.push(g); });
+    all.forEach(function (g) {
       if (zr) { if (overlap(g.foot, zr, 0)) n++; return; }
       var d = 1e9, P = g.foot;
       if (ENGINE.inPoly(zone.c[0], zone.c[1], P)) { n++; return; }
@@ -132,7 +136,18 @@
   function zoneHasBuild(sim, z) { return zoneStoneCount(sim, z) > 0; }
   function towerComplete(sim, z) { return zoneStoneCount(sim, z) >= 3; }
 
+  /* Une action est écrite dans le repère du cerveau (jaune : P1–P10, M1–M5, T1–T4). Pour un robot bleu, les mêmes
+     numéros désignent les cibles en miroir : on les traduit en vrais numéros avant de lire la table. */
+  function teamOf(sim) { var P = sim.params && sim.params(); return (P && P.team) || 'yellow'; }
+  function real(act, sim) {
+    if (teamOf(sim) !== 'blue') return act;
+    var o = {}; Object.keys(act).forEach(function (k) { o[k] = act[k]; });
+    if (o.p) o.p = ENGINE.mirrorId(o.p);
+    if (o.z) o.z = ENGINE.mirrorId(o.z);
+    return o;
+  }
   function valid(act, sim) {
+    act = real(act, sim);
     switch (act.famille) {
       case 'prendre': return faceEmpty(sim, act.f) && packetStacked(sim, act.p);
       case 'mur': return faceStackFlat(sim, act.f) && !zoneHasBuild(sim, act.z);

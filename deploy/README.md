@@ -46,6 +46,12 @@ git -C /opt/icamlot pull
 bash /opt/icamlot/deploy/install.sh
 ```
 
+`install.sh` met le numéro du commit dans les adresses des scripts
+(`app.js?v=…`, `bareme.js?v=…`) : après une mise à jour, un simple
+rafraîchissement de la page charge la nouvelle version, sans vider le cache ni
+les cookies (le navigateur et Cloudflare ne peuvent pas resservir l'ancienne).
+La version chargée est affichée dans l'aide du simulateur.
+
 Le mot de passe déjà installé est conservé. Pour le changer, relancer avec
 `ICAMLOT_PASSWORD='nouveau' bash /opt/icamlot/deploy/install.sh`.
 

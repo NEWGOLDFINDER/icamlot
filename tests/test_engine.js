@@ -169,5 +169,68 @@ benv.play(function (obs, mask) {
 check('les boulets peuvent être tirés en live', benv.program().some(function (s) { return s.a === 'tir'; }), JSON.stringify(benv.program().map(function (s) { return s.a; })));
 check('durée au moins 100 s avec boulets', benv.result().T >= 99.5, 'T=' + benv.result().T);
 
+
+console.log('\n10. Duel : deux robots sur la même table (pas de vol de pierre, pas de superposition)');
+function rngOf(seed) { var a = seed >>> 0; return function () { a = (a + 0x6D2B79F5) | 0; var x = Math.imul(a ^ a >>> 15, 1 | a); x = x + Math.imul(x ^ x >>> 7, 61 | x) ^ x; return ((x ^ x >>> 14) >>> 0) / 4294967296; }; }
+function picker(seed) { var r = rngOf(seed); return function (obs, mask) { var ok = []; for (var i = 0; i < mask.length; i++) if (mask[i]) ok.push(i); return ok.length ? ok[Math.floor(r() * ok.length)] : -1; }; }
+function bothHave(R) {
+  var O = R.opponent, dup = [];
+  R.stones.forEach(function (st, i) {
+    var a = st.cur.k, b = O.stones[i].cur.k;
+    if (a !== 'home' && a !== 'gone' && b !== 'home' && b !== 'gone') dup.push(st.id);
+  });
+  return dup;
+}
+function robotOverlap(R) {
+  var O = R.opponent, n = 0;
+  for (var tt = 0; tt <= Math.min(R.T, O.T); tt += 0.1) if (ctx.overlap(ctx.triPoly(R.poseAt(tt)), ctx.triPoly(O.poseAt(tt)), 1)) n++;
+  return n;
+}
+var dEx = ENGINE.simulateMatch(EXAMPLE, ENGINE.DEF, { opponent: { program: EXAMPLE, params: ENGINE.DEF }, intensity: 'realiste' });
+check('même programme des deux côtés : aucune pierre chez les deux robots', bothHave(dEx).length === 0, bothHave(dEx).join(','));
+check('une pierre réservée n\'est plus prenable par l\'autre', dEx.errors.concat(dEx.opponent.errors).some(function (e) { return /pris par l'adversaire|prise par l'adversaire/.test(e.msg); }));
+check('les deux robots ne se superposent jamais (programmes)', robotOverlap(dEx) === 0, 'pas : ' + robotOverlap(dEx));
+var soloB = ENV.playProgram([], ENGINE.DEF, { program: EXAMPLE, params: ENGINE.DEF }, 'realiste', true).result.opponent;
+check('miroir exact : le bleu joue l\'exemple comme le jaune (même score, même durée)',
+  SCORE.scoreAt(soloB, soloB.params, 100).total === sc.total && Math.abs(soloB.T - R.T) < 1e-6, SCORE.scoreAt(soloB, soloB.params, 100).total + ' / ' + sc.total + ', T ' + soloB.T);
+check('tir du bleu vers la cour jaune', soloB.balls.shots && soloB.balls.shots.length > 0 && soloB.balls.shots.every(function (s) { return s.pts[s.pts.length - 1][1] < 1500; }));
+
+/* cerveau (réseau simulé par un tirage au sort parmi les actions valides) contre cerveau : les deux robots décident en direct */
+[1, 2].forEach(function (seed) {
+  var envD = ENV.create({ skipContacts: true, adversaire: { intensite: 'realiste' } });
+  envD.play(picker(seed), { opponent: { brain: { choose: picker(seed + 100) } }, intensite: 'realiste' });
+  var Rd = envD.result();
+  check('cerveau contre cerveau (' + seed + ') : adversaire présent et il a joué', !!Rd.opponent && envD.opponentProgram().length > 3, 'n=' + envD.opponentProgram().length);
+  check('cerveau contre cerveau (' + seed + ') : aucune pierre chez les deux robots', bothHave(Rd).length === 0, bothHave(Rd).join(','));
+  check('cerveau contre cerveau (' + seed + ') : les robots ne se superposent jamais', robotOverlap(Rd) === 0, 'pas : ' + robotOverlap(Rd));
+  var rep = ENGINE.simulateMatch(envD.program(), ENGINE.DEF, { opponent: { program: envD.opponentProgram(), params: ENGINE.DEF }, intensity: 'realiste' });
+  var a1 = SCORE.scoreAt(Rd, Rd.params, 100).total, a2 = SCORE.scoreAt(rep, rep.params, 100).total;
+  var b1 = SCORE.scoreAt(Rd.opponent, Rd.opponent.params, 100).total, b2 = SCORE.scoreAt(rep.opponent, rep.opponent.params, 100).total;
+  check('cerveau contre cerveau (' + seed + ') : le rejeu redonne les mêmes points des deux côtés', a1 === a2 && b1 === b2, a1 + '/' + a2 + ' ' + b1 + '/' + b2);
+});
+
+/* un même cerveau, côté jaune ou côté bleu, joue pareil (actions et observations en miroir) */
+var ACT = ACTIONS.ALL;
+function scripted(list) {
+  var k = 0;
+  return function (obs, mask) {
+    while (k < list.length) {
+      var st = list[k], idx = -1, i;
+      for (i = 0; i < ACT.length; i++) { var a = ACT[i]; if (a.a === (st.a === 'tir' ? 'boulets' : st.a) && (!st.f || a.f === st.f) && (!st.p || a.p === st.p) && (!st.z || a.z === st.z) && (!st.side || a.side === st.side)) { idx = i; break; } }
+      k++;
+      if (idx >= 0 && mask[idx]) return idx;
+    }
+    return -1;
+  };
+}
+var brainY = ENV.create({ skipContacts: true });
+brainY.play(scripted(EXAMPLE), {});
+var Ry = brainY.result(), sY = SCORE.scoreAt(Ry, Ry.params, 100).total;
+var pmB = ENV.playProgram([], ENGINE.DEF, { brain: { choose: scripted(EXAMPLE) } }, 'realiste', true);
+var Rb = pmB.result.opponent, sB = SCORE.scoreAt(Rb, Rb.params, 100).total;
+check('même cerveau en jaune et en bleu : mêmes points', sY === sB && sY > 0, sY + ' / ' + sB);
+function noWait(l) { return JSON.stringify(l.filter(function (s) { return s.a !== 'attendreJusqua'; })); }
+check('même cerveau en jaune et en bleu : mêmes décisions (repère du cerveau)', noWait(brainY.program()) === noWait(pmB.opponentProgram), noWait(brainY.program()).slice(0, 200) + ' / ' + noWait(pmB.opponentProgram).slice(0, 200));
+
 if (fail) { console.log('\n' + fail + ' échec(s).'); process.exit(1); }
 console.log('\nTous les tests passent.');

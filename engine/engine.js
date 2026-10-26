@@ -89,6 +89,8 @@
       if (m < 20) return false;
       return (dx * dir[0] + dy * dir[1]) / m > 0;
     }
+    /* pierres posées par l'autre robot : obstacles (jamais des appuis) */
+    function foreign() { return opts.foreignFeet ? opts.foreignFeet() : []; }
     function oppOccupies(x, y, t) {
       var o = oppAt(t);
       if (!o || o.x == null) return false;
@@ -126,6 +128,7 @@
       return { foot: rectPoly(fo), fo: fo, top: zc + hz, bottom: zc - hz, zc: zc, vertical: Math.abs(Math.sin(th)) > 0.7, ul: zl, th: th, phi: p.h + 120 * fk(f), O: [p.x, p.y] };
     }
     function sat2(A, B) { return overlap(A, B, 1); }
+    function obstacles(excl) { return freeStones(excl).map(function (st) { var g = stoneFoot(st); g.id = st.id; return g; }).concat(foreign()); }
     function heldVsFree(hg, fg, tol) {
       tol = tol == null ? 1 : tol;
       if (!overlap(hg.foot, fg.foot, tol)) return false;
@@ -153,7 +156,7 @@
       tol = tol == null ? 1 : tol;
       var tri = triPoly(p), can = canOn ? cannonPoly(p, CL, CW) : null;
       if (!inTable(tri, -1) || (can && !inTable(can, -1))) return 'bord de table';
-      var fr = frGeo || freeStones(excl).map(function (st) { var g = stoneFoot(st); g.id = st.id; return g; });
+      var fr = frGeo || obstacles(excl);
       for (var j = 0; j < fr.length; j++) if (overlap(tri, fr[j].foot, tol) || (can && overlap(can, fr[j].foot, tol))) return fr[j].id;
       var oNow = oppAt(s.t);
       if (oNow && oNow.x != null && overlap(tri, triPoly(oNow), 1)) return 'robot adverse';
@@ -188,7 +191,7 @@
       return f;
     }
     function plan(goal, hGoal, excl, start0, freeF) {
-      var start = start0 || [s.x, s.y], fr = freeStones(excl).map(function (st) { var g = stoneFoot(st); g.id = st.id; return g; });
+      var start = start0 || [s.x, s.y], fr = obstacles(excl);
       var cell = gridCell, sc = cell(start), gc = cell(goal), N = GW * GH, gS = new Float64Array(N).fill(Infinity), par = new Int32Array(N).fill(-1), closed = new Uint8Array(N);
       var si = sc[1] * GW + sc[0], gi = gc[1] * GW + gc[0], fg = freeF || freeGrid(hGoal, fr);
       function free(i, j) { var k = j * GW + i; return k === si || k === gi || fg(i, j); }
@@ -223,6 +226,63 @@
         s[f].hc = pd.from.hc; s[f].rot = pd.from.rot; flushing = true; runSeq(f, pd.seq); flushing = false;
       });
     }
+    /* Évitement de l'autre robot en cours de trajet (lidar) : on connaît sa trajectoire ; si la prochaine position
+       passerait à moins de 60 mm de lui, le robot s'arrête sur place et attend par pas de 0,1 s. Au bout de 8 s d'attente
+       cumulée il repart (le contact éventuel est alors signalé). rk : points clés { t, x, y, h } du trajet, t depuis le départ. */
+    var YIELD_GAP = 60, YIELD_MAX = 8, ABORT = { abort: true };
+    /* pose à l'instant tt ; lin : interpolation linéaire, sinon adoucie (« smoothstep ») comme la lecture des points clés poseAtK */
+    function itpRk(rk, tt, lin) {
+      if (tt <= rk[0].t) return rk[0];
+      for (var j = 1; j < rk.length; j++) if (tt <= rk[j].t) { var a = rk[j - 1], b = rk[j], u = b.t > a.t ? (tt - a.t) / (b.t - a.t) : 1, e = lin ? u : u * u * (3 - 2 * u); return { t: tt, x: a.x + (b.x - a.x) * e, y: a.y + (b.y - a.y) * e, h: a.h + (b.h - a.h) * e }; }
+      return rk[rk.length - 1];
+    }
+    /* après l'arrivée, le robot reste sur place pour travailler (approche et recul de quelques cm compris) :
+       on regarde 6 s plus loin, avec une marge plus large */
+    var STAY = 6, STAY_GAP = 100;
+    function rkConflict(rk, t0, w, lin) {
+      var Dr = rk[rk.length - 1].t + w, Dn = Dr + STAY;
+      for (var tt = 0; tt <= Dn + 1e-9; tt += 0.1) {
+        var o = oppAt(t0 + tt); if (!o || o.x == null) continue;
+        if (overlap(triPoly(itpRk(rk, Math.max(0, tt - w), lin)), triPoly(o), -(tt > Dr ? STAY_GAP : YIELD_GAP))) return true;
+      }
+      return false;
+    }
+    /* 1) on attend au départ le plus court délai qui laisse passer l'adversaire sur tout le trajet ; 2) sinon arrêt en cours de route */
+    function yieldRk(rk, t0, lin) {
+      var Dn = rk[rk.length - 1].t, near = false, tt, q, o;
+      if (!opts.oppPoseAt || rk.length < 2 || Dn <= 0) return { rk: rk, hold: 0 };
+      for (tt = 0; tt <= Dn + STAY + 1e-9 && !near; tt += 0.25) { q = itpRk(rk, Math.min(tt, Dn), lin); o = oppAt(t0 + tt); if (o && o.x != null && Math.hypot(q.x - o.x, q.y - o.y) < 800) near = true; }
+      if (!near || !rkConflict(rk, t0, 0, lin)) return { rk: rk, hold: 0 };
+      for (var w = 0.25; w <= 10 + 1e-9; w += 0.25) {
+        if (rkConflict(rk, t0, w, lin)) continue;
+        var shifted = [{ t: 0, x: rk[0].x, y: rk[0].y, h: rk[0].h }];
+        rk.forEach(function (k) { shifted.push({ t: k.t + w, x: k.x, y: k.y, h: k.h }); });
+        return { rk: shifted, hold: w, lin: lin };   /* même profil de mouvement qu'avant, simplement décalé */
+      }
+      var dt = 0.1, u = 0, tau = 0, waited = 0, cur = null, holds = [];
+      while (u < Dn - 1e-9) {
+        var nu = Math.min(Dn, u + dt), qn = itpRk(rk, nu, lin), on = oppAt(t0 + tau + (nu - u));
+        var blocked = on && on.x != null && overlap(triPoly(qn), triPoly(on), -YIELD_GAP);
+        if (blocked && waited >= YIELD_MAX) return { rk: rk, hold: 0, abort: true };
+        /* s'arrêter ne sert à rien si l'adversaire arrive sur nous : l'étape est abandonnée plutôt que de se faire percuter en route */
+        if (blocked) { var oh = oppAt(t0 + tau + dt), qh = itpRk(rk, u, lin); if (oh && oh.x != null && overlap(triPoly(qh), triPoly(oh), -YIELD_GAP / 2)) return { rk: rk, hold: 0, abort: true }; }
+        if (blocked) { if (!cur) cur = { u: u, d: 0 }; cur.d += dt; tau += dt; waited += dt; }
+        else { if (cur) { holds.push(cur); cur = null; } tau += nu - u; u = nu; }
+      }
+      if (cur) holds.push(cur);
+      /* le trajet lui-même est libre, mais le robot resterait sur place devant l'adversaire qui passe : on renonce */
+      if (!holds.length) return { rk: rk, hold: 0, abort: true };
+      /* points clés d'origine, débuts d'arrêt, et un point tous les 0,25 s (lecture linéaire sans écart avec le profil d'origine) */
+      var base = rk.map(function (k) { return k.t; }).concat(holds.map(function (hh) { return hh.u; }));
+      for (var uu0 = 0.25; uu0 < Dn; uu0 += 0.25) base.push(uu0);
+      var us = base.sort(function (a, b) { return a - b; }).filter(function (x, i, arr) { return !i || x - arr[i - 1] > 1e-9; });
+      var out = [], cum = 0;
+      us.forEach(function (uu) {
+        var pq = itpRk(rk, uu, lin); out.push({ t: uu + cum, x: pq.x, y: pq.y, h: pq.h });
+        holds.forEach(function (hh) { if (Math.abs(hh.u - uu) < 1e-9) { cum += hh.d; out.push({ t: uu + cum, x: pq.x, y: pq.y, h: pq.h }); } });
+      });
+      return { rk: out, hold: cum, lin: true };
+    }
     /* grip : mouvements de pince faits pendant le trajet (temps masqué), { f, seq: [{ hc } | { rot }] } */
     function travel(O, h, label, excl, speed, grip) {
       if (opts.oppPoseAt) {
@@ -242,7 +302,7 @@
           if (Math.hypot((o1.x || 0) - o0.x, (o1.y || 0) - o0.y) < 40) break;
         }
       }
-      var G = [], pendTxt = [];
+      var G = [], pendTxt = [], pendBackup = { A: pend.A, B: pend.B };
       ['A', 'B'].forEach(function (f) { if (pend[f]) { G.push({ f: f, from: pend[f].from, seq: pend[f].seq.slice() }); pendTxt.push(f); pend[f] = null; } });
       if (grip) {
         var ex = G.filter(function (g) { return g.f === grip.f; })[0];
@@ -270,7 +330,7 @@
       function splitAt(pp, d0) { var acc2 = 0, o2 = [pp[0]]; for (var q = 1; q < pp.length; q++) { var dd = dist(pp[q - 1], pp[q]); if (acc2 < d0 - 0.5 && acc2 + dd > d0 + 0.5) { var u = (d0 - acc2) / dd; o2.push([pp[q - 1][0] + (pp[q][0] - pp[q - 1][0]) * u, pp[q - 1][1] + (pp[q][1] - pp[q - 1][1]) * u]); } acc2 += dd; o2.push(pp[q]); } return o2; }
       /* modes : rotation au milieu, au début, à la fin, sur place avant, sur place après */
       var modes = L > 50 ? [[Math.min(200, L * 0.25), Math.max(Math.min(200, L * 0.25) + 1, L - Math.min(200, L * 0.25))], [0, Math.min(L, 450)], [Math.max(0, L - 450), L], ['avant'], ['apres']] : [[0, Math.max(L, 1)], ['avant'], ['apres']];
-      var fr = freeStones(excl).map(function (st) { var g = stoneFoot(st); g.id = st.id; return g; });
+      var fr = obstacles(excl);
       function nodesFor(m) {
         var nodes = [];
         if (m[0] === 'avant') { nodes.push({ p: pts[0], h: h0 + dh, d: 0, rotOnly: true }); var a3 = 0; for (var q = 1; q < pts.length; q++) { a3 += dist(pts[q - 1], pts[q]); nodes.push({ p: pts[q], h: h0 + dh, d: a3 }); } return nodes; }
@@ -360,9 +420,18 @@
       var rk = [{ t: 0, x: s.x, y: s.y, h: s.h }];
       if (delay > 0) rk.push({ t: delay, x: s.x, y: s.y, h: s.h });
       chosen.forEach(function (nd, i) { rk.push({ t: delay + T.ts[i], x: nd.p[0], y: nd.p[1], h: nd.h }); });
+      var linFlag = G.length ? true : chosen.length > 1, yl = yieldRk(rk, t0, linFlag);
+      if (yl.abort) {
+        /* passage bloqué par l'adversaire : le robot reste où il est, attend, et l'étape échoue (jamais de superposition) */
+        ['A', 'B'].forEach(function (f) { pend[f] = pendBackup[f]; });
+        adv(YIELD_MAX, 'Attente ' + YIELD_MAX + ' s : passage bloqué par l\'adversaire');
+        err('Trajet vers ' + Math.round(O[0]) + ', ' + Math.round(O[1]) + ' abandonné : passage bloqué par le robot adverse (' + label + ').');
+        throw ABORT;
+      }
+      rk = yl.rk; D += yl.hold;
       if (!G.length) {
-        seg(D, label);
-        rk.slice(1).forEach(function (k) { s.x = k.x; s.y = k.y; s.h = k.h; s.t = t0 + k.t; K.push(snap(chosen.length > 1)); });
+        seg(D, label + (yl.hold ? ' · arrêt de ' + String(Math.round(yl.hold * 10) / 10).replace('.', ',') + ' s : adversaire sur le trajet' : ''));
+        rk.slice(1).forEach(function (k) { s.x = k.x; s.y = k.y; s.h = k.h; s.t = t0 + k.t; K.push(snap(yl.lin != null ? yl.lin : linFlag)); });
         s.x = O[0]; s.y = O[1]; s.h = h0 + dh; s.t = t0 + D;
         return;
       }
@@ -487,7 +556,7 @@
       var n = nv2(b.c.phi), Ob = [b.c.O[0] - 80 * n[0], b.c.O[1] - 80 * n[1]];
       /* la pierre visée n'est ignorée qu'au contact final : le trajet jusqu'au point de recul doit l'éviter */
       moveTo(Ob, b.c.h, label, null, f, seq, tm, false);
-      if (excl && excl.some(function (x) { return x.cur.k === 'gone'; })) return err('Le paquet ' + what + ' n\'est plus là (pris par l\'adversaire).');
+      if (excl && excl.some(isClaimed)) return err('Le paquet ' + what + ' n\'est plus là (pris par l\'adversaire).');
       lin(b.c.O, b.c.h, VA, 'Contact avec ' + what);
       onGrab();
       zz(f, Math.min(hc + 15, ZMAX), 'Levée de 15 mm');
@@ -497,6 +566,7 @@
     function prendrePierre(st) {
       var f = st.f, x = stones.filter(function (o) { return o.id === st.s; })[0], two = st.mode === 'deux';
       if (!x) return err('Pierre inconnue.');
+      if (isClaimed(x)) return err('La pierre ' + x.id + ' n\'est plus là (prise par l\'adversaire).');
       if (x.cur.k === 'held') return err('La pierre ' + x.id + ' est déjà tenue.');
       var g = stoneFoot(x);
       if (g.vertical) return err('La pierre ' + x.id + ' est debout : la pince ne prend des pierres seules qu\'à plat.');
@@ -686,7 +756,7 @@
         if (st.mode === 'pierre' || st.mode === 'deux') return prendrePierre(st);
         var idx = -1; PK.forEach(function (pk, i) { if (pk.id === st.p) idx = i; }); if (idx < 0) return err('Paquet inconnu.');
         var sts = stackStones(idx);
-        if (sts.some(function (x) { return x.cur.k === 'gone'; })) return err('Le paquet ' + st.p + ' n\'est plus là (pris par l\'adversaire).');
+        if (sts.some(isClaimed)) return err('Le paquet ' + st.p + ' n\'est plus là (pris par l\'adversaire).');
         if (sts.some(function (x) { return x.cur.k === 'held'; })) return err('Le paquet ' + st.p + ' est déjà tenu.');
         var tag = sts[0].tag;
         if (!sts.every(function (x) { return x.tag === tag; }) || (tag !== 'home' && sts[0].cur.geo.vertical)) return err('Les pierres de ' + st.p + ' ne sont plus empilées.');
@@ -998,21 +1068,28 @@
     };
     var program = [];
     var oppApplied = {};
-    function vanishPacket(pkId, t) {
-      var idx = -1; PK.forEach(function (pk, i) { if (pk.id === pkId) idx = i; });
-      if (idx < 0) return;
-      stackStones(idx).forEach(function (st) {
-        if (st.cur.k === 'held') return;
-        st.cur = { k: 'gone' }; st.tag = 'gone'; st.tl.push({ t: t, k: 'gone' });
+    /* pierres prises par l'adversaire : P.oppTaken associe un paquet ('P9') ou une pierre ('P9.2') à l'instant de la prise.
+       Dans un duel, l'objet est partagé et rempli par le moteur de l'autre robot au fur et à mesure de ses décisions. */
+    function claimTargets(id) {
+      if (/^P\d+$/.test(id)) { var idx = -1; PK.forEach(function (pk, i) { if (pk.id === id) idx = i; }); return idx < 0 ? [] : stackStones(idx); }
+      return stones.filter(function (x) { return x.id === id; });
+    }
+    function isClaimed(st) {
+      var tk = P.oppTaken || {};
+      return st.cur.k === 'gone' || (st.cur.k === 'home' && (tk[st.id] != null || tk[PK[st.pk].id] != null));
+    }
+    function vanish(id, tt) {
+      claimTargets(id).forEach(function (st) {
+        if (st.cur.k !== 'home') return;
+        st.cur = { k: 'gone' }; st.tag = 'gone'; st.tl.push({ t: tt, k: 'gone' });
       });
     }
     function applyOpp(t) {
       var taken = P.oppTaken || {};
       Object.keys(taken).forEach(function (id) {
         if (oppApplied[id] || t < taken[id]) return;
-        var idx = -1; PK.forEach(function (pk, i) { if (pk.id === id) idx = i; });
-        if (idx >= 0 && stackStones(idx).some(function (x) { return x.cur.k === 'held'; })) { oppApplied[id] = true; return; }
-        vanishPacket(id, taken[id]); oppApplied[id] = true;
+        oppApplied[id] = true;
+        vanish(id, taken[id]);
       });
     }
     function exec(st) {
@@ -1021,9 +1098,16 @@
       stepNo = i + 1; stepInfo.push({ t0: s.t, held: { A: heldStonesOf('A').length, B: heldStonesOf('B').length } });
       var t0 = s.t;
       applyOpp(s.t);
-      try { (steps[st.a] || function () { err('Action inconnue.'); })(st); } catch (e) { err('Erreur interne : ' + e.message); }
+      try { (steps[st.a] || function () { err('Action inconnue.'); })(st); } catch (e) { if (e !== ABORT) err('Erreur interne : ' + e.message); }
       applyOpp(s.t);
       stepInfo[i].t1 = s.t;
+      /* contact avec l'autre robot pendant cette étape (sa trajectoire est connue jusqu'ici) */
+      if (opts.oppPoseAt && s.t > t0) {
+        for (var tc = t0; tc <= s.t + 1e-9; tc += 0.1) {
+          var oc = oppAt(tc), pc = poseAtK(K, tc);
+          if (oc && oc.x != null && overlap(triPoly(pc), triPoly(oc), 1)) { err('Contact avec le robot adverse (à ' + String(Math.round(tc * 10) / 10).replace('.', ',') + ' s).'); break; }
+        }
+      }
       return { t0: t0, t1: s.t, dt: s.t - t0, err: stepInfo[i].err || null };
     }
     function attach(res) {
@@ -1044,6 +1128,8 @@
         var hit = [];
         if (!inTable(tri, -1) || (can && !inTable(can, -1))) hit.push('bord de table');
         free.forEach(function (fs) { if (overlap(tri, fs.foot, 1.5) || (can && overlap(can, fs.foot, 1.5))) hit.push(fs.id); });
+        var oR = oppAt(tt);
+        if (oR && oR.x != null && overlap(tri, triPoly(oR), 1.5)) hit.push('robot adverse');
         hs.forEach(function (h) { if (!inTable(h.foot, -1)) hit.push('bord de table'); free.forEach(function (fs) { if (heldVsFree(h, fs)) hit.push(fs.id); }); });
         var key = Array.from(new Set(hit)).join(', ');
         if (key && key !== last) collisions.push({ t: tt, with: key });
@@ -1093,7 +1179,19 @@
     function getBalls() { return balls; }
     function time() { return s.t; }
     function params() { return P; }
-    return { exec: exec, finish: finish, result: result, snapshot: snapshot, restore: restore, pose: pose, held: getHeld, stones: getStones, graal: getGraal, balls: getBalls, time: time, params: params, program: function () { return program.slice(); } };
+    function poseAtT(tt) { return poseAtK(K, tt); }
+    /* pierres posées, vues par l'autre robot comme obstacles */
+    function freeFeet() { return stones.filter(function (x) { return x.cur.k === 'free'; }).map(function (x) { var g = stoneFoot(x); return { id: x.id, foot: g.foot, top: g.top, bottom: g.bottom }; }); }
+    /* pierres qui ont quitté leur paquet pour ce robot : id -> instant de la prise */
+    function leftHome(into) {
+      stones.forEach(function (x) {
+        if (x.cur.k === 'home' || x.cur.k === 'gone' || into[x.id] != null) return;
+        for (var i = 0; i < x.tl.length; i++) if (x.tl[i].k !== 'home' && x.tl[i].k !== 'gone') { into[x.id] = x.tl[i].t; return; }
+      });
+      return into;
+    }
+    function claimed(id) { return stones.some(function (x) { return x.id === id && isClaimed(x); }); }
+    return { exec: exec, finish: finish, result: result, poseAtT: poseAtT, claimed: claimed, foreign: foreign, freeFeet: freeFeet, leftHome: leftHome, snapshot: snapshot, restore: restore, pose: pose, held: getHeld, stones: getStones, graal: getGraal, balls: getBalls, time: time, params: params, program: function () { return program.slice(); } };
   }
   function simulate(prog, P, opts) {
     var sim = makeSim(P, opts);
@@ -1112,37 +1210,87 @@
     }
     return K[K.length - 1];
   }
-  function extractOpp(R) {
-    var taken = {};
-    (R.stepInfo || []).forEach(function (inf, i) {
-      var st = R.program && R.program[i];
-      if (st && st.a === 'prendre' && !inf.err) taken[st.p] = inf.t1;
-    });
-    return {
-      taken: taken,
-      none: false,
-      result: R,
-      poseAt: function (t) { return poseAtK(R.K, t); }
-    };
+  /* ---------- duel : deux robots sur la même table ----------
+     Chaque robot a son moteur (makeSim), le jaune en repère jaune, le bleu en vrai repère bleu (programmes passés par mirrorStep).
+     Les deux moteurs partagent le monde par trois liens :
+       - les pierres : dès qu'un robot décide de prendre une pierre, elle est réservée (P.oppTaken de l'autre) ; l'autre ne peut plus la prendre
+         (« premier engagé, premier servi ») et elle disparaît de sa table à l'instant de la prise. Une pierre n'existe donc jamais chez les deux ;
+       - les pierres posées par l'un sont des obstacles pour l'autre ;
+       - les robots : lidar (attente de 2 s si l'autre est à moins de 400 mm devant), cases occupées évitées par le trajet, et contact signalé
+         s'ils se touchent quand même.
+     Ordre des décisions : le robot dont l'horloge est la plus en retard décide en premier (à égalité, le jaune). */
+  function programAgent(list) {
+    var i = 0;
+    return { next: function () { return i < list.length ? list[i++] : null; }, program: function () { return list.slice(0, i); } };
   }
+  function makeDuel(cfg) {
+    cfg = cfg || {};
+    var Py = Object.assign({}, DEF, cfg.params || {}, { team: 'yellow' });
+    var hasBlue = !!cfg.blue;
+    var Pb = hasBlue ? Object.assign({}, DEF, cfg.blue.params || {}, { team: 'blue' }) : null;
+    var tk = { yellow: {}, blue: {} }, sims = {}, programs = { yellow: [], blue: [] };
+    sims.yellow = makeSim(Object.assign({}, Py, { oppTaken: tk.blue }), {
+      skipContacts: !!cfg.skipContacts,
+      oppPoseAt: hasBlue ? function (tt) { return sims.blue.poseAtT(tt); } : null,
+      foreignFeet: hasBlue ? function () { return sims.blue.freeFeet(); } : null
+    });
+    if (hasBlue) sims.blue = makeSim(Object.assign({}, Pb, { oppTaken: tk.yellow }), {
+      skipContacts: !cfg.blue.contacts,
+      oppPoseAt: function (tt) { return sims.yellow.poseAtT(tt); },
+      foreignFeet: function () { return sims.yellow.freeFeet(); }
+    });
+    function exec(team, brick) {
+      var info = sims[team].exec(brick);
+      sims[team].leftHome(tk[team]);   /* pierres réservées pour l'autre robot */
+      programs[team].push(brick);
+      return info;
+    }
+    /* fait jouer l'adversaire tant que son horloge est en retard sur t (même règle que run : à égalité, le jaune décide d'abord) */
+    function advanceBlue(agent, upTo) {
+      if (!hasBlue || !agent) return;
+      for (var n = 0; n < 500 && sims.blue.time() < upTo; n++) {
+        var b = agent.next(sims.blue, sims.yellow);
+        if (b == null) { agent.done = true; return; }
+        exec('blue', b);
+      }
+    }
+    /* deux programmes (ou tout agent qui a next(sim, autre) -> brique | null) jusqu'à la fin */
+    function run(agents) {
+      var done = { yellow: false, blue: !hasBlue }, guard = 0;
+      while ((!done.yellow || !done.blue) && guard++ < 5000) {
+        var team = done.yellow ? 'blue' : done.blue ? 'yellow' : (sims.blue.time() < sims.yellow.time() ? 'blue' : 'yellow');
+        var b = agents[team].next(sims[team], sims[team === 'yellow' ? 'blue' : 'yellow']);
+        if (b == null) { done[team] = true; continue; }
+        exec(team, b);
+      }
+    }
+    function finish() {
+      var Ry = sims.yellow.finish(), Rb = hasBlue ? sims.blue.finish() : null;
+      if (hasBlue && !cfg.skipContacts) Ry = sims.yellow.result(true);
+      Ry.opponent = Rb;
+      Ry.oppEvents = { taken: Object.assign({}, tk.blue), none: !hasBlue };
+      Ry.programs = { yellow: programs.yellow.slice(), blue: programs.blue.slice() };
+      return Ry;
+    }
+    return { sims: sims, exec: exec, run: run, advanceBlue: advanceBlue, finish: finish, claims: tk, programs: programs, hasBlue: hasBlue };
+  }
+  /* programme jaune contre programme bleu (écrit en repère jaune, joué en miroir) */
   function simulateMatch(prog, P, opts) {
     opts = opts || {};
     var intensity = opts.intensity || (opts.adversaire && opts.adversaire.intensite) || 'aucun';
     var oppSrc = opts.opponent;
-    var Ropp = null, ev = { taken: {}, none: true, poseAt: null };
-    if (oppSrc && oppSrc.program && oppSrc.program.length && intensity !== 'aucun' && intensity !== 'none') {
-      var Pb = intensityParams(blueParams(oppSrc.params || P), intensity);
-      Ropp = simulate(oppSrc.program.map(mirrorStep), Pb, { skipContacts: true });
-      ev = extractOpp(Ropp);
-    }
-    var R = simulate(prog, Object.assign({}, P || {}, { oppTaken: ev.taken }), { skipContacts: opts.skipContacts, oppPoseAt: ev.poseAt });
-    R.opponent = Ropp;
-    R.oppEvents = { taken: ev.taken, none: ev.none };
-    return R;
+    var has = oppSrc && oppSrc.program && oppSrc.program.length && intensity !== 'aucun' && intensity !== 'none';
+    var duel = makeDuel({
+      params: P, skipContacts: opts.skipContacts,
+      blue: has ? { params: intensityParams(blueParams(oppSrc.params || P), intensity) } : null
+    });
+    var agents = { yellow: programAgent(prog || []), blue: has ? programAgent(oppSrc.program.map(mirrorStep)) : null };
+    duel.run(agents);
+    return duel.finish();
   }
   var api = {
-    VERSION: VERSION, MATCH: MATCH, DEF: DEF, simulate: simulate, simulateMatch: simulateMatch, makeSim: makeSim,
-    poseAtK: poseAtK, extractOpp: extractOpp, mirrorId: mirrorId, mirrorStep: mirrorStep, blueParams: blueParams,
+    VERSION: VERSION, MATCH: MATCH, DEF: DEF, simulate: simulate, simulateMatch: simulateMatch, makeSim: makeSim, makeDuel: makeDuel, programAgent: programAgent,
+    poseAtK: poseAtK, mirrorId: mirrorId, mirrorStep: mirrorStep, blueParams: blueParams,
     intensityParams: intensityParams, PK: PK, ZM: ZM, ZT: ZT, THRONE: THRONE, THRONE_B: THRONE_B, CASTLE: CASTLE,
     CASTLE_B: CASTLE_B, COUR: COUR, COUR_B: COUR_B, inPoly: inPoly, zoneById: zoneById, throneOf: throneOf, tx: tx, th: th
   };

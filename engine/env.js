@@ -22,22 +22,6 @@
   function mirrorStep(st) { return ENGINE.mirrorStep(st); }
   function blueParams(base) { return ENGINE.blueParams(base); }
 
-  var oppCache = {};
-  function opponentEvents(strategy, params, intensity) {
-    if (!strategy || !strategy.program || !strategy.program.length || intensity === 'aucun' || intensity === 'none') {
-      return { taken: {}, poseAt: function () { return { x: 0, y: 0, h: 0 }; }, none: true };
-    }
-    var key = (strategy.slug || strategy.name || '') + ':' + JSON.stringify(strategy.program) + ':' + (params && params.v) + ':' + intensity;
-    if (oppCache[key]) return oppCache[key];
-    var Pb = ENGINE.intensityParams(blueParams(params), intensity);
-    var R = ENGINE.simulate(strategy.program.map(mirrorStep), Pb, { skipContacts: true });
-    var ev = ENGINE.extractOpp(R);
-    ev.score = (root.SCORE && SCORE.scoreAt) ? SCORE.scoreAt(R, Pb, Math.min(R.T, MATCH)).total : 0;
-    ev.errors = R.errors.length;
-    oppCache[key] = ev;
-    return ev;
-  }
-
   function qualify(strategy, params) {
     if (!strategy || !strategy.program || !strategy.program.length) return { ok: false, score: 0, errors: 1 };
     var R = ENGINE.simulate(strategy.program, Object.assign({}, ENGINE.DEF, params || {}), { skipContacts: false });
@@ -62,6 +46,15 @@
     return eligible[Math.floor(rng() * eligible.length)];
   }
 
+  /* Repère du cerveau : un robot bleu voit la table en miroir (x -> 3000 - x, cap -> 180 - cap, M6–M10 vus comme M1–M5...). */
+  function teamOf(sim) { return (sim.params().team) || 'yellow'; }
+  function ownPose(sim) {
+    var p = sim.pose();
+    if (teamOf(sim) !== 'blue') return p;
+    var q = Object.assign({}, p); q.x = 3000 - p.x; q.h = 180 - p.h; return q;
+  }
+  function ownId(sim, id) { return teamOf(sim) === 'blue' ? ENGINE.mirrorId(id) : id; }
+
   function constructionsState(sim) {
     var R = sim.result(false);
     var o = SCORE.outcome(R, sim.params(), sim.time());
@@ -74,9 +67,11 @@
     return { murs: murs, tours: tours, o: o };
   }
 
+  /* oppPose : position de l'adversaire en vrai repère de la table ; elle est présentée dans le repère du cerveau */
   function observe(sim, groups, belief, oppPose) {
     groups = groups || GROUPS.map(function (g) { return g.id; });
-    var p = sim.pose(), t = sim.time(), held = sim.held(), graal = sim.graal().cur, balls = sim.balls();
+    var p = ownPose(sim), t = sim.time(), held = sim.held(), graal = sim.graal().cur, balls = sim.balls();
+    var blue = teamOf(sim) === 'blue';
     var out = [];
     function push() { for (var i = 0; i < arguments.length; i++) out.push(arguments[i]); }
     groups.forEach(function (id) {
@@ -92,13 +87,13 @@
         ['A', 'B'].forEach(function (f) {
           var h = held[f];
           var n = h && h.stack ? h.stack.filter(function (x) { return x; }).length : 0;
-          push(n / 3, (h && !h.graal && p[f].rot === 0) ? 1 : 0, h && h.graal ? 1 : 0);
+          push(n / 3, (h && !h.graal && sim.pose()[f].rot === 0) ? 1 : 0, h && h.graal ? 1 : 0);
         });
       }
       if (id === 'constructions') {
         var c = constructionsState(sim);
-        ACTIONS.MURS.forEach(function (z) { push(c.murs[z] || 0); });
-        ACTIONS.TOURS.forEach(function (z) { push(c.tours[z] || 0); });
+        ACTIONS.MURS.forEach(function (z) { push(c.murs[ownId(sim, z)] || 0); });
+        ACTIONS.TOURS.forEach(function (z) { push(c.tours[ownId(sim, z)] || 0); });
       }
       if (id === 'graal') {
         var home = graal.k === 'home' ? 1 : 0, heldG = graal.k === 'held' ? 1 : 0, posed = (graal.k === 'free' || graal.k === 'ride') ? 1 : 0;
@@ -113,7 +108,7 @@
       if (id === 'boulets') push(balls.shots ? 1 : 0);
       if (id === 'adversaire') {
         var o = oppPose || { x: 0, y: 0 };
-        push((o.x || 0) / 3000, (o.y || 0) / 2000);
+        push(((blue ? 3000 - (o.x || 0) : (o.x || 0))) / 3000, (o.y || 0) / 2000);
       }
     });
     return out;
@@ -128,8 +123,101 @@
     if (step.a === 'prendre') belief.packs[step.p] = info.err ? 0 : 0;
   }
 
-  function clipTime(sim) {
-    return sim.time() >= MATCH;
+  /* masque « en direct » : pas de trône tant qu'il reste à jouer, et pas avant 80 s si les boulets sont encore possibles */
+  function liveMask(catalogue, mask, t) {
+    var m = mask.slice(), useful = false, i, ballsIn = false;
+    for (i = 0; i < m.length; i++) if (m[i] && catalogue[i].a !== 'trone') useful = true;
+    for (i = 0; i < catalogue.length; i++) if (catalogue[i].a === 'boulets') ballsIn = true;
+    if ((useful && t < 88) || (ballsIn && !useful && t < 80)) {
+      for (i = 0; i < catalogue.length; i++) if (catalogue[i].a === 'trone') m[i] = 0;
+    }
+    return m;
+  }
+
+  function chooserFromLayers(layers, acts) {
+    acts = acts || [];
+    return function (obs, mask) {
+      var h = obs.slice(), i, j, k;
+      for (i = 0; i < layers.length; i++) {
+        var w = layers[i].w, b = layers[i].b, next = [];
+        for (j = 0; j < b.length; j++) {
+          var s = b[j];
+          for (k = 0; k < h.length; k++) s += h[k] * w[k][j];
+          if (i < layers.length - 1) {
+            var name = acts[i] || 'relu';
+            if (name === 'tanh') s = Math.tanh(s);
+            else if (name === 'sigmoid') s = 1 / (1 + Math.exp(-Math.max(-30, Math.min(30, s))));
+            else s = s > 0 ? s : 0;
+          }
+          next[j] = s;
+        }
+        h = next;
+      }
+      var best = -1, bestv = -1e99;
+      for (i = 0; i < h.length; i++) if (mask[i] && h[i] > bestv) { bestv = h[i]; best = i; }
+      if (best < 0) { for (i = 0; i < mask.length; i++) if (mask[i]) return i; }
+      return best;
+    };
+  }
+
+  /* Pilote d'un cerveau pour le robot adverse (bleu) : même règles de jeu que le robot du joueur.
+     brain = { choose(obs, mask) | layers + acts, entrees, familles }.
+     next(sim, otherSim) renvoie la brique à jouer dans le vrai repère du robot (miroir déjà appliqué) ;
+     program() renvoie ce que le cerveau a décidé, dans son propre repère (rejouable comme une stratégie). */
+  function brainAgent(brain, scenarioSeed) {
+    var groups = brain.entrees || GROUPS.map(function (g) { return g.id; });
+    var catalogue = ACTIONS.filterByFamilles(brain.familles || ACTIONS.FAMILLES.map(function (f) { return f.id; }));
+    var choose = brain.choose || chooserFromLayers(brain.layers, brain.acts);
+    var belief = makeBelief(), last = -1, same = 0, n = 0, rec = [];
+    function wait(sim, sec) { var b = { a: 'attendreJusqua', sec: sec }; rec.push(b); return b; }
+    return {
+      kind: 'cerveau',
+      next: function (sim, other) {
+        var t = sim.time();
+        if (t >= MATCH - 0.05 || n >= 80) return null;
+        var mask = ACTIONS.mask(sim, catalogue);
+        if (!mask.some(function (x) { return x; })) catalogue.forEach(function (a, i) { if (a.a === 'trone') mask[i] = 1; });
+        var m = liveMask(catalogue, mask, t);
+        if (same >= 2 && last >= 0 && m.some(function (x, i) { return x && i !== last; })) m[last] = 0;
+        if (!m.some(function (x) { return x; })) {
+          if (t < 80) return wait(sim, 80);
+          return wait(sim, MATCH);
+        }
+        var opp = other ? other.poseAtT(t) : null;
+        var idx = choose(observe(sim, groups, belief, opp), m);
+        if (idx == null || idx < 0 || !m[idx]) return null;
+        if (idx === last) same++; else { same = 1; last = idx; }
+        n++;
+        var brick = ACTIONS.toProgramStep(catalogue[idx], sim);
+        updateBelief(belief, brick, { err: null });
+        rec.push(brick);
+        return teamOf(sim) === 'blue' ? mirrorStep(brick) : brick;
+      },
+      program: function () { return rec.slice(); }
+    };
+  }
+
+  /* Adversaire d'un scénario : une stratégie ({ program, params }) ou un cerveau ({ brain }), avec une intensité. */
+  function opponentSetup(spec, P, intensity) {
+    if (!spec || intensity === 'aucun' || intensity === 'none') return null;
+    var params = ENGINE.intensityParams(blueParams(spec.params || P), intensity);
+    if (spec.brain) return { params: params, agent: brainAgent(spec.brain), spec: spec };
+    if (!spec.program || !spec.program.length) return null;
+    var list = spec.program, agent = ENGINE.programAgent(list.map(mirrorStep)), played = agent.program;
+    agent.kind = 'strategie';
+    agent.program = function () { return list.slice(0, played().length); };   /* repère de la stratégie, pas le miroir */
+    return { params: params, agent: agent, spec: spec };
+  }
+
+  /* Programme du joueur contre un adversaire (stratégie ou cerveau) : le moteur joue les deux robots et renvoie
+     le résultat ainsi que ce que l'adversaire a joué (repère de sa stratégie, rejouable par simulateMatch). */
+  function playProgram(prog, params, spec, intensity, skipContacts) {
+    var P = Object.assign({}, ENGINE.DEF, params || {});
+    var op = opponentSetup(spec, P, intensity || 'realiste');
+    var duel = ENGINE.makeDuel({ params: P, skipContacts: !!skipContacts, blue: op ? { params: op.params } : null });
+    duel.run({ yellow: ENGINE.programAgent(prog || []), blue: op ? op.agent : null });
+    var R = duel.finish();
+    return { result: R, program: (prog || []).slice(), opponentProgram: op ? op.agent.program() : [] };
   }
 
   function create(opts) {
@@ -141,11 +229,14 @@
     var intensity = (opts.adversaire && opts.adversaire.intensite) || 'aucun';
     var skipContacts = opts.mode === 'rapide' || opts.skipContacts;
     var onError = opts.onError || 'penalite'; /* penalite | fin */
-    var sim = null, belief = null, opp = null, lastScore = 0, done = false, history = [];
+    var duel = null, sim = null, belief = null, opp = null, lastScore = 0, done = false, history = [];
 
-    function oppPose() { return opp && opp.poseAt ? opp.poseAt(sim.time()) : { x: 0, y: 0 }; }
+    /* l'adversaire joue toutes les décisions qui précèdent la nôtre (horloge en retard sur la nôtre) */
+    function syncOpp(upTo) { if (opp) duel.advanceBlue(opp.agent, upTo == null ? sim.time() : upTo); }
+    function oppPose() { return duel && duel.hasBlue ? duel.sims.blue.poseAtT(sim.time()) : { x: 0, y: 0 }; }
 
     function state() {
+      syncOpp();
       var m = ACTIONS.mask(sim, catalogue);
       if (!m.some(function (x) { return x; })) {
         catalogue.forEach(function (a, i) { if (a.a === 'trone') m[i] = 1; });
@@ -164,18 +255,19 @@
       scenario = scenario || {};
       var P = Object.assign({}, params, scenario.params || {});
       if (scenario.seed != null) P.seed = scenario.seed;
-      opp = opponentEvents(scenario.opponent || opts.opponent, P, scenario.intensite || intensity);
-      if (opp.none) P.oppTaken = {};
-      else P.oppTaken = Object.assign({}, opp.taken);
-      sim = ENGINE.makeSim(P, { skipContacts: skipContacts, oppPoseAt: opp.none ? null : function (t) { return opp.poseAt(t); } });
+      opp = opponentSetup(scenario.opponent || opts.opponent, P, scenario.intensite || intensity);
+      duel = ENGINE.makeDuel({ params: P, skipContacts: skipContacts, blue: opp ? { params: opp.params } : null });
+      sim = duel.sims.yellow;
       belief = makeBelief();
       done = false;
       history = [];
-      lastScore = SCORE.scoreAt(sim.result(false), P, 0).total;
+      lastScore = SCORE.scoreAt(sim.result(false), sim.params(), 0).total;
       var s = state();
       s.reset = true;
       return s;
     }
+
+    function exec(brick) { return duel.exec('yellow', brick); }
 
     function step(index) {
       if (!sim) reset();
@@ -188,10 +280,7 @@
       }
       var brick = ACTIONS.toProgramStep(act, sim);
       var t0 = sim.time();
-      var info = sim.exec(brick);
-      if (sim.time() > MATCH) {
-        /* la brique est conservée : le score sera lu à 100 s */
-      }
+      var info = exec(brick);
       updateBelief(belief, brick, info);
       history.push(brick);
       var t1 = Math.min(sim.time(), MATCH);
@@ -225,27 +314,20 @@
     function finishWait(sec) {
       if (!sim || sim.time() >= sec - 0.05) return;
       var brick = { a: 'attendreJusqua', sec: sec };
-      sim.exec(brick);
+      syncOpp();
+      exec(brick);
       history.push(brick);
       var t1 = Math.min(sim.time(), MATCH);
       lastScore = SCORE.scoreAt(sim.result(false), sim.params(), t1).total;
       if (t1 >= MATCH) done = true;
     }
-    function liveMask(st) {
-      var m = st.mask.slice(), t = st.t, useful = false, i, ballsIn = false;
-      for (i = 0; i < m.length; i++) if (m[i] && catalogue[i].a !== 'trone') useful = true;
-      for (i = 0; i < catalogue.length; i++) if (catalogue[i].a === 'boulets') ballsIn = true;
-      /* pas de trône tant qu'il reste à jouer, et pas avant 80 s si les boulets sont encore possibles */
-      if ((useful && t < 88) || (ballsIn && !useful && t < 80)) {
-        for (i = 0; i < catalogue.length; i++) if (catalogue[i].a === 'trone') m[i] = 0;
-      }
-      return m;
-    }
+    /* le match se termine : l'adversaire joue ce qui lui reste jusqu'à 100 s (pour que le rejeu soit complet) */
+    function endMatch() { syncOpp(MATCH); }
     /* Le réseau décide après chaque brique, jusqu'à 100 s. Ce n'est pas un programme figé. */
     function play(chooseFn, scenario) {
       var st = reset(scenario || {}), n = 0, last = -1, same = 0, max = 80;
       while (!st.done && n < max && sim.time() < MATCH) {
-        var m = liveMask(st);
+        var m = liveMask(catalogue, st.mask, st.t);
         if (same >= 2 && last >= 0 && m.some(function (x, i) { return x && i !== last; })) m[last] = 0;
         if (!m.some(function (x) { return x; })) {
           if (sim.time() < 80) { finishWait(80); st = state(); n++; continue; }
@@ -259,6 +341,7 @@
       }
       if (sim && sim.time() < MATCH - 0.05) finishWait(MATCH);
       done = true;
+      endMatch();
       return state();
     }
     function imitate(program, scenario) {
@@ -266,14 +349,15 @@
       var pairs = [];
       (program || []).forEach(function (st) {
         if (!st || st.a === 'attendre' || st.a === 'attendreJusqua') {
-          if (sim && st) sim.exec(st);
+          if (sim && st) { syncOpp(); exec(st); }
           return;
         }
+        syncOpp();
         var idx = ACTIONS.indexOfStep(st, sim, catalogue);
-        if (idx < 0) { sim.exec(st); history.push(st); return; }
+        if (idx < 0) { exec(st); history.push(st); return; }
         var s = state();
         pairs.push({ obs: s.obs, action: idx, mask: s.mask });
-        var info = sim.exec(st);
+        var info = exec(st);
         updateBelief(belief, st, info);
         history.push(st);
         var t1 = Math.min(sim.time(), MATCH);
@@ -284,19 +368,37 @@
       return { pairs: pairs, score: sc.total, detail: sc.detail, T: sim.time(), n: pairs.length, start: s0 };
     }
     function program() { return history.slice(); }
+    /* ce que l'adversaire a joué, dans son repère (rejouable comme une stratégie par simulateMatch) */
+    function opponentProgram() { return opp ? opp.agent.program() : []; }
     function result() {
       if (!sim) return null;
       var R = sim.result(!skipContacts);
-      if (opp && !opp.none && opp.result) R.opponent = opp.result;
+      if (duel.hasBlue) {
+        R.opponent = duel.sims.blue.result(false);
+        R.oppEvents = { taken: Object.assign({}, duel.claims.blue), none: false };
+      }
       return R;
     }
-    function snapshot() { return sim ? { sim: sim.snapshot(), belief: JSON.parse(JSON.stringify(belief)), lastScore: lastScore, done: done, history: JSON.parse(JSON.stringify(history)) } : null; }
+    function snapshot() {
+      return sim ? {
+        sim: sim.snapshot(), blue: duel.hasBlue ? duel.sims.blue.snapshot() : null,
+        claims: JSON.parse(JSON.stringify(duel.claims)), programs: JSON.parse(JSON.stringify(duel.programs)),
+        belief: JSON.parse(JSON.stringify(belief)), lastScore: lastScore, done: done, history: JSON.parse(JSON.stringify(history))
+      } : null;
+    }
     function restore(snap) {
       if (!sim) reset();
-      sim.restore(snap.sim); belief = snap.belief; lastScore = snap.lastScore; done = snap.done; history = snap.history;
+      sim.restore(snap.sim);
+      if (snap.blue && duel.hasBlue) duel.sims.blue.restore(snap.blue);
+      ['yellow', 'blue'].forEach(function (k) {
+        Object.keys(duel.claims[k]).forEach(function (id) { delete duel.claims[k][id]; });
+        Object.keys(snap.claims[k] || {}).forEach(function (id) { duel.claims[k][id] = snap.claims[k][id]; });
+        duel.programs[k] = snap.programs[k];
+      });
+      belief = snap.belief; lastScore = snap.lastScore; done = snap.done; history = snap.history;
     }
 
-    return { reset: reset, step: step, play: play, imitate: imitate, program: program, result: result, snapshot: snapshot, restore: restore, catalogue: catalogue, groups: groups, nInputs: nInputs(groups), nOutputs: catalogue.length };
+    return { reset: reset, step: step, play: play, imitate: imitate, program: program, opponentProgram: opponentProgram, result: result, snapshot: snapshot, restore: restore, catalogue: catalogue, groups: groups, nInputs: nInputs(groups), nOutputs: catalogue.length };
   }
 
   var EXAMPLE = [
@@ -311,7 +413,7 @@
     { a: 'trone' }
   ];
 
-  var api = { MATCH: MATCH, GROUPS: GROUPS, nInputs: nInputs, create: create, mirrorId: mirrorId, mirrorStep: mirrorStep, blueParams: blueParams, opponentEvents: opponentEvents, pickOpponent: pickOpponent, qualify: qualify, EXAMPLE: EXAMPLE };
+  var api = { MATCH: MATCH, GROUPS: GROUPS, nInputs: nInputs, create: create, mirrorId: mirrorId, mirrorStep: mirrorStep, blueParams: blueParams, pickOpponent: pickOpponent, chooserFromLayers: chooserFromLayers, brainAgent: brainAgent, opponentSetup: opponentSetup, playProgram: playProgram, qualify: qualify, EXAMPLE: EXAMPLE };
   root.ENV = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

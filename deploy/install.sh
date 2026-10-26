@@ -37,6 +37,10 @@ install -m 644 "$SRC/connexion/index.html" "$WEB/connexion/index.html"
 install -m 644 "$SRC/plateau/index.html" "$SRC/plateau/app.js" "$SRC/plateau/table.jpg" "$WEB/plateau/"
 install -m 644 "$SRC/cerveau/index.html" "$SRC/cerveau/app.js" "$SRC/cerveau/net.js" "$WEB/cerveau/"
 install -m 644 "$SRC/engine/geom.js" "$SRC/engine/engine.js" "$SRC/engine/score.js" "$SRC/engine/actions.js" "$SRC/engine/env.js" "$WEB/engine/"
+# Version dans les adresses des scripts (app.js?v=...) : à chaque mise à jour, le navigateur
+# et Cloudflare chargent forcément les nouveaux fichiers.
+VER="$(git -C "$SRC" rev-parse --short HEAD 2>/dev/null || date +%Y%m%d%H%M%S)"
+sed -i "s/__V__/$VER/g" "$WEB/index.html" "$WEB/point-counter/index.html" "$WEB/connexion/index.html" "$WEB/plateau/index.html" "$WEB/cerveau/index.html"
 rm -rf /var/www/point-counter
 
 # API (connexion, stratégies, cerveaux, entraînements)
@@ -75,4 +79,5 @@ if [ -n "${CF_TUNNEL_TOKEN:-}" ]; then
   fi
 fi
 
+echo "Version installée : $VER"
 echo "OK : site ICAM LOT servi sur http://$(hostname -I | awk '{print $1}')/"
