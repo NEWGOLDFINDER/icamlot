@@ -413,7 +413,13 @@
     { a: 'trone' }
   ];
 
-  var api = { MATCH: MATCH, GROUPS: GROUPS, nInputs: nInputs, create: create, mirrorId: mirrorId, mirrorStep: mirrorStep, blueParams: blueParams, pickOpponent: pickOpponent, chooserFromLayers: chooserFromLayers, brainAgent: brainAgent, opponentSetup: opponentSetup, playProgram: playProgram, qualify: qualify, EXAMPLE: EXAMPLE };
+  var api = {
+    MATCH: MATCH, GROUPS: GROUPS, nInputs: nInputs, create: create, mirrorId: mirrorId,
+    mirrorStep: mirrorStep, blueParams: blueParams, pickOpponent: pickOpponent,
+    chooserFromLayers: chooserFromLayers, brainAgent: brainAgent, opponentSetup: opponentSetup,
+    playProgram: playProgram, qualify: qualify, EXAMPLE: EXAMPLE,
+    observe: observe, makeBelief: makeBelief, updateBelief: updateBelief, liveMask: liveMask
+  };
   root.ENV = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
