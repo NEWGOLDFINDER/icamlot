@@ -1102,6 +1102,7 @@
     sel_.value = cur || '';
     document.querySelectorAll('#pOppInt button').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.i === oppChoice.intensity)); });
     $('pOppInt').hidden = !sel_.value;
+    if (typeof renderMatch === 'function') renderMatch();
   }
   /* points et durée de chaque stratégie enregistrée : simulées ici, une à la fois, dans un worker à part */
   var statCache = {}, statQ = [], statBusy = false, statWorker = null, statId = 0;
@@ -1187,7 +1188,7 @@
   function loadStrat(slug) {
     delArm = '';
     api('GET', API + '/' + slug).then(function (j) {
-      setPilotMode('strategie');
+      setPilotMode('strategie'); oursKind = 'strategie';
       var n = importObj(j); setCurrent(j.name); markSaved(true); renderStrats(); closeDrawer();
       time = 0; setPlaying(true); toast('« ' + j.name + ' » ouverte (' + n + ' étapes)', 'ok');
     }, function (e) { toast('Impossible d\'ouvrir : ' + e.message, 'bad'); });
@@ -1230,7 +1231,7 @@
       brains = []; brainsLoaded = true; fillOppSelect(); $('brains').innerHTML = '<li class="emptyl bad">Serveur des cerveaux injoignable.</li>';
     });
   }
-  function loadBrain(slug) {
+  function loadBrain(slug, keepDrawer) {
     api('GET', '../api/cerveaux/' + slug).then(function (j) {
       return api('GET', '../api/cerveaux/' + slug + '/poids').then(function (w) {
         return { j: j, w: w };
@@ -1244,7 +1245,8 @@
       var nOut = BrainActs.filterByFamilles(familles).length;
       var layers = (w && w.layers) ? w.layers : window.NET.randomWeights(nIn, couches, nOut, j.graine || 1);
       setPilotMode('cerveau', { slug: slug, name: j.name, layers: layers, cfg: j });
-      closeDrawer();
+      if (!keepDrawer) closeDrawer();
+      oursKind = 'cerveau'; renderMatch();
       toast(w && w.layers
         ? '« ' + j.name + ' » joue en direct'
         : '« ' + j.name + ' » sans poids entraînés : décisions aléatoires parmi les actions valides', w && w.layers ? 'ok' : 'bad');
@@ -1252,6 +1254,65 @@
       recompute();
     }, function (e) { toast('Impossible d\'ouvrir le cerveau : ' + e.message, 'bad'); });
   }
+  /* ---------- Match : qui pilote chaque robot ---------- */
+  var oursKind = 'strategie';
+  function oppKind() { var s = oppChoice.slug; return !s ? 'aucun' : s === 'exemple' ? 'exemple' : s.indexOf('cerveau:') === 0 ? 'cerveau' : 'strategie'; }
+  function fillSel(sel_, list, cur, placeholder) {
+    var h = placeholder ? '<option value="">' + esc(placeholder) + '</option>' : '';
+    list.forEach(function (o) { h += '<option value="' + esc(o[0]) + '">' + esc(o[1]) + '</option>'; });
+    sel_.innerHTML = h; sel_.value = cur || '';
+  }
+  function setPressed(id, attr, val) { document.querySelectorAll('#' + id + ' button').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset[attr] === val)); }); }
+  function renderMatch() {
+    if (!$('mOurSel')) return;
+    oursKind = pilot.mode === 'cerveau' ? 'cerveau' : oursKind;
+    setPressed('mOurKind', 'k', oursKind);
+    if (oursKind === 'cerveau') {
+      fillSel($('mOurSel'), brains.map(function (b) { return [b.slug, b.name + (b.entraine ? '' : ' (non entraîné)')]; }), pilot.mode === 'cerveau' ? pilot.slug : '', brains.length ? '— choisir un cerveau —' : 'Aucun cerveau enregistré');
+      $('mOurNote').textContent = pilot.mode === 'cerveau' ? 'Il décide en direct jusqu\'à 100 s ; ses décisions apparaissent dans l\'onglet Décisions.' : 'Choisis un cerveau pour qu\'il joue seul.';
+    } else {
+      fillSel($('mOurSel'), strats.map(function (s) { return [s.slug, s.name]; }), slugify(current || ''), 'Programme en cours' + (current ? ' (' + current + ')' : ' (sans nom)'));
+      $('mOurNote').textContent = 'La liste d\'étapes de l\'onglet Programme, ou une stratégie enregistrée.';
+    }
+    var k = oppKind(); setPressed('mOppKind', 'k', k);
+    $('mOppSel').hidden = k === 'aucun' || k === 'exemple';
+    $('mOppInt').hidden = k === 'aucun';
+    setPressed('mOppInt', 'i', oppChoice.intensity);
+    if (k === 'cerveau') fillSel($('mOppSel'), brains.map(function (b) { return [b.slug, b.name + (b.entraine ? '' : ' (non entraîné)')]; }), oppChoice.slug.slice(8), brains.length ? '' : 'Aucun cerveau enregistré');
+    if (k === 'strategie') fillSel($('mOppSel'), strats.map(function (s) { return [s.slug, s.name]; }), oppChoice.slug, strats.length ? '' : 'Aucune stratégie enregistrée');
+    var bm = $('bMatch'); if (bm) bm.title = 'Match · jaune : ' + (pilot.mode === 'cerveau' ? 'cerveau ' + pilot.name : 'stratégie') + ' · bleu : ' + (k === 'aucun' ? 'aucun' : (currentOpponentName() || k));
+  }
+  function setOpp(slug) { oppChoice.slug = slug; saveOppChoice(); fillOppSelect(); renderMatch(); recompute(); }
+  $('bMatch').addEventListener('click', function () { if (!brains.length) refreshBrains(); renderMatch(); showDrawer('dMatch'); });
+  document.querySelectorAll('#mOurKind button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      oursKind = b.dataset.k;
+      if (oursKind === 'strategie' && pilot.mode === 'cerveau') { setPilotMode('strategie'); loadLocalDraft(); recompute(); }
+      renderMatch();
+    });
+  });
+  $('mOurSel').addEventListener('change', function () {
+    var v = $('mOurSel').value;
+    if (oursKind === 'cerveau') { if (v) loadBrain(v, true); }
+    else if (v) loadStrat(v);
+  });
+  document.querySelectorAll('#mOppKind button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var k = b.dataset.k;
+      if (k === 'aucun') return setOpp('');
+      if (k === 'exemple') return setOpp('exemple');
+      if (k === 'strategie') return setOpp(strats.length ? strats[0].slug : '');
+      if (!brains.length) return refreshBrains().then(function () { setOpp(brains.length ? 'cerveau:' + brains[0].slug : ''); });
+      setOpp('cerveau:' + brains[0].slug);
+    });
+  });
+  $('mOppSel').addEventListener('change', function () { var v = $('mOppSel').value; if (v) setOpp(oppKind() === 'cerveau' ? 'cerveau:' + v : v); });
+  document.querySelectorAll('#mOppInt button').forEach(function (b) {
+    b.addEventListener('click', function () { oppChoice.intensity = b.dataset.i; saveOppChoice(); fillOppSelect(); renderMatch(); recompute(); });
+  });
+  $('mGo').addEventListener('click', function () { closeDrawer(); time = 0; setPlaying(true); recompute(); });
+  function loadLocalDraft() { var j = loadLocal(); if (j) { prog = j.program; params = Object.assign({}, DEF, j.params || {}); writeParams(); } sel = -1; renderSteps(); }
+
   /* cerveau adverse : même réseau qu'un cerveau du joueur, mais il pilote le robot bleu (repère miroir) */
   function loadOppBrain(slug) {
     return api('GET', '../api/cerveaux/' + slug).then(function (j) {

@@ -187,6 +187,12 @@ kbd { font-family: var(--font-mono); font-size: 12px; background: var(--panel-2)
 /* ---------- panneaux latéraux ---------- */
 .scrim { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 190; }
 .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(440px, 100%); background: var(--panel); border-left: 1px solid var(--line); z-index: 200; display: flex; flex-direction: column; transform: translateX(100%); transition: transform 0.2s ease; visibility: hidden; }
+.mcard { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); }
+.mcard h3 { margin: 0; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+.mcard select { width: 100%; text-align: left; font-family: inherit; }
+.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.dot.y { background: #f2b600; } .dot.b { background: #3a6fd0; }
+.ghostlink { color: var(--muted); font-size: 13px; align-self: center; }
 .drawer.open { transform: none; visibility: visible; }
 .dhead { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--line); }
 .dhead h2 { margin: 0; font-size: 16px; font-weight: 700; }
@@ -294,6 +300,7 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
       <span class="state" id="state">non enregistrée</span>
     </form>
     <div class="tbtns">
+      <button type="button" class="primary" id="bMatch" title="Choisir qui pilote chaque robot : stratégie ou cerveau"><i class="fa-solid fa-flag-checkered"></i><span class="lbl">Match</span></button>
       <button type="button" id="bStrats" title="Stratégies écrites à l'avance"><i class="fa-solid fa-folder-open"></i><span class="lbl">Stratégies</span></button>
       <button type="button" id="bBrains" title="Cerveaux : le réseau décide en direct"><i class="fa-solid fa-brain"></i><span class="lbl">Cerveaux</span></button>
       <button type="button" class="primary" id="bSave" title="Enregistrer (Ctrl+S)"><i class="fa-solid fa-floppy-disk"></i><span class="lbl">Enregistrer</span></button>
@@ -408,6 +415,41 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
         <button type="button" id="bLoadText" style="margin-top:6px">Charger ce texte</button>
       </details>
     </div>
+  </div>
+</section>
+
+<!-- Panneau : match (qui pilote chaque robot) -->
+<section class="drawer" id="dMatch" aria-label="Match">
+  <div class="dhead"><h2>Match</h2><button type="button" class="ghost" data-close aria-label="Fermer"><i class="fa-solid fa-xmark"></i></button></div>
+  <div class="dbody">
+    <p class="note">Choisis qui pilote chaque robot. Une <b>stratégie</b> est une liste d'étapes écrite à l'avance ; un <b>cerveau</b> est un réseau qui décide en direct d'après l'état de la table. Les deux robots jouent en même temps sur la même table.</p>
+    <div class="mcard">
+      <h3><span class="dot y"></span> Notre robot (jaune)</h3>
+      <div class="segc" id="mOurKind" role="group" aria-label="Pilote de notre robot">
+        <button type="button" data-k="strategie">Stratégie</button>
+        <button type="button" data-k="cerveau">Cerveau</button>
+      </div>
+      <select id="mOurSel" aria-label="Choix pour notre robot"></select>
+      <p class="note" id="mOurNote"></p>
+    </div>
+    <div class="mcard">
+      <h3><span class="dot b"></span> Adversaire (bleu)</h3>
+      <div class="segc" id="mOppKind" role="group" aria-label="Pilote de l'adversaire">
+        <button type="button" data-k="aucun">Aucun</button>
+        <button type="button" data-k="exemple">Exemple</button>
+        <button type="button" data-k="strategie">Stratégie</button>
+        <button type="button" data-k="cerveau">Cerveau</button>
+      </div>
+      <select id="mOppSel" aria-label="Choix pour l'adversaire"></select>
+      <div class="segc" id="mOppInt" role="group" aria-label="Intensité de l'adversaire">
+        <button type="button" data-i="faible">Faible</button>
+        <button type="button" data-i="realiste">Réaliste</button>
+        <button type="button" data-i="agressif">Agressif</button>
+      </div>
+      <p class="note">L'intensité règle la vitesse du robot adverse. Son cerveau voit la table en miroir : un cerveau entraîné côté jaune joue côté bleu sans réentraînement.</p>
+    </div>
+    <div class="crow"><button type="button" class="primary" id="mGo"><i class="fa-solid fa-play"></i> Lancer le match</button>
+      <a href="../cerveau/" class="ghostlink">Entraîner un cerveau (Atelier)</a></div>
   </div>
 </section>
 
