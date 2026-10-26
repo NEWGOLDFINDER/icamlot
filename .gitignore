@@ -1,3 +1,8 @@
-.data/
+# Données locales temporaires et sessions
+.data/session.key
+.data/trainings/
+
+# Python bytecode
 __pycache__/
 *.pyc
+trainer/__pycache__/

@@ -1,0 +1,1047 @@
+
+pytorch2.9.1+cu128:Œ£
+æ
+obs
+val_15
+val_19
+val_15
+val_15slice_2node_slice_2"SliceJr
+	namespacee: trainer.models.Pi5ActorWrapper/encoder: trainer.models.FactorizedEncoder/slice_2: aten.slice.TensorJ}
+pkg.torch.onnx.class_hierarchy[['trainer.models.Pi5ActorWrapper', 'trainer.models.FactorizedEncoder', 'aten.slice.Tensor']Jè
+pkg.torch.onnx.fx_nodeu%slice_2 : [num_users=1] = call_function[target=torch.ops.aten.slice.Tensor](args = (%slice_1, 1, 1, 5), kwargs = {})J8
+pkg.torch.onnx.name_scopes['', 'encoder', 'slice_2']Jπ
+pkg.torch.onnx.stack_traceöFile "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 177, in forward
+    feat = self.encoder(obs)
+  File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 63, in forward
+    geo = torch.cat([x[:, 1:5], x[:, 35:37]], dim=1)
+¿
+obs
+val_37
+val_41
+val_15
+val_15slice_4node_slice_4"SliceJr
+	namespacee: trainer.models.Pi5ActorWrapper/encoder: trainer.models.FactorizedEncoder/slice_4: aten.slice.TensorJ}
+pkg.torch.onnx.class_hierarchy[['trainer.models.Pi5ActorWrapper', 'trainer.models.FactorizedEncoder', 'aten.slice.Tensor']Jë
+pkg.torch.onnx.fx_nodew%slice_4 : [num_users=1] = call_function[target=torch.ops.aten.slice.Tensor](args = (%slice_3, 1, 35, 37), kwargs = {})J8
+pkg.torch.onnx.name_scopes['', 'encoder', 'slice_4']Jπ
+pkg.torch.onnx.stack_traceöFile "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 177, in forward
+    feat = self.encoder(obs)
+  File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 63, in forward
+    geo = torch.cat([x[:, 1:5], x[:, 35:37]], dim=1)
+®
+slice_2
+slice_4catnode_cat"Concat*
+axis†Jm
+	namespace`: trainer.models.Pi5ActorWrapper/encoder: trainer.models.FactorizedEncoder/cat: aten.cat.defaultJ|
+pkg.torch.onnx.class_hierarchyZ['trainer.models.Pi5ActorWrapper', 'trainer.models.FactorizedEncoder', 'aten.cat.default']Jê
+pkg.torch.onnx.fx_nodev%cat : [num_users=1] = call_function[target=torch.ops.aten.cat.default](args = ([%slice_2, %slice_4], 1), kwargs = {})J4
+pkg.torch.onnx.name_scopes['', 'encoder', 'cat']Jπ
+pkg.torch.onnx.stack_traceöFile "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 177, in forward
+    feat = self.encoder(obs)
+  File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 63, in forward
+    geo = torch.cat([x[:, 1:5], x[:, 35:37]], dim=1)
+¬
+obs
+val_19
+val_62
+val_15
+val_15slice_6node_slice_6"SliceJr
+	namespacee: trainer.models.Pi5ActorWrapper/encoder: trainer.models.FactorizedEncoder/slice_6: aten.slice.TensorJ}
+pkg.torch.onnx.class_hierarchy[['trainer.models.Pi5ActorWrapper', 'trainer.models.FactorizedEncoder', 'aten.slice.Tensor']Jê
+pkg.torch.onnx.fx_nodev%slice_6 : [num_users=1] = call_function[target=torch.ops.aten.slice.Tensor](args = (%slice_5, 1, 5, 15), kwargs = {})J8
+pkg.torch.onnx.name_scopes['', 'encoder', 'slice_6']Jº
+pkg.torch.onnx.stack_traceùFile "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 177, in forward
+    feat = self.encoder(obs)
+  File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 65, in forward
+    table = torch.cat([x[:, 5:15], x[:, 21:34]], dim=1)
+√
+obs
+val_80
+val_84
+val_15
+val_15slice_8node_slice_8"SliceJr
+	namespacee: trainer.models.Pi5ActorWrapper/encoder: trainer.models.FactorizedEncoder/slice_8: aten.slice.TensorJ}
+pkg.torch.onnx.class_hierarchy[['trainer.models.Pi5ActorWrapper', 'trainer.models.FactorizedEncoder', 'aten.slice.Tensor']Jë
+pkg.torch.onnx.fx_nodew%slice_8 : [num_users=1] = call_function[target=torch.ops.aten.slice.Tensor](args = (%slice_7, 1, 21, 34), kwargs = {})J8
+pkg.torch.onnx.name_scopes['', 'encoder', 'slice_8']Jº
+pkg.torch.onnx.stack_traceùFile "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 177, in forward
+    feat = self.encoder(obs)
+  File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 65, in forward
+    table = torch.cat([x[:, 5:15], x[:, 21:34]], dim=1)
+µ
+slice_6
+slice_8cat_1
+node_cat_1"Concat*
+axis†Jo
+	namespaceb: trainer.models.Pi5ActorWrapper/encoder: trainer.models.FactorizedEncoder/cat_1: aten.cat.defaultJ|
+pkg.torch.onnx.class_hierarchyZ['trainer.models.Pi5ActorWrapper', 'trainer.models.FactorizedEncoder', 'aten.cat.default']Jí
+pkg.torch.onnx.fx_nodex%cat_1 : [num_users=1] = call_function[target=torch.ops.aten.cat.default](args = ([%slice_6, %slice_8], 1), kwargs = {})J6
+pkg.torch.onnx.name_scopes['', 'encoder', 'cat_1']Jº
+pkg.torch.onnx.stack_traceùFile "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 177, in forward
+    feat = self.encoder(obs)
+  File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 65, in forward
+    table = torch.cat([x[:, 5:15], x[:, 21:34]], dim=1)
+“
+obs
+val_101
+val_15
+val_15
+val_15slice_10node_slice_10"SliceJs
+	namespacef: trainer.models.Pi5ActorWrapper/encoder: trainer.models.FactorizedEncoder/slice_10: aten.slice.TensorJ}
+pkg.torch.onnx.class_hierarchy[['trainer.models.Pi5ActorWrapper', 'trainer.models.FactorizedEncoder', 'aten.slice.Tensor']Jê
+pkg.torch.onnx.fx_nodev%slice_10 : [num_users=1] = call_function[target=torch.ops.aten.slice.Tensor](args = (%slice_9, 1, 0, 1), kwargs = {})J9
+pkg.torch.onnx.name_scopes['', 'encoder', 'slice_10']J«
+pkg.torch.onnx.stack_trace®File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 177, in forward
+    feat = self.encoder(obs)
+  File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 67, in forward
+    mech = torch.cat([x[:, 0:1], x[:, 15:21], x[:, 34:35]], dim=1)
+‘
+obs
+val_62
+val_80
+val_15
+val_15slice_12node_slice_12"SliceJs
+	namespacef: trainer.models.Pi5ActorWrapper/encoder: trainer.models.FactorizedEncoder/slice_12: aten.slice.TensorJ}
+pkg.torch.onnx.class_hierarchy[['trainer.models.Pi5ActorWrapper', 'trainer.models.FactorizedEncoder', 'aten.slice.Tensor']Jì
+pkg.torch.onnx.fx_nodey%slice_12 : [num_users=1] = call_function[target=torch.ops.aten.slice.Tensor](args = (%slice_11, 1, 15, 21), kwargs = {})J9
+pkg.torch.onnx.name_scopes['', 'encoder', 'slice_12']J«
+pkg.torch.onnx.stack_trace®File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 177, in forward
+    feat = self.encoder(obs)
+  File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 67, in forward
+    mech = torch.cat([x[:, 0:1], x[:, 15:21], x[:, 34:35]], dim=1)
+‘
+obs
+val_84
+val_37
+val_15
+val_15slice_14node_slice_14"SliceJs
+	namespacef: trainer.models.Pi5ActorWrapper/encoder: trainer.models.FactorizedEncoder/slice_14: aten.slice.TensorJ}
+pkg.torch.onnx.class_hierarchy[['trainer.models.Pi5ActorWrapper', 'trainer.models.FactorizedEncoder', 'aten.slice.Tensor']Jì
+pkg.torch.onnx.fx_nodey%slice_14 : [num_users=1] = call_function[target=torch.ops.aten.slice.Tensor](args = (%slice_13, 1, 34, 35), kwargs = {})J9
+pkg.torch.onnx.name_scopes['', 'encoder', 'slice_14']J«
+pkg.torch.onnx.stack_trace®File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 177, in forward
+    feat = self.encoder(obs)
+  File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 67, in forward
+    mech = torch.cat([x[:, 0:1], x[:, 15:21], x[:, 34:35]], dim=1)
+⁄
+slice_10
+slice_12
+slice_14cat_2
+node_cat_2"Concat*
+axis†Jo
+	namespaceb: trainer.models.Pi5ActorWrapper/encoder: trainer.models.FactorizedEncoder/cat_2: aten.cat.defaultJ|
+pkg.torch.onnx.class_hierarchyZ['trainer.models.Pi5ActorWrapper', 'trainer.models.FactorizedEncoder', 'aten.cat.default']J†
+pkg.torch.onnx.fx_nodeÖ%cat_2 : [num_users=1] = call_function[target=torch.ops.aten.cat.default](args = ([%slice_10, %slice_12, %slice_14], 1), kwargs = {})J6
+pkg.torch.onnx.name_scopes['', 'encoder', 'cat_2']J«
+pkg.torch.onnx.stack_trace®File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 177, in forward
+    feat = self.encoder(obs)
+  File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 67, in forward
+    mech = torch.cat([x[:, 0:1], x[:, 15:21], x[:, 34:35]], dim=1)
+„
+cat
+encoder.geo_mlp.0.weight
+encoder.geo_mlp.0.biaslinearnode_linear"Gemm*
+transA †*
+transB†*
+alpha  Ä?†*
+beta  Ä?†J›
+	namespaceœ: trainer.models.Pi5ActorWrapper/encoder: trainer.models.FactorizedEncoder/encoder.geo_mlp: torch.nn.modules.container.Sequential/encoder.geo_mlp.0: torch.nn.modules.linear.Linear/linear: aten.linear.defaultJÀ
+pkg.torch.onnx.class_hierarchy®['trainer.models.Pi5ActorWrapper', 'trainer.models.FactorizedEncoder', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.linear.Linear', 'aten.linear.default']Jº
+pkg.torch.onnx.fx_node°%linear : [num_users=1] = call_function[target=torch.ops.aten.linear.default](args = (%cat, %p_encoder_geo_mlp_0_weight, %p_encoder_geo_mlp_0_bias), kwargs = {})J_
+pkg.torch.onnx.name_scopesA['', 'encoder', 'encoder.geo_mlp', 'encoder.geo_mlp.0', 'linear']JÅ
+pkg.torch.onnx.stack_trace‚File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 177, in forward
+    feat = self.encoder(obs)
+  File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 69, in forward
+    g_feat = self.geo_mlp(geo)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\container.py", line 250, in forward
+    input = module(input)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\linear.py", line 134, in forward
+    return F.linear(input, self.weight, self.bias)
+¡
+
+linearval_149node_Sigmoid_149"SigmoidJ€
+	namespaceÕ: trainer.models.Pi5ActorWrapper/encoder: trainer.models.FactorizedEncoder/encoder.geo_mlp: torch.nn.modules.container.Sequential/encoder.geo_mlp.1: torch.nn.modules.activation.SiLU/silu: aten.silu.defaultJÀ
+pkg.torch.onnx.class_hierarchy®['trainer.models.Pi5ActorWrapper', 'trainer.models.FactorizedEncoder', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.SiLU', 'aten.silu.default']JÉ
+pkg.torch.onnx.fx_nodei%silu : [num_users=1] = call_function[target=torch.ops.aten.silu.default](args = (%linear,), kwargs = {})J]
+pkg.torch.onnx.name_scopes?['', 'encoder', 'encoder.geo_mlp', 'encoder.geo_mlp.1', 'silu']JÅ
+pkg.torch.onnx.stack_trace‚File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 177, in forward
+    feat = self.encoder(obs)
+  File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 69, in forward
+    g_feat = self.geo_mlp(geo)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\container.py", line 250, in forward
+    input = module(input)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\activation.py", line 473, in forward
+    return F.silu(input, inplace=self.inplace)
+º
+
+linear
+val_149silu	node_silu"MulJ€
+	namespaceÕ: trainer.models.Pi5ActorWrapper/encoder: trainer.models.FactorizedEncoder/encoder.geo_mlp: torch.nn.modules.container.Sequential/encoder.geo_mlp.1: torch.nn.modules.activation.SiLU/silu: aten.silu.defaultJÀ
+pkg.torch.onnx.class_hierarchy®['trainer.models.Pi5ActorWrapper', 'trainer.models.FactorizedEncoder', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.SiLU', 'aten.silu.default']JÉ
+pkg.torch.onnx.fx_nodei%silu : [num_users=1] = call_function[target=torch.ops.aten.silu.default](args = (%linear,), kwargs = {})J]
+pkg.torch.onnx.name_scopes?['', 'encoder', 'encoder.geo_mlp', 'encoder.geo_mlp.1', 'silu']JÅ
+pkg.torch.onnx.stack_trace‚File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 177, in forward
+    feat = self.encoder(obs)
+  File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 69, in forward
+    g_feat = self.geo_mlp(geo)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\container.py", line 250, in forward
+    input = module(input)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\activation.py", line 473, in forward
+    return F.silu(input, inplace=self.inplace)
+Ö
+cat_1
+encoder.table_mlp.0.weight
+encoder.table_mlp.0.biaslinear_1node_linear_1"Gemm*
+transA †*
+transB†*
+alpha  Ä?†*
+beta  Ä?†J„
+	namespace’: trainer.models.Pi5ActorWrapper/encoder: trainer.models.FactorizedEncoder/encoder.table_mlp: torch.nn.modules.container.Sequential/encoder.table_mlp.0: torch.nn.modules.linear.Linear/linear_1: aten.linear.defaultJÀ
+pkg.torch.onnx.class_hierarchy®['trainer.models.Pi5ActorWrapper', 'trainer.models.FactorizedEncoder', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.linear.Linear', 'aten.linear.default']Jƒ
+pkg.torch.onnx.fx_node©%linear_1 : [num_users=1] = call_function[target=torch.ops.aten.linear.default](args = (%cat_1, %p_encoder_table_mlp_0_weight, %p_encoder_table_mlp_0_bias), kwargs = {})Je
+pkg.torch.onnx.name_scopesG['', 'encoder', 'encoder.table_mlp', 'encoder.table_mlp.0', 'linear_1']JÖ
+pkg.torch.onnx.stack_traceÊFile "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 177, in forward
+    feat = self.encoder(obs)
+  File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 70, in forward
+    t_feat = self.table_mlp(table)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\container.py", line 250, in forward
+    input = module(input)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\linear.py", line 134, in forward
+    return F.linear(input, self.weight, self.bias)
+◊
+
+linear_1val_150node_Sigmoid_150"SigmoidJ·
+	namespace”: trainer.models.Pi5ActorWrapper/encoder: trainer.models.FactorizedEncoder/encoder.table_mlp: torch.nn.modules.container.Sequential/encoder.table_mlp.1: torch.nn.modules.activation.SiLU/silu_1: aten.silu.defaultJÀ
+pkg.torch.onnx.class_hierarchy®['trainer.models.Pi5ActorWrapper', 'trainer.models.FactorizedEncoder', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.SiLU', 'aten.silu.default']Já
+pkg.torch.onnx.fx_nodem%silu_1 : [num_users=1] = call_function[target=torch.ops.aten.silu.default](args = (%linear_1,), kwargs = {})Jc
+pkg.torch.onnx.name_scopesE['', 'encoder', 'encoder.table_mlp', 'encoder.table_mlp.1', 'silu_1']JÖ
+pkg.torch.onnx.stack_traceÊFile "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 177, in forward
+    feat = self.encoder(obs)
+  File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 70, in forward
+    t_feat = self.table_mlp(table)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\container.py", line 250, in forward
+    input = module(input)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\activation.py", line 473, in forward
+    return F.silu(input, inplace=self.inplace)
+÷
+
+linear_1
+val_150silu_1node_silu_1"MulJ·
+	namespace”: trainer.models.Pi5ActorWrapper/encoder: trainer.models.FactorizedEncoder/encoder.table_mlp: torch.nn.modules.container.Sequential/encoder.table_mlp.1: torch.nn.modules.activation.SiLU/silu_1: aten.silu.defaultJÀ
+pkg.torch.onnx.class_hierarchy®['trainer.models.Pi5ActorWrapper', 'trainer.models.FactorizedEncoder', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.SiLU', 'aten.silu.default']Já
+pkg.torch.onnx.fx_nodem%silu_1 : [num_users=1] = call_function[target=torch.ops.aten.silu.default](args = (%linear_1,), kwargs = {})Jc
+pkg.torch.onnx.name_scopesE['', 'encoder', 'encoder.table_mlp', 'encoder.table_mlp.1', 'silu_1']JÖ
+pkg.torch.onnx.stack_traceÊFile "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 177, in forward
+    feat = self.encoder(obs)
+  File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 70, in forward
+    t_feat = self.table_mlp(table)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\container.py", line 250, in forward
+    input = module(input)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\activation.py", line 473, in forward
+    return F.silu(input, inplace=self.inplace)
+˚
+cat_2
+encoder.mech_mlp.0.weight
+encoder.mech_mlp.0.biaslinear_2node_linear_2"Gemm*
+transA †*
+transB†*
+alpha  Ä?†*
+beta  Ä?†J·
+	namespace”: trainer.models.Pi5ActorWrapper/encoder: trainer.models.FactorizedEncoder/encoder.mech_mlp: torch.nn.modules.container.Sequential/encoder.mech_mlp.0: torch.nn.modules.linear.Linear/linear_2: aten.linear.defaultJÀ
+pkg.torch.onnx.class_hierarchy®['trainer.models.Pi5ActorWrapper', 'trainer.models.FactorizedEncoder', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.linear.Linear', 'aten.linear.default']J¬
+pkg.torch.onnx.fx_nodeß%linear_2 : [num_users=1] = call_function[target=torch.ops.aten.linear.default](args = (%cat_2, %p_encoder_mech_mlp_0_weight, %p_encoder_mech_mlp_0_bias), kwargs = {})Jc
+pkg.torch.onnx.name_scopesE['', 'encoder', 'encoder.mech_mlp', 'encoder.mech_mlp.0', 'linear_2']JÉ
+pkg.torch.onnx.stack_trace‰File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 177, in forward
+    feat = self.encoder(obs)
+  File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 71, in forward
+    m_feat = self.mech_mlp(mech)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\container.py", line 250, in forward
+    input = module(input)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\linear.py", line 134, in forward
+    return F.linear(input, self.weight, self.bias)
+—
+
+linear_2val_151node_Sigmoid_151"SigmoidJﬂ
+	namespace—: trainer.models.Pi5ActorWrapper/encoder: trainer.models.FactorizedEncoder/encoder.mech_mlp: torch.nn.modules.container.Sequential/encoder.mech_mlp.1: torch.nn.modules.activation.SiLU/silu_2: aten.silu.defaultJÀ
+pkg.torch.onnx.class_hierarchy®['trainer.models.Pi5ActorWrapper', 'trainer.models.FactorizedEncoder', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.SiLU', 'aten.silu.default']Já
+pkg.torch.onnx.fx_nodem%silu_2 : [num_users=1] = call_function[target=torch.ops.aten.silu.default](args = (%linear_2,), kwargs = {})Ja
+pkg.torch.onnx.name_scopesC['', 'encoder', 'encoder.mech_mlp', 'encoder.mech_mlp.1', 'silu_2']JÉ
+pkg.torch.onnx.stack_trace‰File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 177, in forward
+    feat = self.encoder(obs)
+  File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 71, in forward
+    m_feat = self.mech_mlp(mech)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\container.py", line 250, in forward
+    input = module(input)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\activation.py", line 473, in forward
+    return F.silu(input, inplace=self.inplace)
+–
+
+linear_2
+val_151silu_2node_silu_2"MulJﬂ
+	namespace—: trainer.models.Pi5ActorWrapper/encoder: trainer.models.FactorizedEncoder/encoder.mech_mlp: torch.nn.modules.container.Sequential/encoder.mech_mlp.1: torch.nn.modules.activation.SiLU/silu_2: aten.silu.defaultJÀ
+pkg.torch.onnx.class_hierarchy®['trainer.models.Pi5ActorWrapper', 'trainer.models.FactorizedEncoder', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.SiLU', 'aten.silu.default']Já
+pkg.torch.onnx.fx_nodem%silu_2 : [num_users=1] = call_function[target=torch.ops.aten.silu.default](args = (%linear_2,), kwargs = {})Ja
+pkg.torch.onnx.name_scopesC['', 'encoder', 'encoder.mech_mlp', 'encoder.mech_mlp.1', 'silu_2']JÉ
+pkg.torch.onnx.stack_trace‰File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 177, in forward
+    feat = self.encoder(obs)
+  File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 71, in forward
+    m_feat = self.mech_mlp(mech)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\container.py", line 250, in forward
+    input = module(input)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\activation.py", line 473, in forward
+    return F.silu(input, inplace=self.inplace)
+√
+silu
+silu_1
+silu_2cat_3
+node_cat_3"Concat*
+axis†Jo
+	namespaceb: trainer.models.Pi5ActorWrapper/encoder: trainer.models.FactorizedEncoder/cat_3: aten.cat.defaultJ|
+pkg.torch.onnx.class_hierarchyZ['trainer.models.Pi5ActorWrapper', 'trainer.models.FactorizedEncoder', 'aten.cat.default']Jó
+pkg.torch.onnx.fx_node}%cat_3 : [num_users=1] = call_function[target=torch.ops.aten.cat.default](args = ([%silu, %silu_1, %silu_2], 1), kwargs = {})J6
+pkg.torch.onnx.name_scopes['', 'encoder', 'cat_3']J¡
+pkg.torch.onnx.stack_trace¢File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 177, in forward
+    feat = self.encoder(obs)
+  File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 73, in forward
+    concat_feat = torch.cat([g_feat, t_feat, m_feat], dim=1)
+Ó
+cat_3
+encoder.fusion.0.weight
+encoder.fusion.0.biaslinear_3node_linear_3"Gemm*
+transA †*
+transB†*
+alpha  Ä?†*
+beta  Ä?†J›
+	namespaceœ: trainer.models.Pi5ActorWrapper/encoder: trainer.models.FactorizedEncoder/encoder.fusion: torch.nn.modules.container.Sequential/encoder.fusion.0: torch.nn.modules.linear.Linear/linear_3: aten.linear.defaultJÀ
+pkg.torch.onnx.class_hierarchy®['trainer.models.Pi5ActorWrapper', 'trainer.models.FactorizedEncoder', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.linear.Linear', 'aten.linear.default']Jæ
+pkg.torch.onnx.fx_node£%linear_3 : [num_users=1] = call_function[target=torch.ops.aten.linear.default](args = (%cat_3, %p_encoder_fusion_0_weight, %p_encoder_fusion_0_bias), kwargs = {})J_
+pkg.torch.onnx.name_scopesA['', 'encoder', 'encoder.fusion', 'encoder.fusion.0', 'linear_3']JÜ
+pkg.torch.onnx.stack_traceÁFile "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 177, in forward
+    feat = self.encoder(obs)
+  File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 74, in forward
+    return self.fusion(concat_feat)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\container.py", line 250, in forward
+    input = module(input)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\linear.py", line 134, in forward
+    return F.linear(input, self.weight, self.bias)
+ù
+linear_3
+encoder.fusion.1.weight
+encoder.fusion.1.bias
+layer_normnode_layer_norm"LayerNormalization*
+axisˇˇˇˇˇˇˇˇˇ†*
+epsilon¨≈'7†*
+
+stash_type†JÌ
+	namespaceﬂ: trainer.models.Pi5ActorWrapper/encoder: trainer.models.FactorizedEncoder/encoder.fusion: torch.nn.modules.container.Sequential/encoder.fusion.1: torch.nn.modules.normalization.LayerNorm/layer_norm: aten.layer_norm.defaultJŸ
+pkg.torch.onnx.class_hierarchy∂['trainer.models.Pi5ActorWrapper', 'trainer.models.FactorizedEncoder', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.normalization.LayerNorm', 'aten.layer_norm.default']JŒ
+pkg.torch.onnx.fx_node≥%layer_norm : [num_users=1] = call_function[target=torch.ops.aten.layer_norm.default](args = (%linear_3, [128], %p_encoder_fusion_1_weight, %p_encoder_fusion_1_bias), kwargs = {})Ja
+pkg.torch.onnx.name_scopesC['', 'encoder', 'encoder.fusion', 'encoder.fusion.1', 'layer_norm']JÛ
+pkg.torch.onnx.stack_trace‘File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 177, in forward
+    feat = self.encoder(obs)
+  File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 74, in forward
+    return self.fusion(concat_feat)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\container.py", line 250, in forward
+    input = module(input)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\normalization.py", line 229, in forward
+    return F.layer_norm(
+–
+
+
+layer_normval_154node_Sigmoid_152"SigmoidJ€
+	namespaceÕ: trainer.models.Pi5ActorWrapper/encoder: trainer.models.FactorizedEncoder/encoder.fusion: torch.nn.modules.container.Sequential/encoder.fusion.2: torch.nn.modules.activation.SiLU/silu_3: aten.silu.defaultJÀ
+pkg.torch.onnx.class_hierarchy®['trainer.models.Pi5ActorWrapper', 'trainer.models.FactorizedEncoder', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.SiLU', 'aten.silu.default']Jâ
+pkg.torch.onnx.fx_nodeo%silu_3 : [num_users=1] = call_function[target=torch.ops.aten.silu.default](args = (%layer_norm,), kwargs = {})J]
+pkg.torch.onnx.name_scopes?['', 'encoder', 'encoder.fusion', 'encoder.fusion.2', 'silu_3']JÜ
+pkg.torch.onnx.stack_traceÁFile "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 177, in forward
+    feat = self.encoder(obs)
+  File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 74, in forward
+    return self.fusion(concat_feat)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\container.py", line 250, in forward
+    input = module(input)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\activation.py", line 473, in forward
+    return F.silu(input, inplace=self.inplace)
+œ
+
+
+layer_norm
+val_154silu_3node_silu_3"MulJ€
+	namespaceÕ: trainer.models.Pi5ActorWrapper/encoder: trainer.models.FactorizedEncoder/encoder.fusion: torch.nn.modules.container.Sequential/encoder.fusion.2: torch.nn.modules.activation.SiLU/silu_3: aten.silu.defaultJÀ
+pkg.torch.onnx.class_hierarchy®['trainer.models.Pi5ActorWrapper', 'trainer.models.FactorizedEncoder', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.SiLU', 'aten.silu.default']Jâ
+pkg.torch.onnx.fx_nodeo%silu_3 : [num_users=1] = call_function[target=torch.ops.aten.silu.default](args = (%layer_norm,), kwargs = {})J]
+pkg.torch.onnx.name_scopes?['', 'encoder', 'encoder.fusion', 'encoder.fusion.2', 'silu_3']JÜ
+pkg.torch.onnx.stack_traceÁFile "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 177, in forward
+    feat = self.encoder(obs)
+  File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 74, in forward
+    return self.fusion(concat_feat)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\container.py", line 250, in forward
+    input = module(input)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\activation.py", line 473, in forward
+    return F.silu(input, inplace=self.inplace)
+û
+silu_3
+gru.weight_ih
+gru.bias_ihlinear_4node_linear_4"Gemm*
+transA †*
+transB†*
+alpha  Ä?†*
+beta  Ä?†Jm
+	namespace`: trainer.models.Pi5ActorWrapper/gru: torch.nn.modules.rnn.GRUCell/linear_4: aten.linear.defaultJ{
+pkg.torch.onnx.class_hierarchyY['trainer.models.Pi5ActorWrapper', 'torch.nn.modules.rnn.GRUCell', 'aten.linear.default']J´
+pkg.torch.onnx.fx_nodeê%linear_4 : [num_users=1] = call_function[target=torch.ops.aten.linear.default](args = (%silu_3, %p_gru_weight_ih, %p_gru_bias_ih), kwargs = {})J5
+pkg.torch.onnx.name_scopes['', 'gru', 'linear_4']J»
+pkg.torch.onnx.stack_trace©File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 178, in forward
+    next_hidden = self.gru(feat, hidden)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\rnn.py", line 1814, in forward
+    ret = _VF.gru_cell(
+Ñ
+linear_4unsafe_split_split_0unsafe_split_split_1unsafe_split_split_2node_Split_198"Split*
+axis†*
+num_outputs†
+û
+hidden
+gru.weight_hh
+gru.bias_hhlinear_5node_linear_5"Gemm*
+transA †*
+transB†*
+alpha  Ä?†*
+beta  Ä?†Jm
+	namespace`: trainer.models.Pi5ActorWrapper/gru: torch.nn.modules.rnn.GRUCell/linear_5: aten.linear.defaultJ{
+pkg.torch.onnx.class_hierarchyY['trainer.models.Pi5ActorWrapper', 'torch.nn.modules.rnn.GRUCell', 'aten.linear.default']J´
+pkg.torch.onnx.fx_nodeê%linear_5 : [num_users=1] = call_function[target=torch.ops.aten.linear.default](args = (%hidden, %p_gru_weight_hh, %p_gru_bias_hh), kwargs = {})J5
+pkg.torch.onnx.name_scopes['', 'gru', 'linear_5']J»
+pkg.torch.onnx.stack_trace©File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 178, in forward
+    next_hidden = self.gru(feat, hidden)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\rnn.py", line 1814, in forward
+    ret = _VF.gru_cell(
+ä
+linear_5unsafe_split_1_split_0unsafe_split_1_split_1unsafe_split_1_split_2node_Split_203"Split*
+axis†*
+num_outputs†
+º
+unsafe_split_1_split_0
+unsafe_split_split_0add_66node_add_66"AddJg
+	namespaceZ: trainer.models.Pi5ActorWrapper/gru: torch.nn.modules.rnn.GRUCell/add_66: aten.add.TensorJw
+pkg.torch.onnx.class_hierarchyU['trainer.models.Pi5ActorWrapper', 'torch.nn.modules.rnn.GRUCell', 'aten.add.Tensor']Jè
+pkg.torch.onnx.fx_nodeu%add_66 : [num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%getitem_3, %getitem), kwargs = {})J3
+pkg.torch.onnx.name_scopes['', 'gru', 'add_66']J»
+pkg.torch.onnx.stack_trace©File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 178, in forward
+    next_hidden = self.gru(feat, hidden)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\rnn.py", line 1814, in forward
+    ret = _VF.gru_cell(
+¢
+add_66sigmoidnode_sigmoid"SigmoidJm
+	namespace`: trainer.models.Pi5ActorWrapper/gru: torch.nn.modules.rnn.GRUCell/sigmoid: aten.sigmoid.defaultJ|
+pkg.torch.onnx.class_hierarchyZ['trainer.models.Pi5ActorWrapper', 'torch.nn.modules.rnn.GRUCell', 'aten.sigmoid.default']Jâ
+pkg.torch.onnx.fx_nodeo%sigmoid : [num_users=1] = call_function[target=torch.ops.aten.sigmoid.default](args = (%add_66,), kwargs = {})J4
+pkg.torch.onnx.name_scopes['', 'gru', 'sigmoid']J»
+pkg.torch.onnx.stack_trace©File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 178, in forward
+    next_hidden = self.gru(feat, hidden)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\rnn.py", line 1814, in forward
+    ret = _VF.gru_cell(
+æ
+unsafe_split_1_split_1
+unsafe_split_split_1add_70node_add_70"AddJg
+	namespaceZ: trainer.models.Pi5ActorWrapper/gru: torch.nn.modules.rnn.GRUCell/add_70: aten.add.TensorJw
+pkg.torch.onnx.class_hierarchyU['trainer.models.Pi5ActorWrapper', 'torch.nn.modules.rnn.GRUCell', 'aten.add.Tensor']Jë
+pkg.torch.onnx.fx_nodew%add_70 : [num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%getitem_4, %getitem_1), kwargs = {})J3
+pkg.torch.onnx.name_scopes['', 'gru', 'add_70']J»
+pkg.torch.onnx.stack_trace©File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 178, in forward
+    next_hidden = self.gru(feat, hidden)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\rnn.py", line 1814, in forward
+    ret = _VF.gru_cell(
+¨
+add_70	sigmoid_1node_sigmoid_1"SigmoidJo
+	namespaceb: trainer.models.Pi5ActorWrapper/gru: torch.nn.modules.rnn.GRUCell/sigmoid_1: aten.sigmoid.defaultJ|
+pkg.torch.onnx.class_hierarchyZ['trainer.models.Pi5ActorWrapper', 'torch.nn.modules.rnn.GRUCell', 'aten.sigmoid.default']Jã
+pkg.torch.onnx.fx_nodeq%sigmoid_1 : [num_users=1] = call_function[target=torch.ops.aten.sigmoid.default](args = (%add_70,), kwargs = {})J6
+pkg.torch.onnx.name_scopes['', 'gru', 'sigmoid_1']J»
+pkg.torch.onnx.stack_trace©File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 178, in forward
+    next_hidden = self.gru(feat, hidden)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\rnn.py", line 1814, in forward
+    ret = _VF.gru_cell(
+Ø
+unsafe_split_1_split_2
+sigmoidmul_48node_mul_48"MulJg
+	namespaceZ: trainer.models.Pi5ActorWrapper/gru: torch.nn.modules.rnn.GRUCell/mul_48: aten.mul.TensorJw
+pkg.torch.onnx.class_hierarchyU['trainer.models.Pi5ActorWrapper', 'torch.nn.modules.rnn.GRUCell', 'aten.mul.Tensor']Jè
+pkg.torch.onnx.fx_nodeu%mul_48 : [num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%getitem_5, %sigmoid), kwargs = {})J3
+pkg.torch.onnx.name_scopes['', 'gru', 'mul_48']J»
+pkg.torch.onnx.stack_trace©File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 178, in forward
+    next_hidden = self.gru(feat, hidden)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\rnn.py", line 1814, in forward
+    ret = _VF.gru_cell(
+´
+unsafe_split_split_2
+mul_48add_74node_add_74"AddJg
+	namespaceZ: trainer.models.Pi5ActorWrapper/gru: torch.nn.modules.rnn.GRUCell/add_74: aten.add.TensorJw
+pkg.torch.onnx.class_hierarchyU['trainer.models.Pi5ActorWrapper', 'torch.nn.modules.rnn.GRUCell', 'aten.add.Tensor']Jé
+pkg.torch.onnx.fx_nodet%add_74 : [num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%getitem_2, %mul_48), kwargs = {})J3
+pkg.torch.onnx.name_scopes['', 'gru', 'add_74']J»
+pkg.torch.onnx.stack_trace©File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 178, in forward
+    next_hidden = self.gru(feat, hidden)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\rnn.py", line 1814, in forward
+    ret = _VF.gru_cell(
+á
+add_74tanh	node_tanh"TanhJg
+	namespaceZ: trainer.models.Pi5ActorWrapper/gru: torch.nn.modules.rnn.GRUCell/tanh: aten.tanh.defaultJy
+pkg.torch.onnx.class_hierarchyW['trainer.models.Pi5ActorWrapper', 'torch.nn.modules.rnn.GRUCell', 'aten.tanh.default']JÉ
+pkg.torch.onnx.fx_nodei%tanh : [num_users=2] = call_function[target=torch.ops.aten.tanh.default](args = (%add_74,), kwargs = {})J1
+pkg.torch.onnx.name_scopes['', 'gru', 'tanh']J»
+pkg.torch.onnx.stack_trace©File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 178, in forward
+    next_hidden = self.gru(feat, hidden)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\rnn.py", line 1814, in forward
+    ret = _VF.gru_cell(
+ñ
+hidden
+tanhsub_24node_sub_24"SubJg
+	namespaceZ: trainer.models.Pi5ActorWrapper/gru: torch.nn.modules.rnn.GRUCell/sub_24: aten.sub.TensorJw
+pkg.torch.onnx.class_hierarchyU['trainer.models.Pi5ActorWrapper', 'torch.nn.modules.rnn.GRUCell', 'aten.sub.Tensor']Jâ
+pkg.torch.onnx.fx_nodeo%sub_24 : [num_users=1] = call_function[target=torch.ops.aten.sub.Tensor](args = (%hidden, %tanh), kwargs = {})J3
+pkg.torch.onnx.name_scopes['', 'gru', 'sub_24']J»
+pkg.torch.onnx.stack_trace©File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 178, in forward
+    next_hidden = self.gru(feat, hidden)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\rnn.py", line 1814, in forward
+    ret = _VF.gru_cell(
+†
+sub_24
+	sigmoid_1mul_49node_mul_49"MulJg
+	namespaceZ: trainer.models.Pi5ActorWrapper/gru: torch.nn.modules.rnn.GRUCell/mul_49: aten.mul.TensorJw
+pkg.torch.onnx.class_hierarchyU['trainer.models.Pi5ActorWrapper', 'torch.nn.modules.rnn.GRUCell', 'aten.mul.Tensor']Jé
+pkg.torch.onnx.fx_nodet%mul_49 : [num_users=1] = call_function[target=torch.ops.aten.mul.Tensor](args = (%sub_24, %sigmoid_1), kwargs = {})J3
+pkg.torch.onnx.name_scopes['', 'gru', 'mul_49']J»
+pkg.torch.onnx.stack_trace©File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 178, in forward
+    next_hidden = self.gru(feat, hidden)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\rnn.py", line 1814, in forward
+    ret = _VF.gru_cell(
+õ
+mul_49
+tanhnext_hiddennode_add_75"AddJg
+	namespaceZ: trainer.models.Pi5ActorWrapper/gru: torch.nn.modules.rnn.GRUCell/add_75: aten.add.TensorJw
+pkg.torch.onnx.class_hierarchyU['trainer.models.Pi5ActorWrapper', 'torch.nn.modules.rnn.GRUCell', 'aten.add.Tensor']Jâ
+pkg.torch.onnx.fx_nodeo%add_75 : [num_users=3] = call_function[target=torch.ops.aten.add.Tensor](args = (%mul_49, %tanh), kwargs = {})J3
+pkg.torch.onnx.name_scopes['', 'gru', 'add_75']J»
+pkg.torch.onnx.stack_trace©File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 178, in forward
+    next_hidden = self.gru(feat, hidden)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\rnn.py", line 1814, in forward
+    ret = _VF.gru_cell(
+ñ
+
+next_hidden
+actor_dense.0.weight
+actor_dense.0.biaslinear_6node_linear_6"Gemm*
+transA †*
+transB†*
+alpha  Ä?†*
+beta  Ä?†J≠
+	namespaceü: trainer.models.Pi5ActorWrapper/actor_dense: torch.nn.modules.container.Sequential/actor_dense.0: torch.nn.modules.linear.Linear/linear_6: aten.linear.defaultJß
+pkg.torch.onnx.class_hierarchyÑ['trainer.models.Pi5ActorWrapper', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.linear.Linear', 'aten.linear.default']Jπ
+pkg.torch.onnx.fx_nodeû%linear_6 : [num_users=1] = call_function[target=torch.ops.aten.linear.default](args = (%add_75, %p_actor_dense_0_weight, %p_actor_dense_0_bias), kwargs = {})JN
+pkg.torch.onnx.name_scopes0['', 'actor_dense', 'actor_dense.0', 'linear_6']Jò
+pkg.torch.onnx.stack_trace˘File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 179, in forward
+    h_act = next_hidden + self.actor_dense(next_hidden)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\container.py", line 250, in forward
+    input = module(input)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\linear.py", line 134, in forward
+    return F.linear(input, self.weight, self.bias)
+˘
+linear_6val_157node_Sigmoid_155"SigmoidJ´
+	namespaceù: trainer.models.Pi5ActorWrapper/actor_dense: torch.nn.modules.container.Sequential/actor_dense.1: torch.nn.modules.activation.SiLU/silu_4: aten.silu.defaultJß
+pkg.torch.onnx.class_hierarchyÑ['trainer.models.Pi5ActorWrapper', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.SiLU', 'aten.silu.default']Já
+pkg.torch.onnx.fx_nodem%silu_4 : [num_users=1] = call_function[target=torch.ops.aten.silu.default](args = (%linear_6,), kwargs = {})JL
+pkg.torch.onnx.name_scopes.['', 'actor_dense', 'actor_dense.1', 'silu_4']Jò
+pkg.torch.onnx.stack_trace˘File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 179, in forward
+    h_act = next_hidden + self.actor_dense(next_hidden)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\container.py", line 250, in forward
+    input = module(input)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\activation.py", line 473, in forward
+    return F.silu(input, inplace=self.inplace)
+¯
+linear_6
+val_157silu_4node_silu_4"MulJ´
+	namespaceù: trainer.models.Pi5ActorWrapper/actor_dense: torch.nn.modules.container.Sequential/actor_dense.1: torch.nn.modules.activation.SiLU/silu_4: aten.silu.defaultJß
+pkg.torch.onnx.class_hierarchyÑ['trainer.models.Pi5ActorWrapper', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.SiLU', 'aten.silu.default']Já
+pkg.torch.onnx.fx_nodem%silu_4 : [num_users=1] = call_function[target=torch.ops.aten.silu.default](args = (%linear_6,), kwargs = {})JL
+pkg.torch.onnx.name_scopes.['', 'actor_dense', 'actor_dense.1', 'silu_4']Jò
+pkg.torch.onnx.stack_trace˘File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 179, in forward
+    h_act = next_hidden + self.actor_dense(next_hidden)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\container.py", line 250, in forward
+    input = module(input)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\activation.py", line 473, in forward
+    return F.silu(input, inplace=self.inplace)
+»
+next_hidden
+silu_4add_76node_add_76"AddJE
+	namespace8: trainer.models.Pi5ActorWrapper/add_76: aten.add.TensorJW
+pkg.torch.onnx.class_hierarchy5['trainer.models.Pi5ActorWrapper', 'aten.add.Tensor']Jã
+pkg.torch.onnx.fx_nodeq%add_76 : [num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%add_75, %silu_4), kwargs = {})J,
+pkg.torch.onnx.name_scopes['', 'add_76']J∫
+pkg.torch.onnx.stack_traceõFile "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 179, in forward
+    h_act = next_hidden + self.actor_dense(next_hidden)
+œ
+add_76
+actor_out.weight
+actor_out.biaslogitsnode_linear_7"Gemm*
+transA †*
+transB†*
+alpha  Ä?†*
+beta  Ä?†Ju
+	namespaceh: trainer.models.Pi5ActorWrapper/actor_out: torch.nn.modules.linear.Linear/linear_7: aten.linear.defaultJ}
+pkg.torch.onnx.class_hierarchy[['trainer.models.Pi5ActorWrapper', 'torch.nn.modules.linear.Linear', 'aten.linear.default']J±
+pkg.torch.onnx.fx_nodeñ%linear_7 : [num_users=1] = call_function[target=torch.ops.aten.linear.default](args = (%add_76, %p_actor_out_weight, %p_actor_out_bias), kwargs = {})J;
+pkg.torch.onnx.name_scopes['', 'actor_out', 'linear_7']Jﬂ
+pkg.torch.onnx.stack_trace¿File "C:\Users\mdelahaye\Documents\Claude\Projects\icamlot\trainer\models.py", line 180, in forward
+    logits = self.actor_out(h_act)
+  File "C:\Users\mdelahaye\AppData\Local\Programs\Python\Python311\Lib\site-packages\torch\nn\modules\linear.py", line 134, in forward
+    return F.linear(input, self.weight, self.bias)
+main_graph*d Bencoder.geo_mlp.0.weightj$
+locationbest_brain_pi5.onnx.dataj
+offset0j
+length768p*ü Bencoder.geo_mlp.0.biasJÄÃaûæc≈Mæ∂R>ö7QΩ•ˆO>iWåæã‚É>èä'æŸìæÒˇ´æ
+¯®æ˚Y>h6>  ¨Ω#mñ>l°Ω>£ö«>Âﬂ<éºôæ˝∞±>»¢¨æ›Y=m2Öæ¢ˇX<™Ê¢æëﬂû>Å•<†≥˙Ωr|æ,dT>X;âæ3"¥æ*i@Bencoder.table_mlp.0.weightj$
+locationbest_brain_pi5.onnx.dataj
+offset768j
+length5888p*°@Bencoder.table_mlp.0.biasJÄÛó·ΩFı◊=LA¯Ω⁄>~C7ΩÈ=Ì‰æè”•Ω≤Ç>˜≤F>ˆ∞ÊΩX*æ¿o1>0i}=>$◊=C˚ >tIæ¶EO>ÜÅΩ<Zôª=l∫U<.vÆ=¢Á=gı=Ãy?æc∑Ω!r-æ˝sÙΩ”f∏ºsz¢=¢Û¬Ωc‰+>?ˆ=?œº”©‘=≠ æù&æXŒI>N˛µΩhh§ΩîÏΩêﬂæP≥æXÅ#æ/≥<é„?>2Ùl=†≈ºi2–Ωg»≈ΩØLª='ú&=î»>‘p%>Po >çJ´Ω¯Ø!>x≤Ω<ˆ9>Ÿ/Ü=@vó="ÒºÊÓØ=œQ>*i Bencoder.mech_mlp.0.weightj$
+locationbest_brain_pi5.onnx.dataj
+offset6656j
+length1024p*† Bencoder.mech_mlp.0.biasJÄ™Ñ<Ü§‰<†ëº™⁄G=Ób?ºâ˛ˆΩ€~væùˇ:æì3å=>ﬂzΩ=fﬁ>¬ûwæ=wƒΩb~9æÊ”,æ˘óƒΩ=6˘ΩOòææ
+5Ω5Ü´ΩÃ<æeª∫é∫&ÇæÙ°z>[ƒ=K“ãæ¶R≠=SJêæM˜Á=*jÄÄBencoder.fusion.0.weightj$
+locationbest_brain_pi5.onnx.dataj
+offset7680j
+length65536p*dÄBencoder.fusion.0.biasj$
+locationbest_brain_pi5.onnx.dataj
+offset73216j
+length512p*fÄBencoder.fusion.1.weightj$
+locationbest_brain_pi5.onnx.dataj
+offset73728j
+length512p*dÄBencoder.fusion.1.biasj$
+locationbest_brain_pi5.onnx.dataj
+offset74240j
+length512p*bÄÄBgru.weight_ihj$
+locationbest_brain_pi5.onnx.dataj
+offset74752j
+length196608p*cÄÄBgru.weight_hhj$
+locationbest_brain_pi5.onnx.dataj
+offset271360j
+length196608p*\ÄBgru.bias_ihj$
+locationbest_brain_pi5.onnx.dataj
+offset467968j
+length1536p*\ÄBgru.bias_hhj$
+locationbest_brain_pi5.onnx.dataj
+offset469504j
+length1536p*iÄÄBactor_dense.0.weightj$
+locationbest_brain_pi5.onnx.dataj
+offset471040j
+length65536p*bÄBactor_dense.0.biasj$
+locationbest_brain_pi5.onnx.dataj
+offset536576j
+length512p*djÄBactor_out.weightj$
+locationbest_brain_pi5.onnx.dataj
+offset537088j
+length54272p*]jBactor_out.biasj$
+locationbest_brain_pi5.onnx.dataj
+offset591360j
+length424p*Bval_15J       *Bval_19J       *Bval_37J#       *Bval_41J%       *Bval_62J       *Bval_80J       *Bval_84J"       *Bval_101J        Z¿
+obs
+
+s59
+%"=
+/pkg.torch.export.graph_signature.InputSpec.kind
+USER_INPUT"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"(
+!pkg.torch.onnx.original_node_nameobsZ«
+hidden
+
+s59
+Ä"=
+/pkg.torch.export.graph_signature.InputSpec.kind
+USER_INPUT"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"+
+!pkg.torch.onnx.original_node_namehiddenbà
+logits
+
+
+j"?
+0pkg.torch.export.graph_signature.OutputSpec.kindUSER_OUTPUT"-
+!pkg.torch.onnx.original_node_namelinear_7bå
+next_hidden
+	
+
+Ä"?
+0pkg.torch.export.graph_signature.OutputSpec.kindUSER_OUTPUT"+
+!pkg.torch.onnx.original_node_nameadd_75jË
+encoder.geo_mlp.0.weight
+
+ 
+"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"?
+!pkg.torch.onnx.original_node_namep_encoder_geo_mlp_0_weightj‡
+encoder.geo_mlp.0.bias
+
+
+ "<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"=
+!pkg.torch.onnx.original_node_namep_encoder_geo_mlp_0_biasjÏ
+encoder.table_mlp.0.weight
+
+@
+"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"A
+!pkg.torch.onnx.original_node_namep_encoder_table_mlp_0_weightj‰
+encoder.table_mlp.0.bias
+
+
+@"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"?
+!pkg.torch.onnx.original_node_namep_encoder_table_mlp_0_biasjÍ
+encoder.mech_mlp.0.weight
+
+ 
+"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"@
+!pkg.torch.onnx.original_node_namep_encoder_mech_mlp_0_weightj‚
+encoder.mech_mlp.0.bias
+
+
+ "<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone">
+!pkg.torch.onnx.original_node_namep_encoder_mech_mlp_0_biasjË
+encoder.fusion.0.weight
+
+
+Ä
+Ä"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone">
+!pkg.torch.onnx.original_node_namep_encoder_fusion_0_weightjﬂ
+encoder.fusion.0.bias
+	
+Ä"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"<
+!pkg.torch.onnx.original_node_namep_encoder_fusion_0_biasj„
+encoder.fusion.1.weight
+	
+Ä"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone">
+!pkg.torch.onnx.original_node_namep_encoder_fusion_1_weightjﬂ
+encoder.fusion.1.bias
+	
+Ä"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"<
+!pkg.torch.onnx.original_node_namep_encoder_fusion_1_biasj‘
+gru.weight_ih
+
+
+Ä
+Ä"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"4
+!pkg.torch.onnx.original_node_namep_gru_weight_ihj‘
+gru.weight_hh
+
+
+Ä
+Ä"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"4
+!pkg.torch.onnx.original_node_namep_gru_weight_hhjÀ
+gru.bias_ih
+	
+Ä"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"2
+!pkg.torch.onnx.original_node_namep_gru_bias_ihjÀ
+gru.bias_hh
+	
+Ä"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"2
+!pkg.torch.onnx.original_node_namep_gru_bias_hhj‚
+actor_dense.0.weight
+
+
+Ä
+Ä"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone";
+!pkg.torch.onnx.original_node_namep_actor_dense_0_weightjŸ
+actor_dense.0.bias
+	
+Ä"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"9
+!pkg.torch.onnx.original_node_namep_actor_dense_0_biasjŸ
+actor_out.weight
+	
+j
+Ä"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"7
+!pkg.torch.onnx.original_node_namep_actor_out_weightj–
+actor_out.bias
+
+
+j"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"5
+!pkg.torch.onnx.original_node_namep_actor_out_biasj\
+val_15
+
+
+"F
+$pkg.onnxscript.optimizer.folded_from['val_12', 'val_13', 'val_14']j\
+val_19
+
+
+"F
+$pkg.onnxscript.optimizer.folded_from['val_16', 'val_17', 'val_18']j\
+val_37
+
+
+"F
+$pkg.onnxscript.optimizer.folded_from['val_34', 'val_35', 'val_36']j\
+val_41
+
+
+"F
+$pkg.onnxscript.optimizer.folded_from['val_38', 'val_39', 'val_40']j\
+val_62
+
+
+"F
+$pkg.onnxscript.optimizer.folded_from['val_59', 'val_60', 'val_61']j\
+val_80
+
+
+"F
+$pkg.onnxscript.optimizer.folded_from['val_77', 'val_78', 'val_79']j\
+val_84
+
+
+"F
+$pkg.onnxscript.optimizer.folded_from['val_81', 'val_82', 'val_83']j]
+val_101
+
+
+"F
+$pkg.onnxscript.optimizer.folded_from['val_0', 'val_100', 'val_99']j
+slice_2
+
+s59
+j
+slice_4
+
+s59
+j
+cat
+
+s59
+j
+slice_6
+
+s59
+
+j
+slice_8
+
+s59
+j
+cat_1
+
+s59
+j
+slice_10
+
+s59
+j
+slice_12
+
+s59
+j
+slice_14
+
+s59
+j
+cat_2
+
+s59
+j
+linear
+
+
+ j
+val_149
+
+
+ j
+silu
+
+
+ j
+linear_1
+
+
+@j
+val_150
+
+
+@j
+silu_1
+
+
+@j
+linear_2
+
+
+ j
+val_151
+
+
+ j
+silu_2
+
+
+ j
+cat_3
+	
+
+Äj
+linear_3
+	
+
+Äj
+
+layer_norm
+	
+
+Äj
+val_154
+	
+
+Äj
+silu_3
+	
+
+Äj
+linear_4
+	
+
+Äj'
+unsafe_split_split_0
+	
+
+Äj'
+unsafe_split_split_1
+	
+
+Äj'
+unsafe_split_split_2
+	
+
+Äj
+linear_5
+
+s59
+Äj,
+unsafe_split_1_split_0
+
+s59
+Äj,
+unsafe_split_1_split_1
+
+s59
+Äj,
+unsafe_split_1_split_2
+
+s59
+Äj
+add_66
+	
+
+Äj
+sigmoid
+	
+
+Äj
+add_70
+	
+
+Äj
+	sigmoid_1
+	
+
+Äj
+mul_48
+	
+
+Äj
+add_74
+	
+
+Äj
+tanh
+	
+
+Äj
+sub_24
+	
+
+Äj
+mul_49
+	
+
+Äj
+linear_6
+	
+
+Äj
+val_157
+	
+
+Äj
+silu_4
+	
+
+Äj
+add_76
+	
+
+ÄÇˇ	
+0pkg.torch.export.ExportedProgram.graph_signature 	
+# inputs
+p_encoder_geo_mlp_0_weight: PARAMETER target='encoder.geo_mlp.0.weight'
+p_encoder_geo_mlp_0_bias: PARAMETER target='encoder.geo_mlp.0.bias'
+p_encoder_table_mlp_0_weight: PARAMETER target='encoder.table_mlp.0.weight'
+p_encoder_table_mlp_0_bias: PARAMETER target='encoder.table_mlp.0.bias'
+p_encoder_mech_mlp_0_weight: PARAMETER target='encoder.mech_mlp.0.weight'
+p_encoder_mech_mlp_0_bias: PARAMETER target='encoder.mech_mlp.0.bias'
+p_encoder_fusion_0_weight: PARAMETER target='encoder.fusion.0.weight'
+p_encoder_fusion_0_bias: PARAMETER target='encoder.fusion.0.bias'
+p_encoder_fusion_1_weight: PARAMETER target='encoder.fusion.1.weight'
+p_encoder_fusion_1_bias: PARAMETER target='encoder.fusion.1.bias'
+p_gru_weight_ih: PARAMETER target='gru.weight_ih'
+p_gru_weight_hh: PARAMETER target='gru.weight_hh'
+p_gru_bias_ih: PARAMETER target='gru.bias_ih'
+p_gru_bias_hh: PARAMETER target='gru.bias_hh'
+p_actor_dense_0_weight: PARAMETER target='actor_dense.0.weight'
+p_actor_dense_0_bias: PARAMETER target='actor_dense.0.bias'
+p_actor_out_weight: PARAMETER target='actor_out.weight'
+p_actor_out_bias: PARAMETER target='actor_out.bias'
+obs: USER_INPUT
+hidden: USER_INPUT
+
+# outputs
+linear_7: USER_OUTPUT
+add_75: USER_OUTPUT
+ÇE
+2pkg.torch.export.ExportedProgram.range_constraints{s59: VR[1, 2]}B
+ 

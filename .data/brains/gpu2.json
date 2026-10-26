@@ -1,0 +1,102 @@
+{
+  "format": "camelot-cerveau",
+  "version": 1,
+  "name": "gpu2",
+  "entrees": [
+    "temps",
+    "robot",
+    "paquets",
+    "faces",
+    "constructions",
+    "graal",
+    "boulets",
+    "adversaire"
+  ],
+  "actions": {
+    "familles": [
+      "prendre",
+      "mur",
+      "tour",
+      "porte",
+      "boulets",
+      "prendreGraal",
+      "poserGraal",
+      "trone"
+    ],
+    "cotes": [
+      "ext",
+      "int"
+    ]
+  },
+  "reseau": {
+    "couches": [
+      {
+        "neurones": 64,
+        "activation": "relu"
+      },
+      {
+        "neurones": 64,
+        "activation": "relu"
+      },
+      {
+        "neurones": 64,
+        "activation": "relu"
+      },
+      {
+        "neurones": 64,
+        "activation": "relu"
+      },
+      {
+        "neurones": 64,
+        "activation": "relu"
+      },
+      {
+        "neurones": 64,
+        "activation": "relu"
+      },
+      {
+        "neurones": 64,
+        "activation": "relu"
+      },
+      {
+        "neurones": 64,
+        "activation": "relu"
+      }
+    ],
+    "sortie": "softmax"
+  },
+  "adversaire": {
+    "actif": true,
+    "intensite": "realiste"
+  },
+  "methode": "evolution",
+  "reglages": {
+    "population": 20,
+    "generations": 30,
+    "mutation": 0.1,
+    "scenarios_par_evaluation": 1,
+    "graine": 1,
+    "duree_max": 300,
+    "epoques": 40,
+    "taux_apprentissage": 0.02,
+    "lot": 16,
+    "mode": "rapide"
+  },
+  "recompense": {
+    "base": "score",
+    "penalite_erreur": 20.0,
+    "penalite_contact": 20.0,
+    "sur_erreur": "fin"
+  },
+  "graine": 1,
+  "n_entrees": 37,
+  "n_sorties": 106,
+  "n_parametres": 38442,
+  "metadonnees": {
+    "moteur": "1.1.0",
+    "bareme": "2027-1.0"
+  },
+  "updated": 1793044927,
+  "best_score": null,
+  "last_training": null
+}
