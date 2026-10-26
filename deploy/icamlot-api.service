@@ -1,5 +1,5 @@
 [Unit]
-Description=ICAM LOT - API des stratégies du programmeur de match
+Description=ICAM LOT - API (stratégies, cerveaux, entraînements)
 After=network.target
 
 [Service]

@@ -5,6 +5,7 @@
    ====================================================================== */
 
 /* Points du règlement Eurobot 2027 — version OFFICIELLE 1.0 (§E et §F) */
+const BAREME_VERSION = '2027-1.0';
 const BAREME = {
   pierre: 1,          /* par pierre dans une zone de construction */
   mur: 5,             /* par mur (3 pierres horizontales empilées, zone rectangulaire) */
@@ -28,3 +29,8 @@ const LIMITES = {
   boulets: 10,        /* boulets par équipe */
   niveauMax: 4        /* niveau d'élévation max du Graal */
 };
+(function (g) {
+  g.BAREME = BAREME;
+  g.LIMITES = LIMITES;
+  g.BAREME_VERSION = BAREME_VERSION;
+})(typeof globalThis !== 'undefined' ? globalThis : this);

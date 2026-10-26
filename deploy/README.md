@@ -8,9 +8,11 @@ dans le même LXC.
 |-------------------|------------------------------------------------------------------|
 | `/`               | intro tronçonneuse puis accueil (`index.html`)                   |
 | `/point-counter/` | compteur de points (public)                                      |
-| `/connexion/`     | page de mot de passe du simulateur                               |
+| `/connexion/`     | page de mot de passe du simulateur et de l'Atelier Cerveau       |
 | `/plateau/`       | simulation du plateau, réservée aux personnes connectées         |
-| `/api/`           | connexion et stratégies (`api/server.py`, service `icamlot-api`) |
+| `/cerveau/`       | Atelier Cerveau (réseau, entraînement), réservé à l'équipe       |
+| `/engine/`        | moteur de simulation partagé                                     |
+| `/api/`           | connexion, stratégies, cerveaux, entraînements (`api/server.py`) |
 
 Le mot de passe du simulateur n'est jamais dans le dépôt : il est passé à
 l'installation et rangé dans `/etc/icamlot/api.env`. Une connexion reste
@@ -50,7 +52,9 @@ Le mot de passe déjà installé est conservé. Pour le changer, relancer avec
 ## Tester en local
 
 ```bash
-ICAMLOT_PASSWORD=test python api/server.py --static . --data .data/strategies
+ICAMLOT_PASSWORD=test python3 api/server.py --static . --data .data/strategies
 ```
 
 puis ouvrir http://127.0.0.1:8081/ (l'intro se rejoue à chaque chargement).
+L'Atelier Cerveau est sur http://127.0.0.1:8081/cerveau/ (même mot de passe).
+L'entraînement lance `node engine/env_worker.js` et `python3 trainer/trainer.py` en local.

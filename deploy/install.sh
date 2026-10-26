@@ -27,19 +27,21 @@ if [ -z "${ICAMLOT_PASSWORD:-}" ] && ! grep -qs '^ICAMLOT_PASSWORD=.' /etc/icaml
 fi
 
 apt-get update
-apt-get install -y nginx curl python3
+apt-get install -y nginx curl python3 python3-numpy nodejs
 
 # Pages du site
-install -d "$WEB" "$WEB/point-counter" "$WEB/plateau" "$WEB/connexion"
+install -d "$WEB" "$WEB/point-counter" "$WEB/plateau" "$WEB/connexion" "$WEB/cerveau" "$WEB/engine"
 install -m 644 "$SRC/index.html" "$SRC/bareme.js" "$WEB/"
 install -m 644 "$SRC/point-counter/index.html" "$WEB/point-counter/index.html"
 install -m 644 "$SRC/connexion/index.html" "$WEB/connexion/index.html"
 install -m 644 "$SRC/plateau/index.html" "$SRC/plateau/app.js" "$SRC/plateau/table.jpg" "$WEB/plateau/"
+install -m 644 "$SRC/cerveau/index.html" "$SRC/cerveau/app.js" "$SRC/cerveau/net.js" "$WEB/cerveau/"
+install -m 644 "$SRC/engine/geom.js" "$SRC/engine/engine.js" "$SRC/engine/score.js" "$SRC/engine/actions.js" "$SRC/engine/env.js" "$WEB/engine/"
 rm -rf /var/www/point-counter
 
-# API (connexion + stratégies)
+# API (connexion, stratégies, cerveaux, entraînements)
 id icamlot >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin icamlot
-install -d -o icamlot -g icamlot -m 750 /var/lib/icamlot /var/lib/icamlot/strategies
+install -d -o icamlot -g icamlot -m 750 /var/lib/icamlot /var/lib/icamlot/strategies /var/lib/icamlot/brains /var/lib/icamlot/trainings /var/lib/icamlot/weights
 if [ -n "${ICAMLOT_PASSWORD:-}" ]; then
   install -d -m 750 /etc/icamlot
   (umask 077; printf 'ICAMLOT_PASSWORD=%s\n' "$ICAMLOT_PASSWORD" > /etc/icamlot/api.env)

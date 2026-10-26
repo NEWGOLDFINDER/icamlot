@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Atelier Cerveau · ICAM LOT</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #0e0f13; --panel: #171922; --panel-2: #1d202a; --fg: #f2f3f5; --muted: #a9adba; --line: #2a2d39;
+  --accent: #f5c518; --accent-fg: #17130a; --ok: #3ccf7a; --bad: #ff6b6b; --info: #8ab4ff;
+  --radius: 12px; --top: 56px;
+  --font-body: "Poppins", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 14px; line-height: 1.45; }
+a { color: inherit; text-decoration: none; }
+button, select, input, textarea { font: inherit; color: var(--fg); }
+button, select { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 6px 11px; cursor: pointer; }
+button:hover:not(.primary):not(.tab) { border-color: var(--accent); }
+button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; }
+button.primary:hover { filter: brightness(1.08); }
+button.ghost { background: transparent; border-color: transparent; color: var(--muted); }
+button.ghost:hover { color: var(--fg); }
+button.danger:hover { border-color: var(--bad) !important; color: var(--bad); }
+button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+input[type=number], input[type=text], input[type=search] { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; }
+[hidden] { display: none !important; }
+.ok { color: var(--ok); } .bad { color: var(--bad); } .muted { color: var(--muted); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+.app { min-height: 100dvh; display: grid; grid-template-rows: var(--top) auto minmax(0, 1fr); }
+.top { display: flex; align-items: center; gap: 10px; padding: 0 12px; border-bottom: 1px solid rgba(255,255,255,0.06); background: rgba(14,15,19,0.92); }
+.back { display: inline-flex; align-items: center; gap: 0.45rem; color: var(--muted); font-weight: 600; font-size: 0.88rem; padding: 6px 4px; }
+.back:hover { color: var(--accent); }
+.brand { font-weight: 800; letter-spacing: 0.02em; white-space: nowrap; }
+.brand span { color: var(--accent); }
+.sepv { width: 1px; height: 24px; background: var(--line); }
+.namebox { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+#sName { flex: 0 1 340px; min-width: 60px; background: transparent; border: 1px solid transparent; font-weight: 600; font-size: 15px; padding: 5px 8px; }
+#sName:hover, #sName:focus { border-color: var(--line); background: var(--panel); }
+.state { font-size: 12px; border-radius: 999px; padding: 2px 9px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.state.dirty { color: var(--accent); border-color: rgba(245,197,24,0.45); }
+.state.saved { color: var(--ok); border-color: rgba(60,207,122,0.4); }
+.tbtns { display: flex; gap: 6px; }
+.tbtns button { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+
+.tabs { display: flex; gap: 2px; padding: 6px 12px 0; border-bottom: 1px solid var(--line); background: var(--panel); overflow-x: auto; }
+.tab { background: none; border: none; border-bottom: 2px solid transparent; border-radius: 0; padding: 9px 12px; color: var(--muted); font-weight: 600; display: inline-flex; gap: 6px; align-items: center; }
+.tab[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); }
+.main { padding: 14px; max-width: 1400px; width: 100%; margin: 0 auto; }
+.grid3 { display: grid; grid-template-columns: minmax(240px, 0.9fr) minmax(0, 1.3fr) minmax(260px, 1fr); gap: 14px; align-items: start; }
+@media (max-width: 1100px) { .grid3 { grid-template-columns: 1fr; } .brand, .sepv, .tbtns .lbl { display: none; } }
+
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; }
+.card h2 { margin: 0 0 10px; font-size: 13px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.card h2 b { color: var(--accent); font-size: 16px; text-transform: none; letter-spacing: 0; }
+.note { color: var(--muted); font-size: 13px; margin: 0 0 10px; }
+.grp { border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); margin-bottom: 8px; overflow: hidden; }
+.grp .gh { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; cursor: pointer; font-weight: 600; }
+.grp .gh small { color: var(--muted); font-weight: 500; }
+.grp .gb { padding: 0 10px 10px; color: var(--muted); font-size: 12.5px; }
+.chk { display: flex; gap: 8px; align-items: flex-start; font-size: 13.5px; }
+.chk input { accent-color: var(--accent); width: 16px; height: 16px; margin-top: 2px; flex: 0 0 16px; }
+.pgrid { display: grid; gap: 8px; }
+.pgrid label { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13.5px; }
+.pgrid input, .pgrid select { width: 110px; text-align: right; font-family: var(--font-mono); }
+.crow { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.segc { display: inline-flex; background: var(--bg); border: 1px solid var(--line); border-radius: 999px; padding: 2px; gap: 2px; flex-wrap: wrap; }
+.segc button { border: none; background: transparent; border-radius: 999px; padding: 4px 11px; font-size: 13px; color: var(--muted); }
+.segc button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); font-weight: 600; }
+
+.netbox { background: #13151c; border: 1px solid var(--line); border-radius: 10px; min-height: 280px; }
+#netCv { width: 100%; height: 280px; display: block; }
+.code { font-family: var(--font-mono); font-size: 12px; background: #101218; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; overflow: auto; max-height: 260px; white-space: pre; color: #d6d9e0; }
+.layers { display: grid; gap: 6px; }
+.layer { display: grid; grid-template-columns: 28px 1fr 1fr auto; gap: 6px; align-items: center; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); }
+.layer .n { font-family: var(--font-mono); color: var(--muted); font-size: 12px; }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 10px 0; }
+.stat { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+.stat small { display: block; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+.stat b { font-size: 20px; font-variant-numeric: tabular-nums; }
+
+.chart { background: #13151c; border: 1px solid var(--line); border-radius: 10px; }
+#chart { width: 100%; height: 220px; display: block; }
+.log { font-family: var(--font-mono); font-size: 12px; background: #101218; border: 1px solid var(--line); border-radius: 10px; padding: 10px; max-height: 180px; overflow: auto; white-space: pre-wrap; color: var(--muted); min-height: 4em; }
+.warn { background: rgba(245,197,24,0.08); border: 1px solid rgba(245,197,24,0.35); color: var(--accent); border-radius: 10px; padding: 8px 10px; font-size: 13px; }
+
+.table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.table th, .table td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); }
+.table th { color: var(--muted); font-weight: 600; font-size: 12px; }
+.table td.num { font-family: var(--font-mono); text-align: right; font-variant-numeric: tabular-nums; }
+.list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); }
+.list li.cur { border-color: var(--accent); }
+.list .nm { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list .meta { display: block; color: var(--muted); font-size: 12px; font-weight: 400; }
+.list .act { display: flex; gap: 4px; }
+
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 300; background: #232633; border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; display: flex; gap: 10px; align-items: center; box-shadow: 0 12px 30px rgba(0,0,0,0.45); max-width: calc(100% - 24px); }
+.toast.bad { border-color: rgba(255,107,107,0.6); }
+.toast.ok { border-color: rgba(60,207,122,0.5); }
+.toast .tb { display: flex; gap: 6px; }
+.scrim { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 190; }
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(440px, 100%); background: var(--panel); border-left: 1px solid var(--line); z-index: 200; display: flex; flex-direction: column; transform: translateX(100%); transition: transform 0.2s ease; visibility: hidden; }
+.drawer.open { transform: none; visibility: visible; }
+.dhead { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.dhead h2 { margin: 0; font-size: 16px; font-weight: 700; text-transform: none; letter-spacing: 0; color: var(--fg); }
+.dbody { flex: 1; overflow: auto; padding: 14px; display: grid; gap: 12px; align-content: start; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <a class="back" href="../" title="Retour à l'accueil"><i class="fa-solid fa-arrow-left"></i></a>
+    <span class="brand">ICAM <span>LOT</span></span>
+    <span class="sepv"></span>
+    <form class="namebox" id="fName">
+      <label for="sName" class="sr">Nom du cerveau</label>
+      <input id="sName" type="text" maxlength="80" placeholder="Cerveau sans nom" autocomplete="off" spellcheck="false">
+      <span class="state" id="state">non enregistré</span>
+    </form>
+    <div class="tbtns">
+      <button type="button" id="bList" title="Cerveaux enregistrés"><i class="fa-solid fa-folder-open"></i><span class="lbl">Cerveaux</span></button>
+      <button type="button" class="primary" id="bSave" title="Enregistrer (Ctrl+S)"><i class="fa-solid fa-floppy-disk"></i><span class="lbl">Enregistrer</span></button>
+    </div>
+  </header>
+  <div class="tabs" role="tablist" aria-label="Atelier Cerveau">
+    <button class="tab" type="button" role="tab" aria-selected="true" data-pane="build" id="tab-build"><i class="fa-solid fa-diagram-project"></i> Construction</button>
+    <button class="tab" type="button" role="tab" aria-selected="false" data-pane="train" id="tab-train"><i class="fa-solid fa-dumbbell"></i> Entraînement</button>
+    <button class="tab" type="button" role="tab" aria-selected="false" data-pane="eval" id="tab-eval"><i class="fa-solid fa-flag-checkered"></i> Évaluation</button>
+    <button class="tab" type="button" role="tab" aria-selected="false" data-pane="replay" id="tab-replay"><i class="fa-solid fa-clapperboard"></i> Rejouer</button>
+  </div>
+  <main class="main">
+    <section id="pane-build">
+      <div class="grid3">
+        <div>
+          <article class="card" id="cardIn">
+            <h2>Entrées <b id="nIn">37</b></h2>
+            <p class="note">Catalogue de l'état, normalisé automatiquement entre 0 et 1. Pas de capteurs simulés : le réseau décide des grandes actions.</p>
+            <div id="entrees"></div>
+          </article>
+          <article class="card" style="margin-top:14px">
+            <h2>Sorties <b id="nOut">106</b></h2>
+            <p class="note">Briques d'action (softmax). <code>attendre</code> n'en fait pas partie. Un masque écarte les actions impossibles à chaque pas.</p>
+            <div id="sorties"></div>
+          </article>
+        </div>
+        <article class="card">
+          <h2>Schéma du réseau</h2>
+          <div class="netbox"><canvas id="netCv" aria-label="Schéma des couches du réseau"></canvas></div>
+          <div class="stats">
+            <div class="stat"><small>Paramètres</small><b id="nPar">0</b></div>
+            <div class="stat"><small>Couches cachées</small><b id="nHid">2</b></div>
+            <div class="stat"><small>Sortie</small><b>softmax</b></div>
+          </div>
+          <div id="parDetail" class="note"></div>
+        </article>
+        <div>
+          <article class="card">
+            <h2>Architecture</h2>
+            <p class="note">Ajoute ou retire des couches. La sortie softmax est imposée. Plafond : 8 couches, 256 neurones, 100 000 paramètres.</p>
+            <div class="layers" id="layers"></div>
+            <div class="crow" style="margin-top:8px">
+              <button type="button" id="bAddLayer"><i class="fa-solid fa-plus"></i> Couche</button>
+              <button type="button" id="bDefNet">2 × 64 ReLU</button>
+            </div>
+            <div class="pgrid" style="margin-top:12px">
+              <label>Graine d'init. <input id="pSeed" type="number" min="1" step="1" value="1"></label>
+            </div>
+          </article>
+          <article class="card" style="margin-top:14px">
+            <h2>Code PyTorch généré</h2>
+            <p class="note">Lecture seule — l'entraînement part de la configuration, pas de ce texte.</p>
+            <pre class="code" id="code" tabindex="0"></pre>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="pane-train" hidden>
+      <div class="grid3">
+        <article class="card">
+          <h2>Méthode</h2>
+          <div class="segc" id="meth" role="group" aria-label="Méthode d'apprentissage">
+            <button type="button" data-m="evolution" aria-pressed="true">Neuroévolution</button>
+            <button type="button" data-m="imitation">Imitation</button>
+          </div>
+          <p class="note" id="methHelp" style="margin-top:10px">Une population joue des matchs ; on garde les meilleurs et on les mute.</p>
+          <div class="pgrid" id="reglEvo" style="margin-top:12px">
+            <label>Population <input id="rPop" type="number" min="2" max="200" value="20"></label>
+            <label>Générations <input id="rGen" type="number" min="1" max="500" value="30"></label>
+            <label>Mutation <input id="rMut" type="number" min="0.001" max="1" step="0.01" value="0.1"></label>
+            <label>Scénarios / indiv. <input id="rScen" type="number" min="1" max="20" value="1"></label>
+          </div>
+          <div class="pgrid" id="reglImi" hidden style="margin-top:12px">
+            <label>Époques <input id="rEp" type="number" min="1" max="500" value="40"></label>
+            <label>Taux d'apprent. <input id="rLr" type="number" min="0.00001" max="1" step="0.001" value="0.02"></label>
+            <label>Taille de lot <input id="rBatch" type="number" min="1" max="256" value="16"></label>
+          </div>
+          <div class="pgrid" style="margin-top:12px">
+            <label>Durée max (s) <input id="rMax" type="number" min="30" max="1800" value="300"></label>
+            <label>Graine <input id="rSeed" type="number" min="1" value="1"></label>
+          </div>
+          <h2 style="margin-top:16px">Adversaire</h2>
+          <div class="segc" id="adv" role="group" aria-label="Intensité de l'adversaire">
+            <button type="button" data-i="aucun" aria-pressed="true">Aucun</button>
+            <button type="button" data-i="faible">Faible</button>
+            <button type="button" data-i="realiste">Réaliste</button>
+            <button type="button" data-i="agressif">Agressif</button>
+          </div>
+          <p class="note" style="margin-top:8px">Stratégies enregistrées jouées en miroir, filtrées (≥ 70 pts, règles respectées). Mode rapide : événements datés.</p>
+          <h2 style="margin-top:16px">Récompense</h2>
+          <div class="pgrid">
+            <label>Pénalité / erreur <input id="rPenE" type="number" min="0" step="1" value="0"></label>
+            <label>Pénalité / contact <input id="rPenC" type="number" min="0" step="1" value="0"></label>
+          </div>
+          <label class="chk" style="margin-top:8px"><input id="rFinErr" type="checkbox"> Fin du match si le moteur signale une erreur</label>
+        </article>
+        <article class="card">
+          <h2>Suivi en direct</h2>
+          <div class="crow" style="margin-bottom:10px">
+            <button type="button" class="primary" id="bStart"><i class="fa-solid fa-play"></i> Lancer</button>
+            <button type="button" id="bPause" disabled><i class="fa-solid fa-pause"></i> Pause</button>
+            <button type="button" id="bStop" disabled class="danger"><i class="fa-solid fa-stop"></i> Arrêter</button>
+            <label class="chk"><input id="rResume" type="checkbox"> Reprendre le modèle actuel</label>
+          </div>
+          <div class="stats">
+            <div class="stat"><small>Avancement</small><b id="tProg">—</b></div>
+            <div class="stat"><small>Temps restant</small><b id="tEta">—</b></div>
+            <div class="stat"><small>Matchs / s</small><b id="tMps">—</b></div>
+          </div>
+          <div class="chart"><canvas id="chart" aria-label="Courbe d'entraînement"></canvas></div>
+          <p class="note" id="tDiag" style="margin-top:8px"></p>
+        </article>
+        <div>
+          <article class="card">
+            <h2>Serveur</h2>
+            <dl class="pgrid" style="grid-template-columns:auto 1fr">
+              <dt class="muted">Matériel</dt><dd id="tDev">…</dd>
+              <dt class="muted">File</dt><dd id="tQueue">libre</dd>
+              <dt class="muted">Tâche</dt><dd id="tJob">aucune</dd>
+            </dl>
+          </article>
+          <article class="card" style="margin-top:14px">
+            <h2>Journal</h2>
+            <div class="log" id="tLog" aria-live="polite"></div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="pane-eval" hidden>
+      <article class="card">
+        <h2>Jeu de test figé</h2>
+        <p class="note">Cinq scénarios à graines fixes. Comparaison avec un cerveau aléatoire (parmi les actions valides) et la stratégie d'exemple du simulateur.</p>
+        <div class="crow">
+          <label>Matchs <input id="eN" type="number" min="1" max="20" value="5" style="width:70px"></label>
+          <button type="button" class="primary" id="bEval"><i class="fa-solid fa-play"></i> Évaluer</button>
+        </div>
+        <p class="note" id="eStatus" style="margin-top:8px"></p>
+        <div style="overflow:auto;margin-top:12px">
+          <table class="table" id="eTable">
+            <thead>
+              <tr><th>Cerveau</th><th class="num">Moyen</th><th class="num">Écart-type</th><th class="num">Min</th><th class="num">Max</th><th class="num">Pierres</th><th class="num">Murs</th><th class="num">Tours</th><th class="num">Porte</th><th class="num">Graal</th><th class="num">Roi</th><th class="num">Boulets</th><th class="num">Erreurs</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+
+    <section id="pane-replay" hidden>
+      <article class="card">
+        <h2>Rejouer dans le simulateur 3D</h2>
+        <p class="note">Le réseau choisit une suite d'actions sur un scénario. Le programme est au format <code>camelot-strategie</code> version 1, ouvrable dans le plateau.</p>
+        <div class="pgrid" style="max-width:420px">
+          <label>Graine du scénario <input id="pReplaySeed" type="number" min="1" value="1"></label>
+        </div>
+        <div class="crow" style="margin-top:12px">
+          <button type="button" class="primary" id="bReplay"><i class="fa-solid fa-clapperboard"></i> Générer le programme</button>
+          <button type="button" id="bOpenPlateau" disabled><i class="fa-solid fa-chess-rook"></i> Ouvrir dans le plateau</button>
+          <button type="button" id="bSaveStrat" disabled><i class="fa-solid fa-floppy-disk"></i> Enregistrer comme stratégie</button>
+        </div>
+        <p class="note" id="rInfo" style="margin-top:10px"></p>
+        <pre class="code" id="rProg" hidden></pre>
+      </article>
+    </section>
+  </main>
+</div>
+
+<div class="scrim" id="scrim" hidden></div>
+<section class="drawer" id="dList" aria-label="Cerveaux">
+  <div class="dhead"><h2>Cerveaux de l'équipe</h2><button type="button" class="ghost" data-close aria-label="Fermer"><i class="fa-solid fa-xmark"></i></button></div>
+  <div class="dbody">
+    <input id="sFilter" type="search" placeholder="Filtrer…" aria-label="Filtrer les cerveaux">
+    <div class="crow"><button type="button" id="bNew">Nouveau</button><button type="button" id="bDup">Dupliquer</button></div>
+    <ul class="list" id="brains"></ul>
+  </div>
+</section>
+<div class="toast" id="toast" role="status" hidden><span id="toastMsg"></span><span class="tb" id="toastBtns"></span></div>
+
+<script src="../bareme.js"></script>
+<script src="../engine/geom.js"></script>
+<script src="../engine/engine.js"></script>
+<script src="../engine/score.js"></script>
+<script src="../engine/actions.js"></script>
+<script src="../engine/env.js"></script>
+<script src="net.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

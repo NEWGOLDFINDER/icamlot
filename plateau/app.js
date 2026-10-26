@@ -1,5 +1,5 @@
 /* Simulation du plateau : interface (programme, table 3D, frise, stratégies).
-   Le moteur (GEO, ENGINE) est défini dans index.html et tourne aussi dans un Web Worker. */
+   Le moteur (GEO, ENGINE, SCORE) est chargé depuis /engine/ et tourne aussi dans un Web Worker. */
 (function () {
   var $ = function (id) { return document.getElementById(id); };
   var MATCH = 100;
@@ -216,12 +216,22 @@
 
   /* ---------- calcul (Web Worker si possible) ---------- */
   var worker = null, reqId = 0, R = null;
-  try {
-    var src = $('geomSrc').textContent + '\n' + $('engSrc').textContent + '\nonmessage=function(e){var r=ENGINE.simulate(e.data.prog,e.data.P);delete r.poseAt;delete r.stoneAt;postMessage({id:e.data.id,r:r});};';
-    worker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
-    worker.onmessage = function (e) { if (e.data.id === reqId) accept(e.data.r); };
-    worker.onerror = function () { worker = null; recompute(); };
-  } catch (e) { worker = null; }
+  (function () {
+    function attach(w) {
+      worker = w;
+      worker.onmessage = function (e) { if (e.data.id === reqId) accept(e.data.r); };
+      worker.onerror = function () { worker = null; };
+    }
+    try {
+      Promise.all([
+        fetch('../engine/geom.js').then(function (r) { return r.text(); }),
+        fetch('../engine/engine.js').then(function (r) { return r.text(); })
+      ]).then(function (src) {
+        var code = src[0] + '\n' + src[1] + '\nonmessage=function(e){var r=ENGINE.simulate(e.data.prog,e.data.P);delete r.poseAt;delete r.stoneAt;postMessage({id:e.data.id,r:r});};';
+        attach(new Worker(URL.createObjectURL(new Blob([code], { type: 'text/javascript' }))));
+      }, function () { worker = null; });
+    } catch (e) { worker = null; }
+  })();
   function recompute() {
     readParams(); $('busy').hidden = false;
     var data = { prog: JSON.parse(JSON.stringify(prog)), P: Object.assign({}, params), id: ++reqId };
@@ -241,40 +251,14 @@
     if (time > TEND) time = TEND;
   }
 
-  /* ---------- géométrie côté page ---------- */
-  var BARS = [{ y: -110, hl: 105, r: 25 }, { y: 0, hl: 105, r: 25 }, { y: 70, hl: 90, r: 10 }];
-  function gripTop(g) { var th = g.rot * Math.PI / 180, c = Math.abs(Math.cos(th)), s = Math.abs(Math.sin(th)), m = 0; BARS.forEach(function (b) { m = Math.max(m, b.y * Math.cos(th) + b.hl * s + b.r * c); }); return g.hc + m; }
-  function hullPer(P) {
-    P = P.slice().sort(function (a, b) { return a[0] - b[0] || a[1] - b[1]; });
-    function cr(o, a, b) { return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]); }
-    var lo = [], up = [];
-    P.forEach(function (q) { while (lo.length >= 2 && cr(lo[lo.length - 2], lo[lo.length - 1], q) <= 0) lo.pop(); lo.push(q); });
-    for (var i = P.length - 1; i >= 0; i--) { var q = P[i]; while (up.length >= 2 && cr(up[up.length - 2], up[up.length - 1], q) <= 0) up.pop(); up.push(q); }
-    var H = lo.slice(0, -1).concat(up.slice(0, -1)), per = 0;
-    for (var j = 0; j < H.length; j++) { var a = H[j], b = H[(j + 1) % H.length]; per += Math.hypot(a[0] - b[0], a[1] - b[1]); }
-    return per;
-  }
-  function inCastle(x, y) { return ENGINE.inPoly(x, y, ENGINE.CASTLE) || ENGINE.inPoly(x, y, ENGINE.CASTLE_B); }
+  /* ---------- géométrie / score (modules partagés) ---------- */
+  var BARS = SCORE.BARS;
+  function gripTop(g) { return SCORE.gripTop(g); }
+  function hullPer(P) { return SCORE.hullPer(P); }
+  function inCastle(x, y) { return SCORE.inCastle(x, y); }
   var countPer = true;
-  function graalAt(t) { var e = R.graal.tl[0]; for (var i = 0; i < R.graal.tl.length; i++) if (R.graal.tl[i].t <= t) e = R.graal.tl[i]; return e; }
-  function checks(t) {
-    var p = R.poseAt(t), robotH = Math.max(345, gripTop(p.A), gripTop(p.B)), pts = triPoly(p), oTop = 0, oLim = 350, bad = false, objBad = false, n = 0;
-    R.stones.forEach(function (st) {
-      var e = R.stoneAt(st, t); if (e.k !== 'held') return; n++;
-      var g = p[e.f], th = g.rot * Math.PI / 180, top = g.hc + 110 * (e.l - 1) * Math.cos(th) + 160 * Math.abs(Math.sin(th)) + 55 * Math.abs(Math.cos(th));
-      var fo = heldFoot(p, e.f === 'A' ? 0 : 1, e.l), lim = inCastle(fo.cx, fo.cy) ? 430 : 350;
-      if (top > lim + 0.5) objBad = true; if (top > oTop) { oTop = top; oLim = lim; }
-      if (countPer) pts = pts.concat(rectPoly(fo));
-    });
-    var ge = graalAt(t), gTop = 0;
-    if (ge.k === 'held' || ge.k === 'free') { gTop = ge.k === 'held' ? p[ge.f].hc - 110 + params.gs / 2 : (ge.top != null ? ge.top : ge.pose[ge.f].hc - 110 + params.gs); var glim = 430; if (gTop > glim + 0.5) objBad = true; if (ge.k === 'held') { n++; if (gTop > oTop) { oTop = gTop; oLim = glim; } } }
-    var per = hullPer(pts), plim = t <= 0.01 ? 1200 : 1400;
-    var col = false; R.collisions.forEach(function (c) { if (t >= c.t - 0.001 && t < c.t + 0.1) col = true; });
-    var why = [];
-    if (robotH > 350.5) why.push('hauteur du robot'); if (objBad) why.push('hauteur des objets'); if (per > plim + 0.5) why.push('périmètre'); if (col) why.push('contact');
-    bad = why.length > 0;
-    return { p: p, robotH: robotH, oTop: oTop, oLim: oLim, n: n, per: per, plim: plim, gTop: gTop, bad: bad, why: why };
-  }
+  function graalAt(t) { return SCORE.graalAt(R, t); }
+  function checks(t) { return SCORE.checks(R, params, t, countPer); }
 
   /* ---------- scène ---------- */
   var canvas = $('view'), gl;
@@ -510,70 +494,9 @@
 
   function fmt(t) { return (Math.round(t * 10) / 10).toFixed(1).replace('.', ','); }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
-  /* état de la table à l'instant t : constructions, Graal, retour du roi, boulets */
-  function own(id) { var n = parseInt(id.slice(1), 10); return id[0] === 'M' ? n <= 5 : n <= 4; }
-  function outcome(T) {
-    var fin = {};
-    R.stones.forEach(function (st) {
-      var e = R.stoneAt(st, T);
-      if (e.k === 'home') { var pk = ENGINE.PK[st.pk]; fin[st.id] = { foot: rectPoly({ cx: pk.x, cy: pk.y, hl: 160, hn: 55, ang: pk.tan + 90 }), v: false, bottom: 110 * st.l, home: true }; }
-      else if (e.k === 'free') { var g = e.pose[e.f], th = g.rot * Math.PI / 180, fo = heldFoot(e.pose, e.f === 'A' ? 0 : 1, e.l), zc = g.hc + 110 * (e.l - 1) * Math.cos(th); fin[st.id] = { foot: rectPoly(fo), v: Math.abs(Math.sin(th)) > 0.7, bottom: zc - (160 * Math.abs(Math.sin(th)) + 55 * Math.abs(Math.cos(th))) }; }
-    });
-    function zr(z) { return rectPoly({ cx: z.c[0], cy: z.c[1], hl: 200, hn: 100, ang: z.tan + 90 }); }
-    var walls = [], doors = [], towers = [], inZ = {}, inOwn = {};
-    ENGINE.ZM.forEach(function (z) {
-      var P = zr(z), ss = Object.keys(fin).filter(function (k) { return !fin[k].home && overlap(fin[k].foot, P, 0); });
-      ss.forEach(function (k) { inZ[k] = 1; if (own(z.id)) inOwn[k] = 1; });
-      var h = ss.filter(function (k) { return !fin[k].v; }), v = ss.filter(function (k) { return fin[k].v; });
-      if (v.length >= 2 && h.some(function (k) { return fin[k].bottom > 300; })) doors.push(z.id);
-      else if (h.length >= 3) walls.push(z.id);
-    });
-    ENGINE.ZT.forEach(function (z) {
-      Object.keys(fin).forEach(function (k) {
-        if (fin[k].home) return; var d = 1e9, P = fin[k].foot;
-        if (ENGINE.inPoly(z.c[0], z.c[1], P)) d = 0; else for (var i = 0; i < 4; i++) { var a = P[i], b = P[(i + 1) % 4], dx = b[0] - a[0], dy = b[1] - a[1], L = dx * dx + dy * dy, u = Math.max(0, Math.min(1, ((z.c[0] - a[0]) * dx + (z.c[1] - a[1]) * dy) / L)); d = Math.min(d, Math.hypot(z.c[0] - a[0] - u * dx, z.c[1] - a[1] - u * dy)); }
-        if (d < 100) { inZ[k] = 1; if (own(z.id)) inOwn[k] = 1; if (fin[k].v && towers.indexOf(z.id) < 0) towers.push(z.id); }
-      });
-    });
-    var ge = graalAt(T), tri = triPoly(R.poseAt(T));
-    var throneFull = tri.every(function (v) { return ENGINE.inPoly(v[0], v[1], ENGINE.THRONE); });
-    var thronePart = !throneFull && overlap(tri, ENGINE.THRONE, 0);
-    var nBalls = 0;
-    if (R.balls.t < Infinity) for (var i = 0; i < 10; i++) { var ti = R.balls.t + (i + 0.5) * R.balls.d / 10; if (ti >= 85 && ti <= T + 1e-6) nBalls++; }
-    return { T: T, fin: fin, walls: walls, doors: doors, towers: towers, inZ: inZ, inOwn: inOwn, ge: ge, throneFull: throneFull, thronePart: thronePart, nBalls: nBalls };
-  }
-  /* points de la stratégie avec le barème du compteur (bareme.js) ; douves et PAMI ne sont pas simulés */
-  function scoreOf(o) {
-    var B = BAREME, rows = [];
-    var nP = Object.keys(o.inOwn).length, wOwn = o.walls.filter(own), tOwn = o.towers.filter(own), dOwn = o.doors.filter(own);
-    var g = o.ge, gIn = false, lvl = 0, gNote = 'non posé dans le château';
-    if (g.k === 'free' && g.zone && own(g.zone)) {
-      gIn = true; var bottom = g.top - params.gs;
-      lvl = bottom >= 300 ? 3 : bottom >= 200 ? 2 : bottom >= 100 ? 1 : 0;
-      gNote = 'posé sur ' + g.zone + ' (base à ' + Math.round(bottom) + ' mm)';
-    } else if (g.k === 'held') gNote = 'encore tenu par le robot';
-    var roi = o.throneFull ? B.retourComplet : o.thronePart ? B.retourPartiel : 0;
-    var bl = (o.nBalls >= 1 ? B.boulet1 : 0) + (o.nBalls >= 3 ? B.boulet3 : 0);
-    rows.push(['Construction', [
-      ['Pierres dans nos zones', nP + ' × ' + B.pierre + ' pt', nP * B.pierre],
-      ['Murs', wOwn.length ? wOwn.join(', ') : 'aucun', wOwn.length * B.mur],
-      ['Tours', tOwn.length ? tOwn.join(', ') : 'aucune', tOwn.length * B.tour],
-      ['Porte', dOwn.length ? dOwn[0] : 'aucune', dOwn.length ? B.porte : 0]
-    ]]);
-    rows.push(['Graal', [
-      ['Dans le château', gNote, gIn ? B.graalPresent : 0],
-      ['Niveau d\'élévation', gIn ? 'niveau ' + lvl + ' (estimé d\'après la hauteur)' : '-', lvl * B.graalNiveau]
-    ]]);
-    rows.push(['Retour du roi', [
-      ['Salle du trône', o.throneFull ? 'complètement' : o.thronePart ? 'en partie' : 'dehors', roi]
-    ]]);
-    rows.push(['Assaut', [
-      ['Boulets dans la cour adverse', o.nBalls + ' tombés entre 85 et 100 s', bl],
-      ['Douves et attaque de PAMI', 'non simulées', 0]
-    ]]);
-    var total = 0; rows.forEach(function (r) { r[1].forEach(function (x) { total += x[2]; }); });
-    return { total: total, rows: rows };
-  }
+  function own(id) { return SCORE.own(id, 'yellow'); }
+  function outcome(T) { return SCORE.outcome(R, params, T); }
+  function scoreOf(o) { return SCORE.scoreOf(o, params); }
   function renderResults() {
     var T = R.T, tE = Math.min(T, MATCH), o = outcome(tE), sc = scoreOf(o);
     $('scoreV').textContent = sc.total; $('totPts').textContent = sc.total + ' pts';
@@ -585,7 +508,7 @@
       r[1].forEach(function (x) { h += '<div class="srw' + (x[2] ? '' : ' zero') + '"><span>' + esc(x[0]) + '<small>' + esc(x[1]) + '</small></span><b>' + x[2] + '</b></div>'; });
       h += '</div>';
     });
-    if (params.gs <= 100) h += '<p class="note bad" style="padding:0 14px">Le Graal fait ' + params.gs + ' mm : le règlement exige plus qu\'un cube de 100 mm.</p>';
+    if (params.gs <= 60) h += '<p class="note bad" style="padding:0 14px">Le Graal fait ' + params.gs + ' mm : le règlement exige un cube strictement plus grand que 60 mm.</p>';
     var rows = [];
     rows.push(['Durée du programme', fmt(T) + ' s', T <= MATCH]);
     rows.push(['Pierres prises', Object.keys(o.fin).filter(function (k) { return !o.fin[k].home; }).length + R.stones.filter(function (st) { return R.stoneAt(st, tE).k === 'held'; }).length + ' / 30', null]);
@@ -918,6 +841,18 @@
   params = Object.assign({}, DEF, saved && saved.params ? saved.params : {});
   prog = saved ? saved.program : JSON.parse(JSON.stringify(EXAMPLE));
   writeParams(); readParams(); lastSnap = snap(); updateUndoBtns(); renderSteps(); updateDirty(); resize(); recompute();
+  (function openReplay() {
+    try {
+      var replay = sessionStorage.getItem('icamlot-replay');
+      if (replay) {
+        sessionStorage.removeItem('icamlot-replay');
+        var o = JSON.parse(replay);
+        importObj(o); setCurrent(o.name || ''); markSaved(false); toast('Programme issu de l\'Atelier Cerveau chargé', 'ok');
+      }
+    } catch (e) {}
+    var m = /[?&]strategie=([a-z0-9-]+)/.exec(location.search);
+    if (m) loadStrat(m[1]);
+  })();
 
   var followOff = new THREE.Vector3(-800, 1000, 800), vT = new THREE.Vector3(), vC = new THREE.Vector3();
   function frame(now) {
