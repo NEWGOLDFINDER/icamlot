@@ -984,8 +984,15 @@
         var f = st.f; if (!held[f] || !held[f].graal) return err('La face ' + f + ' ne tient pas le Graal.');
         if (st.gm === 'xy') return poserGraalXY(st);
         var z = zoneById(st.z); if (!z) return err('Zone inconnue.');
-        var zr = z.tan !== undefined ? zoneRect(z) : null, inZ = freeStones().filter(function (x) { var g = stoneFoot(x); return zr ? overlap(g.foot, zr, 0) : ptPolyD(z.c, g.foot) < 100; });
-        if (!inZ.length) return err('Aucune construction dans ' + z.id + '.');
+        var isWall = z.tan !== undefined;
+        var zr = isWall ? zoneRect(z) : null;
+        var inZ = freeStones().filter(function (x) {
+          var g = stoneFoot(x);
+          if (!isWall && !g.vertical) return false;
+          return zr ? overlap(g.foot, zr, 0) : ptPolyD(z.c, g.foot) < 100;
+        });
+        if (isWall && inZ.length < 3) return err('Construction incomplète dans ' + z.id + ' (mur ou porte requiert 3 pierres).');
+        if (!isWall && inZ.length < 1) return err('Aucune construction dans ' + z.id + '.');
         var top = 0; inZ.forEach(function (x) { top = Math.max(top, stoneFoot(x).top); });
         var tops = inZ.filter(function (x) { return stoneFoot(x).top > top - 1; }), cc = [0, 0], pts = [];
         tops.forEach(function (x) { var fo = stoneFoot(x).foot; fo.forEach(function (v) { pts.push(v); }); var g = stoneFoot(x); cc[0] += (g.fo ? g.fo.cx : z.c[0]) / tops.length; cc[1] += (g.fo ? g.fo.cy : z.c[1]) / tops.length; });

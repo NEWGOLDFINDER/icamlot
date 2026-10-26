@@ -156,7 +156,7 @@ var tcat = tenv.catalogue;
 tenv.step(idxOf(tcat, function (a) { return a.a === 'prendre' && a.f === 'A' && a.p === 'P1'; }));
 var afterT0 = tenv.step(idxOf(tcat, function (a) { return a.a === 'tour' && a.f === 'A' && a.z === 'T1' && a.rank === 0; }));
 var iT1 = idxOf(tcat, function (a) { return a.a === 'tour' && a.f === 'A' && a.z === 'T1' && a.rank === 1; });
-check('2e pierre de la même tour encore possible', afterT0.mask[iT1] === 1);
+check('2e pierre de la même tour impossible (tour terminée)', afterT0.mask[iT1] === 0);
 
 var benv = ENV.create({ skipContacts: true });
 benv.play(function (obs, mask) {

@@ -25,6 +25,7 @@ import os
 import re
 import secrets
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -34,7 +35,13 @@ from http.cookies import SimpleCookie
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import quote
 
-DATA = os.environ.get("ICAMLOT_DATA", "/var/lib/icamlot/strategies")
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA = os.environ.get("ICAMLOT_DATA")
+if not DATA:
+    if os.name == "nt" or not os.path.exists("/var/lib/icamlot"):
+        DATA = os.path.join(REPO, ".data", "strategies")
+    else:
+        DATA = "/var/lib/icamlot/strategies"
 PASSWORD = os.environ.get("ICAMLOT_PASSWORD", "")
 COOKIE = "icamlot_session"
 SESSION_DAYS = 30
@@ -42,7 +49,6 @@ MAX_BODY = 512 * 1024
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 ID_RE = re.compile(r"^[a-z0-9-]{6,40}$")
 SECRET = b""
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TRAINER_PY = os.path.join(REPO, "trainer", "trainer.py")
 
 MAX_LAYERS = 8
@@ -262,7 +268,7 @@ def spawn_job(jid):
     log = job.get("log") or os.path.join(jobs_dir(), jid + ".log")
     env = os.environ.copy()
     proc = subprocess.Popen(
-        ["python3", TRAINER_PY, "--job", path, "--strategies", DATA, "--weights-out", weights_out],
+        [sys.executable, TRAINER_PY, "--job", path, "--strategies", DATA, "--weights-out", weights_out],
         cwd=REPO,
         env=env,
         stdout=subprocess.DEVNULL,
@@ -531,7 +537,9 @@ class Handler(SimpleHTTPRequestHandler):
                 info["cuda"] = bool(torch.cuda.is_available())
                 if info["cuda"]:
                     info["device"] = "cuda"
-                    info["name"] = torch.cuda.get_device_name(0) + " (détecté, non utilisé : calcul sur processeur)"
+                    mem = torch.cuda.get_device_properties(0).total_memory
+                    info["vram_mo"] = round(mem / 1024 / 1024)
+                    info["name"] = torch.cuda.get_device_name(0) + " (GPU actif : PyTorch)"
             except ImportError:
                 info["torch"] = False
                 info["cuda"] = False

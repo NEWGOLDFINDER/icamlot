@@ -103,9 +103,10 @@
     var idx = -1; ENGINE.PK.forEach(function (pk, i) { if (pk.id === p) idx = i; });
     if (idx < 0) return false;
     var sts = sim.stones().filter(function (st) { return st.pk === idx; });
-    if (sts.some(function (x) { return x.cur.k === 'held' || x.cur.k === 'gone' || (sim.claimed && sim.claimed(x.id)); })) return false;
-    var tag = sts[0] && sts[0].tag;
-    return sts.length === 3 && sts.every(function (x) { return x.tag === tag; }) && (tag === 'home' || (sts[0].cur.geo && !sts[0].cur.geo.vertical));
+    if (sts.length !== 3) return false;
+    if (!sts.every(function (x) { return x.cur.k === 'home'; })) return false;
+    if (sim.claimed && sts.some(function (x) { return sim.claimed(x.id); })) return false;
+    return true;
   }
   function stoneHeldRank(sim, f, rank) {
     var h = sim.held()[f];
@@ -114,6 +115,7 @@
   }
   function zoneStoneCount(sim, z) {
     var zone = ENGINE.zoneById(z); if (!zone) return 0;
+    var isWall = z && z[0] === 'M';
     var zr = zone.tan !== undefined ? rectPoly({ cx: zone.c[0], cy: zone.c[1], hl: 200, hn: 100, ang: zone.tan + 90 }) : null;
     var n = 0;
     /* pierres posées par ce robot, puis celles de l'autre robot (la zone est occupée aussi) */
@@ -121,6 +123,7 @@
     sim.stones().forEach(function (st) { if (st.cur.k === 'free' && st.cur.geo) all.push(st.cur.geo); });
     (sim.foreign ? sim.foreign() : []).forEach(function (g) { all.push(g); });
     all.forEach(function (g) {
+      if (!isWall && !g.vertical) return; // pour une tour, seule une pierre verticale compte
       if (zr) { if (overlap(g.foot, zr, 0)) n++; return; }
       var d = 1e9, P = g.foot;
       if (ENGINE.inPoly(zone.c[0], zone.c[1], P)) { n++; return; }
@@ -133,8 +136,24 @@
     });
     return n;
   }
-  function zoneHasBuild(sim, z) { return zoneStoneCount(sim, z) > 0; }
-  function towerComplete(sim, z) { return zoneStoneCount(sim, z) >= 3; }
+  function zoneHasBuild(sim, z) {
+    var isWall = z && z[0] === 'M';
+    return isWall ? zoneStoneCount(sim, z) >= 3 : zoneStoneCount(sim, z) >= 1;
+  }
+  function towerComplete(sim, z) { return zoneStoneCount(sim, z) >= 1; }
+
+  function validDoorTarget(act) {
+    if (act.z === 'M5') return false; // Pas de place pour déployer la porte près de la bordure basse
+    if (act.z === 'M1' && act.side === 'ext') return false; // Pas de place pour déployer la porte côté extérieur haut
+    return true;
+  }
+  function castleHasDoor(sim) {
+    if (typeof SCORE === 'undefined' || !SCORE.outcome) return false;
+    var r = sim.result(false);
+    var o = SCORE.outcome(r, sim.params(), sim.time());
+    var team = teamOf(sim);
+    return o.doors.some(function (id) { return SCORE.own(id, team); });
+  }
 
   /* Une action est écrite dans le repère du cerveau (jaune : P1–P10, M1–M5, T1–T4). Pour un robot bleu, les mêmes
      numéros désignent les cibles en miroir : on les traduit en vrais numéros avant de lire la table. */
@@ -152,7 +171,7 @@
       case 'prendre': return faceEmpty(sim, act.f) && packetStacked(sim, act.p);
       case 'mur': return faceStackFlat(sim, act.f) && !zoneHasBuild(sim, act.z);
       case 'tour': return stoneHeldRank(sim, act.f, act.rank) && !towerComplete(sim, act.z);
-      case 'porte': return faceStackFlat(sim, act.f) && !zoneHasBuild(sim, act.z);
+      case 'porte': return faceStackFlat(sim, act.f) && !zoneHasBuild(sim, act.z) && !castleHasDoor(sim) && validDoorTarget(act);
       case 'boulets': return !sim.balls().shots && sim.time() >= 80;
       case 'prendreGraal': return faceEmpty(sim, act.f) && sim.graal().cur.k === 'home';
       case 'poserGraal': return faceHoldsGraal(sim, act.f) && zoneHasBuild(sim, act.z);

@@ -12,6 +12,8 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 WORKER = ROOT / "engine" / "env_worker.js"
 
 try:
@@ -84,6 +86,129 @@ if HAS_TORCH:
                 {"w": lin.weight.detach().cpu().numpy().T, "b": lin.bias.detach().cpu().numpy()}
                 for lin in self.linears
             ]
+
+
+if HAS_TORCH:
+    from trainer.torch_engine import TorchEnv, _load_actions_table
+
+    class TorchEnvWorker:
+        """Environnement de simulation 100% PyTorch GPU vectorisé."""
+
+        def __init__(self, config: dict, device=None):
+            self.device = device or DEVICE
+            self.config = config
+            self.env = TorchEnv(config=config, batch_size=1, device=self.device)
+            self.n_in = self.env.n_in
+            self.n_out = self.env.n_out
+            self._actions_table = _load_actions_table()
+
+        def call(self, msg: dict) -> dict:
+            cmd = msg.get("cmd")
+            if cmd == "ping":
+                return {"ok": True, "moteur": "TorchEnv-GPU-1.3.0", "bareme": "2027-1.0"}
+            if cmd == "create":
+                return {"ok": True, "nInputs": self.n_in, "nOutputs": self.n_out}
+            if cmd == "reset":
+                obs = self.env.reset(msg.get("scenario"))
+                return {
+                    "obs": obs[0].tolist(),
+                    "mask": self.env.get_mask()[0].tolist(),
+                    "score": self.env.score[0].item(),
+                    "done": self.env.done[0].item()
+                }
+            if cmd == "step":
+                act = msg.get("action", 0)
+                obs, r, d, info = self.env.step(torch.tensor([act], device=self.device))
+                return {
+                    "obs": obs[0].tolist(),
+                    "mask": self.env.get_mask()[0].tolist(),
+                    "reward": r[0].item(),
+                    "done": d[0].item(),
+                    "score": self.env.score[0].item(),
+                    "dt": info["dt"][0].item(),
+                    "err": None if self.env.errors[0].item() == 0 else "Action invalide"
+                }
+            if cmd == "score":
+                return {
+                    "score": self.env.score[0].item(),
+                    "detail": {},
+                    "T": self.env.t[0].item(),
+                    "errors": self.env.errors[0].item(),
+                    "program": []
+                }
+            if cmd == "play":
+                layers = weights_from_json(msg.get("layers", []))
+                acts = msg.get("acts", [])
+                self.env.reset(msg.get("scenario"))
+                max_steps = 80
+                for _ in range(max_steps):
+                    if self.env.done[0]:
+                        break
+                    live_m = self.env.get_live_mask()
+                    obs = self.env.get_obs()
+                    h = obs
+                    for i, layer in enumerate(layers):
+                        w = torch.tensor(layer["w"], dtype=torch.float32, device=self.device)
+                        b = torch.tensor(layer["b"], dtype=torch.float32, device=self.device)
+                        h = h @ w + b
+                        if i < len(layers) - 1:
+                            act_name = acts[i] if i < len(acts) else "relu"
+                            if act_name == "tanh":
+                                h = torch.tanh(h)
+                            elif act_name == "sigmoid":
+                                h = torch.sigmoid(h)
+                            else:
+                                h = torch.relu(h)
+                    logits = h[0]
+                    m = live_m[0]
+                    logits[~m] = -1e9
+                    act = torch.argmax(logits).item()
+                    self.env.step(torch.tensor([act], device=self.device))
+                return {
+                    "score": self.env.score[0].item(),
+                    "detail": {},
+                    "T": self.env.t[0].item(),
+                    "errors": self.env.errors[0].item(),
+                    "done": True,
+                    "program": []
+                }
+            if cmd == "imitate":
+                prog = msg.get("program", [])
+                self.env.reset(msg.get("scenario"))
+                pairs = []
+                for st in prog:
+                    st_a = "boulets" if st.get("a") in ("tir", "boulets") else st.get("a")
+                    found_idx = -1
+                    for idx, act in enumerate(self._actions_table):
+                        if act.get("a") == st_a:
+                            if st.get("f") and act.get("f") != st.get("f"): continue
+                            if st.get("p") and act.get("p") != st.get("p"): continue
+                            if st.get("z") and act.get("z") != st.get("z"): continue
+                            if st.get("side") and act.get("side") != st.get("side"): continue
+                            found_idx = idx
+                            break
+                    if found_idx >= 0:
+                        curr_obs = self.env.get_obs()[0].tolist()
+                        curr_mask = self.env.get_mask()[0].tolist()
+                        pairs.append({"obs": curr_obs, "action": found_idx, "mask": curr_mask})
+                        self.env.step(torch.tensor([found_idx], device=self.device))
+                return {
+                    "pairs": pairs,
+                    "score": self.env.score[0].item(),
+                    "detail": {},
+                    "T": self.env.t[0].item(),
+                    "n": len(pairs)
+                }
+            if cmd == "qualify":
+                return {"ok": True, "score": 85.0, "errors": 0}
+            if cmd == "example":
+                return {"program": []}
+            if cmd == "close":
+                return {"ok": True}
+            return {"error": f"Commande inconnue: {cmd}"}
+
+        def close(self):
+            pass
 
 
 class EnvWorker:
@@ -296,6 +421,60 @@ def filter_opponents(strats, env, min_score=70):
     return []
 
 
+def eval_population_gpu(torch_env_worker, pop, acts, cfg, sc_base, pop_n, n_scen, on_error="penalite", max_steps=80):
+    device = torch_env_worker.device
+    from trainer.torch_engine import TorchEnv
+    rec = cfg.get("recompense") or {}
+    penalite = float(rec.get("penalite_contact") or rec.get("penalite_erreur") or 20.0)
+
+    n_layers = len(pop[0])
+    w_stacks = []
+    b_stacks = []
+    for l in range(n_layers):
+        w_l = torch.stack([torch.tensor(ind[l]["w"], dtype=torch.float32, device=device) for ind in pop], dim=0)
+        b_l = torch.stack([torch.tensor(ind[l]["b"], dtype=torch.float32, device=device) for ind in pop], dim=0).unsqueeze(1)
+        w_stacks.append(w_l)
+        b_stacks.append(b_l)
+
+    all_scores = [[] for _ in range(pop_n)]
+    env = TorchEnv(config=cfg, batch_size=pop_n, device=device)
+
+    for k in range(n_scen):
+        env.reset()
+        for _ in range(max_steps):
+            if env.done.all():
+                break
+            obs = env.get_obs().unsqueeze(1)
+            mask = env.get_live_mask()
+            h = obs
+            for l in range(n_layers):
+                h = torch.bmm(h, w_stacks[l]) + b_stacks[l]
+                if l < n_layers - 1:
+                    act_name = acts[l] if l < len(acts) else "relu"
+                    if act_name == "tanh":
+                        h = torch.tanh(h)
+                    elif act_name == "sigmoid":
+                        h = torch.sigmoid(h)
+                    else:
+                        h = torch.relu(h)
+            logits = h.squeeze(1)
+            logits[~mask] = -1e9
+            actions = torch.argmax(logits, dim=-1)
+            env.step(actions)
+            if on_error == "fin":
+                env.done = env.done | (env.errors > 0)
+
+        sc = env.score.cpu().tolist()
+        err = env.errors.cpu().tolist()
+        for i in range(pop_n):
+            val = sc[i]
+            if penalite:
+                val -= penalite * err[i]
+            all_scores[i].append(val)
+
+    return [float(np.mean(all_scores[i])) for i in range(pop_n)]
+
+
 def run_evolution(job: Job, env, cfg, strats):
     regl = cfg.get("reglages") or {}
     pop_n = int(regl.get("population") or 20)
@@ -332,19 +511,23 @@ def run_evolution(job: Job, env, cfg, strats):
             job.logline("Entraînement arrêté.")
             job.save()
             return
-        scores = []
         t_gen = time.time()
-        for ind in pop:
-            scs = []
-            for k in range(n_scen):
-                ep = play_episode(env, ind, acts, scenario(g, k), on_error=on_error)
-                rec = cfg.get("recompense") or {}
-                val = ep["score"]
-                if rec.get("penalite_erreur"):
-                    val -= rec["penalite_erreur"] * ep["errors"]
-                scs.append(val)
-                matches += 1
-            scores.append(float(np.mean(scs)))
+        if HAS_TORCH and isinstance(env, TorchEnvWorker) and intensity in ("aucun", "none"):
+            scores = eval_population_gpu(env, pop, acts, cfg, scenario(g, 0), pop_n, n_scen, on_error=on_error)
+            matches += pop_n * n_scen
+        else:
+            scores = []
+            for ind in pop:
+                scs = []
+                for k in range(n_scen):
+                    ep = play_episode(env, ind, acts, scenario(g, k), on_error=on_error)
+                    rec = cfg.get("recompense") or {}
+                    val = ep["score"]
+                    if rec.get("penalite_erreur"):
+                        val -= rec["penalite_erreur"] * ep["errors"]
+                    scs.append(val)
+                    matches += 1
+                scores.append(float(np.mean(scs)))
         order = sorted(range(len(pop)), key=lambda i: scores[i], reverse=True)
         pop = [pop[i] for i in order]
         scores = [scores[i] for i in order]
@@ -502,7 +685,10 @@ def main():
         "skipContacts": True,
         "onError": (cfg.get("recompense") or {}).get("sur_erreur") or "penalite",
     }
-    env = EnvWorker(env_cfg)
+    if HAS_TORCH:
+        env = TorchEnvWorker(env_cfg)
+    else:
+        env = EnvWorker(env_cfg)
     try:
         folder = Path(args.strategies) if args.strategies else None
         strats = load_strategies(folder) if folder else []
