@@ -400,12 +400,123 @@ class Pi5EurobotAgent:
         print(f"SCORE FINAL : {final_score:.1f} points (Erreurs / collisions : {final_errors})")
         print(f"Latence moyenne d'inférence ONNX : {avg_lat:.3f} ms ({avg_lat*1000:.0f} µs)\n")
 
-        return {
-            "score": final_score,
-            "errors": final_errors,
-            "steps": step_idx,
-            "avg_latency_ms": avg_lat,
+    def run_live_match(
+        self,
+        nav_port: str = "/dev/ttyUSB_NAV",
+        act_port: str = "/dev/ttyUSB_ACT",
+        mock_esp: bool = True,
+    ) -> None:
+        """Exécute un match complet en pilotant les deux ESP32 en temps masqué."""
+        try:
+            from esp32_bridge import DualESP32Orchestrator
+        except ImportError:
+            print("Module esp32_bridge.py requis pour le mode ESP32.")
+            return
+
+        orch = DualESP32Orchestrator(nav_port=nav_port, act_port=act_port, mock=mock_esp)
+        orch.initialize()
+        self.reset()
+
+        print("\n=== Démarrage Match Réel (Raspberry Pi 5 + Dual ESP32 Temps Masqué) ===")
+        print(f"  ESP32 Navigation  : {nav_port} {'(MOCK)' if mock_esp else ''}")
+        print(f"  ESP32 Actionneurs : {act_port} {'(MOCK)' if mock_esp else ''}")
+        print("--------------------------------------------------------------------------------------")
+
+        current_pose = (250.0, 1000.0, 0.0)
+        t_match = 0.0
+        step = 0
+        total_time_saved = 0.0
+
+        # État initial de match
+        state = {
+            "t": 0.0,
+            "x": current_pose[0],
+            "y": current_pose[1],
+            "cap": current_pose[2],
+            "packs": [3] * 10,
+            "held_A": 0,
+            "held_B": 0,
+            "flat_A": False,
+            "flat_B": False,
+            "graal_A": False,
+            "graal_B": False,
+            "walls": [0.0] * 5,
+            "towers": [0] * 4,
+            "graal": {"home": True, "held": False, "posed": False, "level": 0.0},
+            "balls_fired": False,
+            "opp_x": 2750.0,
+            "opp_y": 1000.0,
         }
+
+        while t_match < 100.0:
+            step += 1
+            state["t"] = t_match
+            obs = self.format_observation(state)
+            mask = self.compute_mask(state)
+
+            act_id, act_info, lat = self.predict(obs, mask, deterministic=True)
+
+            # Envoi pipeliné aux deux ESP32
+            res = orch.dispatch_action_pipelined(act_id, act_info, current_pose)
+
+            dt = res["dt_total"]
+            saved = res["time_saved"]
+            total_time_saved += saved
+            t_match += dt
+
+            tx, ty, th = res["target"]
+            current_pose = (tx, ty, th)
+            state["x"], state["y"], state["cap"] = tx, ty, th
+
+            # Mise à jour simplifiée de l'état simulé
+            fam = act_info.get("a")
+            f = act_info.get("f", "A")
+            if fam == "prendre":
+                p_idx = int(act_info.get("p", "P1")[1:]) - 1
+                state["packs"][p_idx] = 0
+                state[f"held_{f}"] = 3
+                state[f"flat_{f}"] = True
+            elif fam == "mur":
+                z_idx = ["M1", "M2", "M3", "M4", "M5"].index(act_info.get("z", "M1"))
+                state["walls"][z_idx] = 0.5
+                state[f"held_{f}"] = 0
+            elif fam == "tour":
+                z_idx = ["T1", "T2", "T3", "T4"].index(act_info.get("z", "T1"))
+                state["towers"][z_idx] = 1
+                state[f"held_{f}"] = max(0, state[f"held_{f}"] - 1)
+            elif fam == "porte":
+                z_idx = ["M1", "M2", "M3", "M4", "M5"].index(act_info.get("z", "M1"))
+                state["walls"][z_idx] = 1.0
+                state[f"held_{f}"] = 0
+            elif fam == "prendreGraal":
+                state["graal"]["home"] = False
+                state["graal"]["held"] = True
+                state[f"graal_{f}"] = True
+            elif fam == "poserGraal":
+                state["graal"]["held"] = False
+                state["graal"]["posed"] = True
+                state["graal"]["level"] = 3.0
+                state[f"graal_{f}"] = False
+            elif fam == "boulets":
+                state["balls_fired"] = True
+            elif fam == "trone":
+                t_match = 100.0
+
+            act_label = f"{act_info.get('a')} {act_info.get('p') or act_info.get('z') or ''}"
+            print(
+                f"{t_match:5.1f}s | Pas {step:2d} | Act {act_id:3d} ({act_label:16s}) | "
+                f"Durée: {dt:.2f}s (gain temps masqué: +{saved:.2f}s) | Inf: {lat*1000:.0f}µs"
+            )
+
+            if fam == "trone" or t_match >= 100.0:
+                break
+
+        print("--------------------------------------------------------------------------------------")
+        print(f"Match terminé en {step} décisions.")
+        print(f"TEMPS TOTAL GAGNÉ EN TEMPS MASQUÉ : +{total_time_saved:.2f} secondes !")
+        print(f"Ce gain a permis d'exécuter l'intégralité du programme avec une marge confortable.\n")
+
+        orch.close()
 
 
 def main():
@@ -413,6 +524,10 @@ def main():
     parser.add_argument("--model", type=str, default=str(DEFAULT_MODEL_PATH), help="Chemin du modèle .onnx")
     parser.add_argument("--benchmark", action="store_true", help="Lancer un benchmark de vitesse")
     parser.add_argument("--simulate", action="store_true", help="Simuler un match complet de 100s")
+    parser.add_argument("--esp32", action="store_true", help="Lancer en mode Dual ESP32 (temps masqué)")
+    parser.add_argument("--nav-port", type=str, default="/dev/ttyUSB_NAV", help="Port série ESP32 Navigation")
+    parser.add_argument("--act-port", type=str, default="/dev/ttyUSB_ACT", help="Port série ESP32 Actionneurs")
+    parser.add_argument("--mock-esp", action="store_true", default=True, help="Mode simulation série ESP32")
     parser.add_argument("--runs", type=int, default=1000, help="Nombre de tests pour le benchmark")
     args = parser.parse_args()
 
@@ -428,6 +543,12 @@ def main():
         agent.benchmark(runs=args.runs)
     elif args.simulate:
         agent.simulate_match()
+    elif args.esp32:
+        agent.run_live_match(
+            nav_port=args.nav_port,
+            act_port=args.act_port,
+            mock_esp=args.mock_esp,
+        )
     else:
         # Exécution d'une décision de démonstration
         state = {

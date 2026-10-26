@@ -78,6 +78,8 @@ class TorchEnv:
         self.n_in = 37
         self.n_out = 106
         self.on_error = (self.config.get("recompense") or {}).get("sur_erreur") or self.config.get("onError") or "penalite"
+        # Support du pipelining matériel en temps masqué (Dual ESP32 Navigation + Actionneurs)
+        self.pipelined_mech = bool(self.config.get("pipelined_mech", False))
 
         # Charger la table des métadonnées des 106 actions
         self._init_actions_tensors()
@@ -453,7 +455,16 @@ class TorchEnv:
         dt_lin = dist / SPEED_LIN
         dt_rot = dh / SPEED_ROT
         dt_move = torch.maximum(dt_lin, dt_rot)
-        dt_total = dt_move + mech
+
+        if self.pipelined_mech:
+            # Pipelining matériel Dual ESP32 : pré-positionnement en roulant (70% du temps mech masqué)
+            # et saisie / pose finale au contact (30% du temps mech)
+            dt_pre = mech * 0.70
+            dt_contact = mech * 0.30
+            dt_transit = torch.maximum(dt_move, dt_pre)
+            dt_total = dt_transit + dt_contact
+        else:
+            dt_total = dt_move + mech
 
         # 1. PRENDRE (fam == 0)
         mask_prendre = active & is_valid & (fam == 0)
