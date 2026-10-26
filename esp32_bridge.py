@@ -136,34 +136,34 @@ class DualESP32Orchestrator:
         t_start = time.perf_counter()
 
         # --- ÉTAPE 1 : Déclenchement simultané en TEMPS MASQUÉ ---
-        # 1.a) Ordre préparatoire envoyé à l'ESP32 Actionneurs
+        # 1.a) Ordre préparatoire envoyé à l'ESP32 Actionneurs (Système pneumatique : pompe & électrovannes)
         if fam == "prendre":
-            # Ouvrir pince et orientation à plat
-            act_prep_cmd = f"PREPARE {face} TAKE 0"
-            act_exec_cmd = f"EXECUTE {face} TAKE"
+            # Pré-armement pneumatique : allumage pompe à vide et descente ventouse
+            act_prep_cmd = f"PREPARE {face} VACUUM_ARM 0"
+            act_exec_cmd = f"EXECUTE {face} VACUUM_SEAL"
         elif fam == "mur":
-            # Conserver à plat pour poser 3 pierres
-            act_prep_cmd = f"PREPARE {face} WALL 0"
-            act_exec_cmd = f"EXECUTE {face} WALL"
+            # Maintien sous vide à plat, réglage altitude mur
+            act_prep_cmd = f"PREPARE {face} POSITION_WALL 0"
+            act_exec_cmd = f"EXECUTE {face} VALVE_RELEASE"
         elif fam == "tour":
-            # Tourner la pince à 90° PENDANT que le robot roule vers la zone circulaire
-            act_prep_cmd = f"PREPARE {face} TOWER 90"
-            act_exec_cmd = f"EXECUTE {face} TOWER"
+            # Rotation servo 90° PENDANT que le robot roule vers la zone circulaire
+            act_prep_cmd = f"PREPARE {face} POSITION_TOWER 90"
+            act_exec_cmd = f"EXECUTE {face} VALVE_RELEASE"
         elif fam == "porte":
-            act_prep_cmd = f"PREPARE {face} DOOR 0"
-            act_exec_cmd = f"EXECUTE {face} DOOR"
+            act_prep_cmd = f"PREPARE {face} POSITION_DOOR 0"
+            act_exec_cmd = f"EXECUTE {face} VALVE_RELEASE"
         elif fam == "boulets":
-            act_prep_cmd = f"PREPARE ALL CANNON 0"
+            act_prep_cmd = f"PREPARE ALL CANNON_ARM 0"
             act_exec_cmd = f"EXECUTE ALL FIRE_BALLS"
         elif fam == "prendreGraal":
-            act_prep_cmd = f"PREPARE {face} GRAAL_TAKE 0"
-            act_exec_cmd = f"EXECUTE {face} GRAAL_TAKE"
+            act_prep_cmd = f"PREPARE {face} GRAAL_ARM 0"
+            act_exec_cmd = f"EXECUTE {face} GRAAL_SEAL"
         elif fam == "poserGraal":
-            act_prep_cmd = f"PREPARE {face} GRAAL_POSE 0"
-            act_exec_cmd = f"EXECUTE {face} GRAAL_POSE"
+            act_prep_cmd = f"PREPARE {face} GRAAL_ELEVATE 3"
+            act_exec_cmd = f"EXECUTE {face} GRAAL_RELEASE"
         elif fam == "trone":
             act_prep_cmd = "PREPARE ALL PARK 0"
-            act_exec_cmd = "EXECUTE ALL PARK"
+            act_exec_cmd = "EXECUTE ALL PUMP_OFF"
         else:
             act_prep_cmd = "NOP"
             act_exec_cmd = "NOP"
@@ -182,9 +182,10 @@ class DualESP32Orchestrator:
         dh = abs((th - current_pose[2] + 180.0) % 360.0 - 180.0)
         dt_move = max(dist / 500.0, dh / 120.0)
 
-        # Pré-action mécanique (70% du temps masqué pendant le mouvement)
-        dt_pre = mech * 0.70
-        dt_contact = mech * 0.30
+        # Pré-action mécanique en temps masqué pendant le mouvement (ascenseur, orientation 90°, démarrage pompe)
+        # Système pneumatique ultra-rapide : contact final (dépression ou purge électrovanne) prend seulement ~0.25 s
+        dt_pre = mech * 0.75
+        dt_contact = min(mech * 0.25, 0.25)
 
         # Transit combiné en temps masqué
         dt_transit = max(dt_move, dt_pre)
