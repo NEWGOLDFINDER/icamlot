@@ -349,6 +349,33 @@ class TorchEnv:
         # 8. RETOUR AU TRÔNE (105)
         mask[:, 105] = True
 
+        # 9. FILTRAGE GÉOMÉTRIQUE STRICT : Interdiction absolue de traverser des caisses
+        A_pos = self.robot_pose[:, :2].unsqueeze(1).unsqueeze(2)
+        B_tgt = torch.stack([self.action_tx, self.action_ty], dim=1).unsqueeze(0).unsqueeze(2)
+        AB_vec = B_tgt - A_pos
+        L2_dist = (AB_vec ** 2).sum(dim=-1, keepdim=True).clamp(min=1e-6)
+
+        C_packs = self.pack_centers.unsqueeze(0).unsqueeze(0)
+        AC_vec = C_packs - A_pos
+        u_proj = ((AC_vec * AB_vec).sum(dim=-1, keepdim=True) / L2_dist).clamp(0.0, 1.0)
+        P_proj = A_pos + u_proj * AB_vec
+        dist_to_packs = torch.hypot(C_packs[..., 0] - P_proj[..., 0], C_packs[..., 1] - P_proj[..., 1]).squeeze(-1)
+
+        fam_t = self.action_family.unsqueeze(0).unsqueeze(-1)
+        item_t = self.action_item.unsqueeze(0).unsqueeze(-1)
+        target_pk = torch.where(fam_t == 0, item_t, torch.full_like(item_t, -1))
+
+        active_stones = (self.pack_stones > 0).unsqueeze(1)
+        pack_idx = self.pack_indices.unsqueeze(1)
+        is_obstacle = active_stones & (pack_idx != target_pk)
+
+        hits_obstacle = ((dist_to_packs < 235.0) & is_obstacle).any(dim=-1)
+        mask = mask & (~hits_obstacle)
+
+        # Si aucune action n'est libre, le trône permet le désengagement
+        none_valid = ~mask.any(dim=1)
+        mask[none_valid, 105] = True
+
         return mask
 
     def get_live_mask(self) -> torch.Tensor:
@@ -466,71 +493,13 @@ class TorchEnv:
         else:
             dt_total = dt_move + mech
 
-        # 1. PRENDRE (fam == 0)
-        mask_prendre = active & is_valid & (fam == 0)
-        if mask_prendre.any():
-            idx_b = torch.where(mask_prendre)[0]
-            self.held_count[idx_b, f_idx[idx_b]] = 3
-            self.held_rot[idx_b, f_idx[idx_b]] = 0.0
-            self.pack_stones[idx_b, item[idx_b]] = 0
-
-        # 2. MUR (fam == 1)
-        mask_mur = active & is_valid & (fam == 1)
-        if mask_mur.any():
-            idx_b = torch.where(mask_mur)[0]
-            self.held_count[idx_b, f_idx[idx_b]] = 0
-            self.walls[idx_b, item[idx_b]] = 0.5
-
-        # 3. TOUR (fam == 2)
-        mask_tour = active & is_valid & (fam == 2)
-        if mask_tour.any():
-            idx_b = torch.where(mask_tour)[0]
-            self.held_count[idx_b, f_idx[idx_b]] = torch.clamp(self.held_count[idx_b, f_idx[idx_b]] - 1, min=0)
-            self.towers[idx_b, item[idx_b]] = 1
-
-        # 4. PORTE (fam == 3)
-        mask_porte = active & is_valid & (fam == 3)
-        if mask_porte.any():
-            idx_b = torch.where(mask_porte)[0]
-            self.held_count[idx_b, f_idx[idx_b]] = 0
-            self.walls[idx_b, item[idx_b]] = 1.0
-
-        # 5. BOULETS (fam == 4)
-        mask_boulets = active & is_valid & (fam == 4)
-        if mask_boulets.any():
-            curr_t = self.t[mask_boulets] + dt_move[mask_boulets]
-            deploy_t = torch.maximum(curr_t, torch.full_like(curr_t, 85.0))
-            self.t[mask_boulets] = deploy_t + 6.1
-            self.balls_fired[mask_boulets] = True
-            self.balls_in_cour[mask_boulets] = 10
-
-        # 6. PRENDRE GRAAL (fam == 5)
-        mask_pg = active & is_valid & (fam == 5)
-        if mask_pg.any():
-            idx_b = torch.where(mask_pg)[0]
-            self.graal_state[idx_b] = f_idx[idx_b] + 1
-
-        # 7. POSER GRAAL (fam == 6)
-        mask_pose_g = active & is_valid & (fam == 6)
-        if mask_pose_g.any():
-            idx_b = torch.where(mask_pose_g)[0]
-            self.graal_state[idx_b] = 3
-            self.graal_zone[idx_b] = item[idx_b]
-            self.graal_level[idx_b] = 3.0
-
-        # 8. TRÔNE (fam == 7)
-        mask_trone = active & is_valid & (fam == 7)
-        if mask_trone.any():
-            idx_b = torch.where(mask_trone)[0]
-            self.t[idx_b] = torch.maximum(self.t[idx_b], torch.full_like(self.t[idx_b], MATCH_DURATION))
-
-        # Détection de collision vectorisée lors du déplacement
+        # Détection de collision vectorisée du trajet A -> B AVANT toute action
         A = self.robot_pose[:, :2]
         B_target = torch.stack([tx, ty], dim=1)
         AB = (B_target - A).unsqueeze(1)
         L2 = (AB ** 2).sum(dim=-1, keepdim=True).clamp(min=1e-6)
 
-        # 1. Collision avec paquets / caisses non pris
+        # 1. Collision avec paquets / caisses non pris (seuil 235 mm)
         C_pk = self.pack_centers.unsqueeze(0)
         AC_pk = C_pk - A.unsqueeze(1)
         u_pk = ((AC_pk * AB).sum(dim=-1, keepdim=True) / L2).clamp(0.0, 1.0)
@@ -539,9 +508,9 @@ class TorchEnv:
 
         target_pack = torch.where(fam == 0, item, -1).unsqueeze(1)
         pack_is_obstacle = (self.pack_stones > 0) & (self.pack_indices != target_pack)
-        hit_pack = active & is_valid & ((dist_pk < 220.0) & pack_is_obstacle).any(dim=1)
+        hit_pack = active & is_valid & ((dist_pk < 235.0) & pack_is_obstacle).any(dim=1)
 
-        # 2. Collision avec adversaire
+        # 2. Collision avec adversaire (seuil 350 mm)
         has_opp = (self.opp_pose[:, 0] > 0) & (self.opp_pose[:, 1] > 0)
         C_opp = self.opp_pose.unsqueeze(1)
         AC_opp = C_opp - A.unsqueeze(1)
@@ -555,10 +524,72 @@ class TorchEnv:
         if self.on_error == "fin":
             self.done = self.done | has_col
 
-        # Mise à jour des poses pour les environnements actifs
-        self.robot_pose[active, 0] = tx[active]
-        self.robot_pose[active, 1] = ty[active]
-        self.robot_pose[active, 2] = th[active]
+        # SUCCÈS : L'action ne s'exécute QUE si elle est valide, active ET sans collision
+        # En cas de collision : le robot est bloqué sur place, aucun objet pris, aucun mur posé !
+        success = active & is_valid & (~has_col)
+
+        # 1. PRENDRE (fam == 0)
+        mask_prendre = success & (fam == 0)
+        if mask_prendre.any():
+            idx_b = torch.where(mask_prendre)[0]
+            self.held_count[idx_b, f_idx[idx_b]] = 3
+            self.held_rot[idx_b, f_idx[idx_b]] = 0.0
+            self.pack_stones[idx_b, item[idx_b]] = 0
+
+        # 2. MUR (fam == 1)
+        mask_mur = success & (fam == 1)
+        if mask_mur.any():
+            idx_b = torch.where(mask_mur)[0]
+            self.held_count[idx_b, f_idx[idx_b]] = 0
+            self.walls[idx_b, item[idx_b]] = 0.5
+
+        # 3. TOUR (fam == 2)
+        mask_tour = success & (fam == 2)
+        if mask_tour.any():
+            idx_b = torch.where(mask_tour)[0]
+            self.held_count[idx_b, f_idx[idx_b]] = torch.clamp(self.held_count[idx_b, f_idx[idx_b]] - 1, min=0)
+            self.towers[idx_b, item[idx_b]] = 1
+
+        # 4. PORTE (fam == 3)
+        mask_porte = success & (fam == 3)
+        if mask_porte.any():
+            idx_b = torch.where(mask_porte)[0]
+            self.held_count[idx_b, f_idx[idx_b]] = 0
+            self.walls[idx_b, item[idx_b]] = 1.0
+
+        # 5. BOULETS (fam == 4)
+        mask_boulets = success & (fam == 4)
+        if mask_boulets.any():
+            curr_t = self.t[mask_boulets] + dt_move[mask_boulets]
+            deploy_t = torch.maximum(curr_t, torch.full_like(curr_t, 85.0))
+            self.t[mask_boulets] = deploy_t + 6.1
+            self.balls_fired[mask_boulets] = True
+            self.balls_in_cour[mask_boulets] = 10
+
+        # 6. PRENDRE GRAAL (fam == 5)
+        mask_pg = success & (fam == 5)
+        if mask_pg.any():
+            idx_b = torch.where(mask_pg)[0]
+            self.graal_state[idx_b] = f_idx[idx_b] + 1
+
+        # 7. POSER GRAAL (fam == 6)
+        mask_pose_g = success & (fam == 6)
+        if mask_pose_g.any():
+            idx_b = torch.where(mask_pose_g)[0]
+            self.graal_state[idx_b] = 3
+            self.graal_zone[idx_b] = item[idx_b]
+            self.graal_level[idx_b] = 3.0
+
+        # 8. TRÔNE (fam == 7)
+        mask_trone = success & (fam == 7)
+        if mask_trone.any():
+            idx_b = torch.where(mask_trone)[0]
+            self.t[idx_b] = torch.maximum(self.t[idx_b], torch.full_like(self.t[idx_b], MATCH_DURATION))
+
+        # Le robot ne bouge que pour les actions RÉELLEMENT sans collision !
+        self.robot_pose[success, 0] = tx[success]
+        self.robot_pose[success, 1] = ty[success]
+        self.robot_pose[success, 2] = th[success]
 
         # Avancement du temps (sauf pour boulets et trône déjà traités)
         not_special = active & (fam != 4) & (fam != 7)

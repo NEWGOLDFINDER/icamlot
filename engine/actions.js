@@ -165,7 +165,83 @@
     if (o.z) o.z = ENGINE.mirrorId(o.z);
     return o;
   }
+  var PACK_CENTERS = [
+    [750, 55], [1250, 55], [1750, 55], [2250, 55],
+    [750, 1945], [1250, 1945], [1750, 1945], [2250, 1945],
+    [1500, 500], [1500, 1500]
+  ];
+
+  var ACTION_TARGETS = {
+    'P1': [750, 305.5], 'P2': [1250, 305.5], 'P3': [1750, 305.5], 'P4': [2250, 305.5],
+    'P5': [750, 1694.5], 'P6': [1250, 1694.5], 'P7': [1750, 1694.5], 'P8': [2250, 1694.5],
+    'P9': [1249.5, 500], 'P10': [1249.5, 1500],
+    'M1_ext': [250, 229.5], 'M1_int': [250, 570.5],
+    'M2_ext': [799.8, 450.3], 'M2_int': [558.8, 691.3],
+    'M3_ext': [1020.5, 1000], 'M3_int': [679.5, 1000],
+    'M4_ext': [799.8, 1550.0], 'M4_int': [558.8, 1309.0],
+    'M5_ext': [250, 1770.5], 'M5_int': [250, 1429.5],
+    'T1': [329.5, 400], 'T2': [679.5, 750], 'T3': [679.5, 1250], 'T4': [329.5, 1600],
+    'PG_M1': [150, 320], 'PG_M2': [579.3, 490.8], 'PG_M3': [750, 920], 'PG_M4': [579.3, 1349.5], 'PG_M5': [150, 1520],
+    'PG_T1': [400, 320], 'PG_T2': [750, 670], 'PG_T3': [750, 1170], 'PG_T4': [400, 1520]
+  };
+
+  function getActionTarget(act) {
+    if (act.p && ACTION_TARGETS[act.p]) return ACTION_TARGETS[act.p];
+    if (act.z) {
+      if (act.famille === 'mur' || act.famille === 'porte') {
+        var key = act.z + '_' + (act.side || 'ext');
+        if (ACTION_TARGETS[key]) return ACTION_TARGETS[key];
+      }
+      if (act.famille === 'tour' && ACTION_TARGETS[act.z]) return ACTION_TARGETS[act.z];
+      if (act.famille === 'poserGraal') {
+        var pgKey = 'PG_' + act.z;
+        if (ACTION_TARGETS[pgKey]) return ACTION_TARGETS[pgKey];
+      }
+    }
+    if (act.famille === 'boulets' || act.famille === 'trone') return [250, 1000];
+    if (act.famille === 'prendreGraal') return [295.3, 1067.3];
+    return null;
+  }
+
+  function hitsCrates(act, sim) {
+    if (!sim || typeof sim.pose !== 'function') return false;
+    var s = sim.pose();
+    if (!s || s.x == null) return false;
+    var rawTgt = getActionTarget(act);
+    if (!rawTgt) return false;
+
+    var isBlue = (sim.params && sim.params().team === 'blue');
+    var tx = isBlue ? 3000 - rawTgt[0] : rawTgt[0];
+    var ty = rawTgt[1];
+    var ax = s.x, ay = s.y;
+    var abx = tx - ax, aby = ty - ay;
+    var l2 = abx * abx + aby * aby;
+    if (l2 < 1e-4) return false;
+
+    var targetPk = act.famille === 'prendre' ? (isBlue && typeof ENGINE !== 'undefined' ? ENGINE.mirrorId(act.p) : act.p) : null;
+    var stones = typeof sim.stones === 'function' ? sim.stones() : [];
+
+    for (var k = 0; k < 10; k++) {
+      var pkId = 'P' + (k + 1);
+      if (pkId === targetPk) continue;
+
+      var hasStones = stones.some(function (st) {
+        return st.pk === k && st.cur && st.cur.k === 'home';
+      });
+      if (!hasStones) continue;
+
+      var cx = PACK_CENTERS[k][0], cy = PACK_CENTERS[k][1];
+      var acx = cx - ax, acy = cy - ay;
+      var u = Math.max(0, Math.min(1, (acx * abx + acy * aby) / l2));
+      var px = ax + u * abx, py = ay + u * aby;
+      var dist = Math.hypot(cx - px, cy - py);
+      if (dist < 235) return true;
+    }
+    return false;
+  }
+
   function valid(act, sim) {
+    if (hitsCrates(act, sim)) return false;
     act = real(act, sim);
     switch (act.famille) {
       case 'prendre': return faceEmpty(sim, act.f) && packetStacked(sim, act.p);

@@ -238,6 +238,47 @@ class Pi5EurobotAgent:
         if t >= 88.0 or not has_other:
             mask[105] = True
 
+        # 9. Filtrage géométrique strict : Interdiction absolue de traverser des caisses
+        rx = float(state.get("x", 250.0))
+        ry = float(state.get("y", 1000.0))
+        pack_centers = np.array([
+            [750.0, 55.0], [1250.0, 55.0], [1750.0, 55.0], [2250.0, 55.0],
+            [750.0, 1945.0], [1250.0, 1945.0], [1750.0, 1945.0], [2250.0, 1945.0],
+            [1500.0, 500.0], [1500.0, 1500.0]
+        ], dtype=np.float32)
+
+        for act_idx in range(106):
+            if not mask[act_idx]:
+                continue
+            act = self.actions[act_idx]
+            tx = float(act.get("tx", 250.0))
+            ty = float(act.get("ty", 1000.0))
+            ab_x = tx - rx
+            ab_y = ty - ry
+            l2 = ab_x * ab_x + ab_y * ab_y
+            if l2 < 1e-4:
+                continue
+
+            target_pk = -1
+            if act.get("a") == "prendre":
+                p_str = act.get("p", "")
+                if p_str.startswith("P"):
+                    target_pk = int(p_str[1:]) - 1
+
+            for pk_idx in range(10):
+                if pk_idx == target_pk or packs[pk_idx] <= 0:
+                    continue
+                cx, cy = pack_centers[pk_idx]
+                ac_x = cx - rx
+                ac_y = cy - ry
+                u = max(0.0, min(1.0, (ac_x * ab_x + ac_y * ab_y) / l2))
+                px = rx + u * ab_x
+                py = ry + u * ab_y
+                dist = math.hypot(cx - px, cy - py)
+                if dist < 235.0:
+                    mask[act_idx] = False
+                    break
+
         # Si absolument aucune action valide, le trône est autorisé
         if not np.any(mask):
             mask[105] = True

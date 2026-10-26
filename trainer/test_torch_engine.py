@@ -21,8 +21,11 @@ def test_torch_env_reset():
     assert mask.shape == (B, 106), f"Shape mask attendue (64, 106), obtenue: {mask.shape}"
 
     # Au départ:
-    # - Les prises de paquets (0..19) doivent être autorisées
-    assert mask[:, 0:20].all(), "Les prises de paquets doivent être autorisées au départ"
+    # - Les prises de paquets directement accessibles (P1, P2, P5, P6, P9, P10) doivent être autorisées
+    reachable_takes = [0, 1, 4, 5, 8, 9, 10, 11, 14, 15, 18, 19]
+    blocked_takes = [2, 3, 6, 7, 12, 13, 16, 17]
+    assert mask[:, reachable_takes].all(), "Les paquets directement accessibles doivent être autorisés au départ"
+    assert not mask[:, blocked_takes].any(), "Les paquets bloqués par P9/P10 doivent être masqués pour empêcher toute collision"
     # - Poser des murs (20..39) doit être interdit (pas de pierre en main)
     assert not mask[:, 20:40].any(), "Poser des murs doit être interdit au départ"
     # - Trône (105) doit être autorisé dans le masque de base
