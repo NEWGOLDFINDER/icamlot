@@ -203,6 +203,28 @@
     return null;
   }
 
+  var BUILD_OBSTACLES = [
+    { id: 'M1', x: 250, y: 400, r: 210 },
+    { id: 'M2', x: 679.3, y: 570.8, r: 210 },
+    { id: 'M3', x: 850, y: 1000, r: 210 },
+    { id: 'M4', x: 679.3, y: 1429.5, r: 210 },
+    { id: 'M5', x: 250, y: 1600, r: 210 },
+    { id: 'T1', x: 500, y: 400, r: 180 },
+    { id: 'T2', x: 850, y: 750, r: 180 },
+    { id: 'T3', x: 850, y: 1250, r: 180 },
+    { id: 'T4', x: 500, y: 1600, r: 180 }
+  ];
+
+  function segmentHitsCircle(ax, ay, bx, by, cx, cy, r) {
+    var abx = bx - ax, aby = by - ay;
+    var l2 = abx * abx + aby * aby;
+    if (l2 < 1e-4) return false;
+    var u = Math.max(0, Math.min(1, ((cx - ax) * abx + (cy - ay) * aby) / l2));
+    if (u <= 0.13 || u >= 0.87) return false;
+    var px = ax + u * abx, py = ay + u * aby;
+    return Math.hypot(cx - px, cy - py) < r;
+  }
+
   function hitsCrates(act, sim) {
     if (!sim || typeof sim.pose !== 'function') return false;
     var s = sim.pose();
@@ -221,6 +243,7 @@
     var targetPk = act.famille === 'prendre' ? (isBlue && typeof ENGINE !== 'undefined' ? ENGINE.mirrorId(act.p) : act.p) : null;
     var stones = typeof sim.stones === 'function' ? sim.stones() : [];
 
+    // 1. Collision avec les paquets P1..P10 encore au sol
     for (var k = 0; k < 10; k++) {
       var pkId = 'P' + (k + 1);
       if (pkId === targetPk) continue;
@@ -238,28 +261,34 @@
       if (dist < 235) return true;
     }
 
-    // 2. Trajet retour vers le trône (depuis la cible) : se laisser place de rentrer
-    if (act.famille !== 'boulets' && act.famille !== 'trone') {
-      var thX = isBlue ? 2750 : 250, thY = 1000;
-      var btx = thX - tx, bty = thY - ty;
-      var l2_ret = btx * btx + bty * bty;
-      if (l2_ret >= 1e-4) {
-        for (var k2 = 0; k2 < 10; k2++) {
-          var pkId2 = 'P' + (k2 + 1);
-          if (pkId2 === targetPk) continue;
-          var active2 = stones.some(function (st) {
-            return st.pk === k2 && st.cur && st.cur.k === 'home';
-          });
-          if (!active2) continue;
+    // 2. Collision avec les constructions (M1..M5, T1..T4) déjà posées
+    var targetZone = act.z ? (isBlue && typeof ENGINE !== 'undefined' ? ENGINE.mirrorId(act.z) : act.z) : null;
+    for (var b = 0; b < BUILD_OBSTACLES.length; b++) {
+      var obs = BUILD_OBSTACLES[b];
+      var zId = isBlue && typeof ENGINE !== 'undefined' ? ENGINE.mirrorId(obs.id) : obs.id;
+      if (zId === targetZone) continue;
+      if (!zoneHasBuild(sim, zId)) continue;
+      var ox = isBlue ? 3000 - obs.x : obs.x, oy = obs.y;
+      if (segmentHitsCircle(ax, ay, tx, ty, ox, oy, obs.r)) return true;
+    }
 
-          var cx2 = PACK_CENTERS[k2][0], cy2 = PACK_CENTERS[k2][1];
-          var bcx = cx2 - tx, bcy = cy2 - ty;
-          var u_ret = Math.max(0, Math.min(1, (bcx * btx + bcy * bty) / l2_ret));
-          var px_ret = tx + u_ret * btx, py_ret = ty + u_ret * bty;
-          var dist_ret = Math.hypot(cx2 - px_ret, cy2 - py_ret);
-          if (dist_ret < 235) return true;
-        }
-      }
+    // 3. Empêcher de traverser l'enceinte du château si elle est fermée
+    var inCastleNow = (isBlue ? (3000 - ax) : ax) < 760 && ay > 300 && ay < 1700;
+    var inCastleAfter = rawTgt[0] < 760 && rawTgt[1] > 300 && rawTgt[1] < 1700;
+    var exitsOpen = ['M2', 'M3', 'M4'].filter(function (z) {
+      var zid = isBlue && typeof ENGINE !== 'undefined' ? ENGINE.mirrorId(z) : z;
+      if (zid === targetZone && (act.famille === 'mur' || act.famille === 'porte')) return false;
+      return !zoneHasBuild(sim, zid);
+    }).length;
+
+    if (exitsOpen === 0 && (inCastleNow !== inCastleAfter)) {
+      return true;
+    }
+
+    // 4. Ne pas fermer la DERNIÈRE porte de façade depuis l'EXTÉRIEUR
+    var isFrontWall = (act.famille === 'mur' || act.famille === 'porte') && (act.z === 'M2' || act.z === 'M3' || act.z === 'M4');
+    if (isFrontWall && !inCastleAfter && exitsOpen === 1 && !zoneHasBuild(sim, targetZone)) {
+      return true;
     }
 
     return false;
