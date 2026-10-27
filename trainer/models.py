@@ -148,6 +148,22 @@ class WorldModelHead(nn.Module):
 class FactorizedEncoder(nn.Module):
     """Encodeur multi-branches séparant la géométrie, la table et les actionneurs."""
 
+    @property
+    def geo_mlp(self):
+        return getattr(self, "geo_mlp_56", None) or self._modules.get("geo_mlp")
+
+    @property
+    def table_mlp(self):
+        return getattr(self, "table_mlp_56", None) or self._modules.get("table_mlp")
+
+    @property
+    def mech_mlp(self):
+        return getattr(self, "mech_mlp_56", None) or self._modules.get("mech_mlp")
+
+    @property
+    def fusion(self):
+        return getattr(self, "fusion_56", None) or self._modules.get("fusion")
+
     def __init__(self, n_in: int = 37, hidden_dim: int = 128):
         super().__init__()
         self.n_in = n_in
@@ -202,11 +218,6 @@ class FactorizedEncoder(nn.Module):
                 nn.LayerNorm(hidden_dim),
                 nn.SiLU(),
             )
-            # Alias de compatibilité
-            self.geo_mlp = self.geo_mlp_56
-            self.table_mlp = self.table_mlp_56
-            self.mech_mlp = self.mech_mlp_56
-            self.fusion = self.fusion_56
         else:
             # Fallback générique si dimension différente
             self.generic = nn.Sequential(
