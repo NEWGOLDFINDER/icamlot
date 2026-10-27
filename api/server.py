@@ -61,8 +61,19 @@ MAX_DURATION = 1800
 ACTIVATIONS = {"relu", "tanh", "sigmoid"}
 METHODES = {"evolution", "imitation", "ppo"}
 FAMILLES = ["prendre", "mur", "tour", "porte", "boulets", "prendreGraal", "poserGraal", "trone"]
-ENTREES = ["temps", "robot", "paquets", "faces", "constructions", "graal", "boulets", "adversaire"]
-ENTREE_N = {"temps": 1, "robot": 4, "paquets": 10, "faces": 6, "constructions": 9, "graal": 4, "boulets": 1, "adversaire": 2}
+ENTREES = ["temps", "robot", "paquets", "faces", "constructions", "graal", "boulets", "adversaire", "proprioception", "spatial"]
+ENTREE_N = {
+    "temps": 1,
+    "robot": 4,
+    "paquets": 10,
+    "faces": 6,
+    "constructions": 9,
+    "graal": 4,
+    "boulets": 1,
+    "adversaire": 2,
+    "proprioception": 11,
+    "spatial": 8,
+}
 FAMILLE_N = {"prendre": 20, "mur": 20, "tour": 24, "porte": 20, "boulets": 1, "prendreGraal": 2, "poserGraal": 18, "trone": 1}
 
 _job_lock = threading.Lock()

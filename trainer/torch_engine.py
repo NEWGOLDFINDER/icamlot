@@ -789,12 +789,15 @@ class TorchEnv:
         out_of_time = (t_previsionnel > 100.0) & not_throne_act
         mask = mask & (~out_of_time)
 
-        none_valid = ~mask.any(dim=1)
-        mask[none_valid, 105] = True
-
         if full:
+            none_valid = ~mask.any(dim=1)
+            mask[none_valid, 105] = True
             return mask[:, :self.total_actions]
-        return mask[:, :self.n_out]
+
+        mask_out = mask[:, :self.n_out].clone()
+        none_valid = ~mask_out.any(dim=1)
+        mask_out[none_valid, 105] = True
+        return mask_out
 
     def get_live_mask(self, full: bool = False) -> torch.Tensor:
         """Applique les contraintes temps-réel (masque le trône avant 88s si actions utiles)."""
