@@ -686,20 +686,36 @@ def export_recurrent_weights(model) -> dict:
     act_dense = model.actor_dense[0]
     act_out = model.actor_out
 
-    return {
+    geo_mlp = getattr(enc, "geo_mlp_56", getattr(enc, "geo_mlp", None))
+    table_mlp = getattr(enc, "table_mlp_56", getattr(enc, "table_mlp", None))
+    mech_mlp = getattr(enc, "mech_mlp_56", getattr(enc, "mech_mlp", None))
+    fusion = getattr(enc, "fusion_56", getattr(enc, "fusion", None))
+
+    enc_dict = {}
+    if geo_mlp is not None and table_mlp is not None and mech_mlp is not None and fusion is not None:
+        enc_dict = {
+            "geo_w": to_list(geo_mlp[0].weight.T),
+            "geo_b": to_list(geo_mlp[0].bias),
+            "table_w": to_list(table_mlp[0].weight.T),
+            "table_b": to_list(table_mlp[0].bias),
+            "mech_w": to_list(mech_mlp[0].weight.T),
+            "mech_b": to_list(mech_mlp[0].bias),
+            "fusion_w": to_list(fusion[0].weight.T),
+            "fusion_b": to_list(fusion[0].bias),
+            "ln_gamma": to_list(fusion[1].weight),
+            "ln_beta": to_list(fusion[1].bias),
+        }
+    elif hasattr(enc, "generic"):
+        enc_dict = {
+            "generic_w": to_list(enc.generic[0].weight.T),
+            "generic_b": to_list(enc.generic[0].bias),
+        }
+
+    res = {
         "hidden_dim": model.hidden_dim,
-        "encoder": {
-            "geo_w": to_list(enc.geo_mlp[0].weight.T),
-            "geo_b": to_list(enc.geo_mlp[0].bias),
-            "table_w": to_list(enc.table_mlp[0].weight.T),
-            "table_b": to_list(enc.table_mlp[0].bias),
-            "mech_w": to_list(enc.mech_mlp[0].weight.T),
-            "mech_b": to_list(enc.mech_mlp[0].bias),
-            "fusion_w": to_list(enc.fusion[0].weight.T),
-            "fusion_b": to_list(enc.fusion[0].bias),
-            "ln_gamma": to_list(enc.fusion[1].weight),
-            "ln_beta": to_list(enc.fusion[1].bias),
-        },
+        "n_in": getattr(model, "n_in", 56),
+        "n_out": getattr(model, "n_out", 130),
+        "encoder": enc_dict,
         "gru": {
             "w_ih": to_list(gru.weight_ih.T),
             "w_hh": to_list(gru.weight_hh.T),
@@ -713,6 +729,13 @@ def export_recurrent_weights(model) -> dict:
             "out_b": to_list(act_out.bias),
         },
     }
+    if hasattr(model, "actor_approach") and model.actor_approach is not None:
+        res["actor"]["approach_w"] = to_list(model.actor_approach.weight.T)
+        res["actor"]["approach_b"] = to_list(model.actor_approach.bias)
+    if hasattr(model, "actor_folding") and model.actor_folding is not None:
+        res["actor"]["folding_w"] = to_list(model.actor_folding.weight.T)
+        res["actor"]["folding_b"] = to_list(model.actor_folding.bias)
+    return res
 
 
 def run_ppo(job: Job, cfg: dict, weights_out: Optional[Path] = None):

@@ -202,6 +202,11 @@ class FactorizedEncoder(nn.Module):
                 nn.LayerNorm(hidden_dim),
                 nn.SiLU(),
             )
+            # Alias de compatibilité
+            self.geo_mlp = self.geo_mlp_56
+            self.table_mlp = self.table_mlp_56
+            self.mech_mlp = self.mech_mlp_56
+            self.fusion = self.fusion_56
         else:
             # Fallback générique si dimension différente
             self.generic = nn.Sequential(
