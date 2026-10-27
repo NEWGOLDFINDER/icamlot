@@ -1,38 +1,54 @@
-# Project: icamlot AI — Spatial Anticipation and Long-Term Planning
+# Project: icamlot AI — Low-Level Trajectory & Actuator Control Refactoring
 
 ## Architecture
-The system integrates GPU-accelerated simulation physics, object-centric entity representation, auxiliary world modeling, and multi-step tree search planning:
-- **Simulation Layer (`trainer/torch_engine.py`, `engine/actions.js`)**: Real-time Eurobot table simulation on GPU ($50 \times 75$ grid of $40\text{ mm}$ cells), dynamic obstacle envelope dilation (empty, flat $0^\circ$, upright $90^\circ$), wavefront distance propagation, staging drop zones, packet re-pickup, and procedural curriculum resets.
-- **Neural Perception & World Model Layer (`trainer/models.py`, `trainer/ppo_trainer.py`)**: 22-entity object-centric tokenizer, 2-layer self-attention transformer encoder, recurrent GRU policy/value heads, and auxiliary world-model head predicting future spatial states, durations, and contacts.
-- **Planning Layer (`trainer/tree_search.py`, `benchmark_duels.py`)**: GPU-batched multi-step tree search (Gumbel AlphaZero / MCTS) evaluating 4–6 step rollouts using top-K policy priors to solve Sokoban blockages and navigate around obstacles.
-- **Production Edge Inference Layer (`trainer/export_onnx.py`, `pi5_runner.py`)**: Clean ONNX export via `Pi5ActorWrapper` guaranteeing zero-PyTorch dependency and $< 0.5\text{ ms}$ inference latency on Raspberry Pi 5 CPU.
+The system refactors the Eurobot simulation, perception, neural architecture, web simulator, and edge deployment runners to grant the neural model full low-level control over trajectories, multi-angle approaches, and actuators, eliminating physical and geometric blockage modes:
+- **Simulation Layer (`engine/actions.js`, `engine/engine.js`, `trainer/actions_table.json`, `trainer/torch_engine.py`)**:
+  - Unblocking post-tower grippers via `deposerZone` / `lacher` and `tournerPince` (0° $\leftrightarrow$ 90° reorientation).
+  - Packet re-pickup lifting `x.cur.k === 'home'` and partial pickup.
+  - Dynamic multi-angle approach targets: dual opposing approaches for P1..P10, 4 cardinal approaches for towers T1..T4 and Graal, with automated fastest collision-free angle selection.
+  - 8 repositioning navigation waypoints (`traj`) to key table crossroads.
+  - Adaptive placement (`pm: 'proche'`) in `toProgramStep` and automated transit carriage clearance (`hc = 250` mm) in `travel`.
+- **Perception & Observation Layer (`trainer/torch_engine.py`, `engine/env.js`)**:
+  - Enriched 56-dimensional observation tensor: 37 legacy features + 11 proprioceptive variables per face (stones per suction cup, rotation angle, carriage height, hull radius) + 8-direction virtual distance radar rays (0°, 45°, 90°, 135°, 180°, 225°, 270°, 315° relative to robot chassis against borders, crates, walls, towers).
+  - Mathematical parity between PyTorch GPU vectorized raycasting and JS environment observations.
+- **Neural Multi-Head Architecture Layer (`trainer/models.py`, `trainer/ppo_trainer.py`)**:
+  - Factorized multi-head `RecurrentActorCritic` branching from residual GRU-128:
+    1. Primary discrete action logits head
+    2. Low-level approach parameter head (approach angle $\phi$ / side ext, int, proche)
+    3. Low-level actuator parameter head (transit gripper folding $0^\circ \leftrightarrow 90^\circ$)
+  - Multi-head joint policy log-prob and entropy PPO clipped surrogate training loop.
+- **Web Simulator & Edge Deployment Layer (`cerveau/net.js`, `engine/env.js`, `plateau/app.js`, `trainer/export_onnx.py`, `pi5_runner.py`)**:
+  - Pure JS recurrent GRUCell / factorized encoder runtime in `cerveau/net.js` and `plateau/app.js`.
+  - Physical safety fallback in `engine/env.js`: speculative candidate step in `sim.snapshot()`, collision detection, rollback, action masking, and re-selection of the next best prediction.
+  - Clean ONNX opset 18 export isolating `Pi5ActorWrapper` with multi-head outputs and zero-PyTorch $< 5\text{ ms}$ CPU execution in `pi5_runner.py`.
 
 ---
 
 ## Feature Inventory
-Every feature from the Survey phase is mapped to a milestone below.
+Every feature from the Survey phase appears here with its assigned milestone.
 
 | # | Feature | Description | Milestone | Source |
 |---|---------|-------------|-----------|--------|
-| F1 | 2D GPU Distance Grid | $75 \times 50$ cells ($40\text{ mm}$) with wavefront propagation (iterated 2D pooling) | M1 | R1 |
-| F2 | Dynamic Envelope Dilation | Dilation radii for empty ($R \approx 230\text{ mm}$), flat $0^\circ$ ($R \approx 276.5\text{ mm}$), upright $90^\circ$ ($R \approx 232\text{ mm}$) | M1 | R1 |
-| F3 | Real-Time Topological Closures | Shortest obstacle-avoiding paths and topological closure detection on GPU grid | M1 | R1 |
-| F4 | Staging & Relay Drop Zones | Staging zones outside transit corridors (North entrance, South entrance, Center) in `actions.js`, `actions_table.json`, `torch_engine.py` | M1 | R2 |
-| F5 | Packet Re-Pickup Mechanics | Update `packetStacked` to permit picking up previously staged/placed packets | M1 | R2 |
-| F6 | $90^\circ$ Gripper Folding | Gripper orientation folding during transit to pass narrow corridors | M1 | R2 |
-| F7 | Sokoban Curriculum Resets | 50% standard ($t=0$), 30% procedural trapped/puzzle ($t \in [20, 75]$ s), 20% adversarial duels | M1 | R5 |
-| F8 | GPU State Cloning & Restoration | Fast deep cloning and restoration of the 16 CUDA simulation state tensors (`clone_state`, `restore_state`) | M1 | R6 |
-| F9 | Object-Centric Entity Tokenizer | 22-entity representation (Robot, Opponent, 10 Packets, 9 Construction Zones, Graal) | M2 | R4 |
-| F10 | 2-Layer Self-Attention Transformer | Self-attention transformer (`d_model=64, nhead=4, gelu`) replacing flat MLPs in `FactorizedEncoder` | M2 | R4 |
-| F11 | Auxiliary World-Model Head | Conditioned on GRU hidden state (128) + action (32) predicting next pose, duration, envelope, contact | M2 | R3 |
-| F12 | Auxiliary MSE Loss Integration | Self-supervised auxiliary multi-task loss in `ppo_trainer.py` regularizing recurrent representations | M2 | R3 |
-| F13 | Production ONNX Export Isolation | `Pi5ActorWrapper` omitting auxiliary/critic heads, cleanly exporting to opset 18 | M2 | R7 |
-| F14 | Edge CPU Inference Verification | `pi5_runner.py` verifying $< 5\text{ ms}$ real-time latency budget on CPU | M2 | R7 |
-| F15 | GPU Multi-Step Tree Search | GPU-accelerated Gumbel AlphaZero / MCTS evaluating 4–6 steps with top-K action priors | M3 | R6 |
-| F16 | Adversarial Duel Integration | Integration of planned tree search policy into `benchmark_duels.py` against baseline opponents | M3 | R6/R7 |
-| F17 | End-to-End PPO Smoke Run | Short training run verifying curriculum sampling and auxiliary loss decrease without leaks | M4 | R7 |
-| F18 | 100% E2E Test Suite Acceptance | Complete verification of Tiers 1–4 test suite published by E2E Testing Track | M4 | AC |
-| F19 | Adversarial Coverage Hardening | Tier 5 white-box challenger stress testing and gap remediation | M4 | AC |
+| F1 | Gripper Unblocking `deposerZone` | Drop 1-2 remaining stones into construction zone (+1 pt bareme) or buffer, freeing face | M1 | R1 |
+| F2 | Gripper Reorientation `tournerPince` | Rotate gripper face between 0° (flat, 320 mm) and 90° (vertical, 110 mm) | M1 | R1 |
+| F3 | Packet Re-Pickup & Partial Pickup | Lift `x.cur.k === 'home'` restriction in `packetStacked`; allow partial pickup | M1 | R1 |
+| F4 | Opposing Dual Approaches (P1..P10) | North/South for P1..P8, West/East for P9..P10 | M1 | R2 |
+| F5 | 4 Cardinal Approaches (T1..T4, Graal) | Exterior, Interior, Top, Bottom at offset 170.5 mm | M1 | R2 |
+| F6 | Fast Multi-Angle Path Selection | Validate action if $\ge 1$ approach is collision-free; pick fastest approach in `get_mask()`/`step()` | M1 | R2 |
+| F7 | 8 Navigation Crossroads (`traj`) | Repositioning actions to 8 crossroads: (1050,450), (1050,1550), (1050,1000), (1500,280), (1500,1720), (1500,1000), (500,220), (500,1780) | M1 | R3 |
+| F8 | Adaptive Placement `pm: 'proche'` | Set `pm: 'proche'` in `toProgramStep` for walls, towers, doors to test candidate offset poses | M1 | R4 |
+| F9 | Transit Z-Axis Clearance | Automatically raise carriage to `hc = 250` mm during transit carrying stones | M1 | R4 |
+| F10 | Enriched Proprioception | Stone count per cup, gripper rotation `rot / 90.0`, height `hc / 350.0`, radius `hullRadius / 350.0` | M1 | R5 |
+| F11 | 8-Direction Distance Radar | 8 rays (0°..315° step 45°) relative to chassis against borders, crates, walls, towers | M1 | R5 |
+| F12 | 56-Dim Observation Parity | Unified 56-dim tensor in `torch_engine.py` and `engine/env.js` with exact normalization | M1 | R5 |
+| F13 | Multi-Head `RecurrentActorCritic` | Primary action head + approach parameter head + transit gripper folding head | M2 | R6 |
+| F14 | Multi-Head PPO Training Loop | Factorized joint policy loss, multi-head entropy, and backprop in `ppo_trainer.py` | M2 | R6 |
+| F15 | Web Sim Recurrent Runtime | Support 56-dim observations and recurrent GRU in `cerveau/net.js` and `plateau/app.js` | M3 | R7 |
+| F16 | Physical Safety Fallback Loop | `sim.snapshot()` $\to$ `exec` $\to$ collision check $\to$ rollback $\to$ mask $\to$ re-query in `engine/env.js` | M3 | R7 |
+| F17 | Multi-Head ONNX Model Export | Export `Pi5ActorWrapper` with multi-head logits to opset 18 via `export_onnx.py` | M3 | R7 |
+| F18 | Edge CPU Deployment Runner | CPU inference in `pi5_runner.py` with 56-dim observations within $< 5\text{ ms}$ latency budget | M3 | R7 |
+| F19 | 100% E2E Test Suite Acceptance | Complete verification of Tiers 1–4 test suite published by E2E Testing Track | M4 | AC |
+| F20 | Adversarial Coverage Hardening | Tier 5 white-box challenger stress testing and gap remediation | M4 | AC |
 
 ---
 
@@ -40,52 +56,53 @@ Every feature from the Survey phase is mapped to a milestone below.
 
 | # | Name | Scope | Dependencies | Status |
 |---|------|-------|-------------|--------|
-| M1 | Simulation Physics, Wavefront Distance Map & Tactical Actions | R1, R2, R5 physics reset, and state clone/restore in `torch_engine.py`, `engine/actions.js`, `actions_table.json`, `trainer/test_torch_engine.py` | None | PLANNED |
-| M2 | Entity-Transformer Architecture, Auxiliary World Model & ONNX Export | R3, R4, R7 export isolation in `trainer/models.py`, `trainer/ppo_trainer.py`, `trainer/export_onnx.py`, `pi5_runner.py` | None | PLANNED |
-| M3 | GPU Multi-Step Tree Search Planning & Duel Benchmarking | R6, R7 duels in `trainer/tree_search.py`, `benchmark_duels.py` | M1, M2 | PLANNED |
-| M4 | Final Milestone: E2E Acceptance & Adversarial Hardening | Phase 1: 100% E2E test pass (Tiers 1–4). Phase 2: Tier 5 adversarial coverage hardening | M1, M2, M3, TEST_READY | PLANNED |
+| M1 | Simulation Kinematics, Actions & Proprioception Radar | F1–F12: R1, R2, R3, R4, R5 in `engine/actions.js`, `engine/engine.js`, `trainer/actions_table.json`, `trainer/torch_engine.py`, `engine/env.js`, `trainer/test_torch_engine.py`, `tests/test_engine.js` | None | PLANNED |
+| M2 | Multi-Head Neural Architecture & PPO Training | F13–F14: R6 multi-head actor and PPO training loop in `trainer/models.py`, `trainer/ppo_trainer.py` | M1 | PLANNED |
+| M3 | Web Simulator Runtime, Safety Fallback & Edge ONNX Export | F15–F18: R7 web sim runtime, physical safety fallback in `env.js`, ONNX export, and Pi 5 CPU runner in `cerveau/net.js`, `plateau/app.js`, `engine/env.js`, `trainer/export_onnx.py`, `pi5_runner.py` | M1, M2 | PLANNED |
+| M4 | Final Milestone: E2E Acceptance & Adversarial Hardening | F19–F20: Phase 1: 100% E2E test pass (Tiers 1–4). Phase 2: Tier 5 adversarial coverage hardening | M1, M2, M3, TEST_READY | PLANNED |
 
-*Note: The **E2E Testing Track Orchestrator** runs in parallel from the outset to design and create the requirement-driven opaque-box test suite (`TEST_INFRA.md` $\to$ `TEST_READY.md`).*
+*Note: The **E2E Testing Track Orchestrator** runs in parallel to design, update, and publish the requirement-driven opaque-box test suite (`TEST_INFRA.md` $\to$ `TEST_READY.md`).*
 
 ---
 
 ## Interface Contracts
 
-### `torch_engine.py` (M1) $\leftrightarrow$ `tree_search.py` (M3)
+### Observation Vector Contract (M1 $\leftrightarrow$ M2 $\leftrightarrow$ M3)
+Shape: `(B, 56)` normalized float tensor in PyTorch / `Float64Array(56)` in JS:
+- `[0..36]`: Legacy match features (time, poses, scores, stone flags)
+- `[37..47]`: 11 Proprioception variables:
+  - `obs[37..39]`: Face A suction cups stone count (`held_a_0, held_a_1, held_a_2 \in {0.0, 1.0}`)
+  - `obs[40..42]`: Face B suction cups stone count (`held_b_0, held_b_1, held_b_2 \in {0.0, 1.0}`)
+  - `obs[43]`: Face A gripper rotation angle (`rot_a / 90.0 \in [0.0, 1.0]`)
+  - `obs[44]`: Face B gripper rotation angle (`rot_b / 90.0 \in [0.0, 1.0]`)
+  - `obs[45]`: Current carriage height (`hc / 350.0 \in [0.0, 1.0]`)
+  - `obs[46]`: Current bounding hull radius (`hullRadius / 350.0 \in [0.0, 1.0]`)
+  - `obs[47]`: Gripper transit folding state (`folding \in {0.0, 1.0}`)
+- `[48..55]`: 8 Radar distance rays at angles `[0°, 45°, 90°, 135°, 180°, 225°, 270°, 315°]` relative to chassis, normalized by `1000.0 mm`:
+  - Clamped to `[0.0, 3.0]` (representing $0\text{ mm}$ to $3000\text{ mm}$).
+
+### Multi-Head Actor Contract (M2 $\leftrightarrow$ M3 $\leftrightarrow$ M4)
 ```python
-def clone_state(self) -> dict[str, torch.Tensor]:
-    """Returns a detached deep clone of the 16 simulation state tensors."""
-
-def restore_state(self, state_dict: dict[str, torch.Tensor]) -> None:
-    """Restores the 16 simulation state tensors in-place."""
-
-def step(self, actions: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, dict]:
-    """Steps batch environments forward; returns (obs, rewards, dones, info)."""
+class RecurrentActorCritic(nn.Module):
+    def forward_actor(self, obs: torch.Tensor, hidden: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        Returns:
+            primary_logits: (B, num_actions)
+            approach_logits: (B, 5)  # [ext, int, proche, north/west, south/east]
+            folding_logits: (B, 2)   # [flat 0°, folded 90°]
+            next_hidden: (B, 128)
+        """
 ```
 
-### `torch_engine.py` (M1) $\leftrightarrow$ `models.py` (M2)
-- Input observation vector `obs`: shape `(B, 37)` with standardized normalizations ($X \in [0, 3000]$, $Y \in [0, 2000]$, angle in $[-\pi, \pi]$).
-- Environment step `info` dictionary provides auxiliary training targets:
-  - `info["dt"]`: transition duration in seconds (float).
-  - `info["envelope"]`: `(B, 2)` tensor with envelope length/width.
-  - `info["contact"]`: `(B,)` binary float tensor indicating collision or closure.
-
-### `models.py` (M2) $\leftrightarrow$ `tree_search.py` (M3)
-```python
-def forward_actor(self, obs: torch.Tensor, hidden: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-    """Returns (action_logits, next_hidden)."""
-
-def forward_critic(self, obs: torch.Tensor, hidden: torch.Tensor) -> torch.Tensor:
-    """Returns scalar state value V(s)."""
-
-def forward_aux(self, hidden: torch.Tensor, actions: torch.Tensor) -> torch.Tensor:
-    """Returns (B, 8) auxiliary predictions: [x, y, cos, sin, dt, env_L, env_W, p_contact]."""
-```
-
-### `models.py` (M2) $\leftrightarrow$ `export_onnx.py` / `pi5_runner.py` (M2)
-- Class `Pi5ActorWrapper(nn.Module)` isolates `(encoder, gru, actor_dense, actor_out)`.
-- Input shapes: `obs: (B, 37)`, `hidden: (B, 128)`.
-- Output shapes: `logits: (B, 106)`, `next_hidden: (B, 128)`.
+### ONNX Export & Edge Runtime Contract (M2 $\leftrightarrow$ M3)
+- Exported model inputs:
+  - `obs`: `(1, 56)` float32
+  - `hidden`: `(1, 128)` float32
+- Exported model outputs:
+  - `primary_logits`: `(1, num_actions)` float32
+  - `approach_logits`: `(1, 5)` float32
+  - `folding_logits`: `(1, 2)` float32
+  - `next_hidden`: `(1, 128)` float32
 
 ---
 
@@ -93,20 +110,24 @@ def forward_aux(self, hidden: torch.Tensor, actions: torch.Tensor) -> torch.Tens
 
 ```
 /root/.gemini/antigravity-cli/scratch/icamlot/
-├── trainer/
-│   ├── torch_engine.py         # M1: GPU physics, wavefront grid, dynamic envelope, resets, clone/restore
-│   ├── test_torch_engine.py    # M1: Unit tests for wavefront distance map, envelope, and curriculum
-│   ├── models.py               # M2: EntityTokenizer, TransformerEncoder, FactorizedEncoder, WorldModel, ActorCritic
-│   ├── ppo_trainer.py          # M2 & M4: PPO training loop, auxiliary MSE loss, curriculum sampling
-│   ├── tree_search.py          # M3: GPUAlphaZeroMCTS, GumbelPlanner
-│   └── export_onnx.py          # M2: Pi5ActorWrapper ONNX export
 ├── engine/
-│   ├── actions.js              # M1: Action catalog, staging zones, packetStacked re-pickup
-│   └── actions_table.json      # M1: Action definitions table
-├── pi5_runner.py               # M2: CPU edge inference runner
-├── benchmark_duels.py          # M3: Duel benchmark runner
+│   ├── actions.js              # M1: Action catalog, deposerZone, tournerPince, multi-angle approaches, waypoints
+│   ├── engine.js               # M1: Placement candidates, travel hc=250 carriage clearance, snapshot/restore
+│   └── env.js                  # M1 & M3: Observe (56-dim), play physical safety fallback, brainAgent
+├── trainer/
+│   ├── actions_table.json      # M1: Action table definitions
+│   ├── torch_engine.py         # M1: PyTorch GPU simulation, multi-angle approaches, 56-dim obs, radar raycasts
+│   ├── models.py               # M2: RecurrentActorCritic multi-head architecture, Pi5ActorWrapper
+│   ├── ppo_trainer.py          # M2: Multi-head PPO training loop, joint entropy, auxiliary heads
+│   ├── export_onnx.py          # M3: Multi-head ONNX opset 18 export
+│   └── test_torch_engine.py    # M1: Unit tests for torch_engine actions, observations, and radar
+├── cerveau/
+│   └── net.js                  # M3: Pure JS recurrent GRUCell / factorized encoder runtime (56-dim)
+├── plateau/
+│   └── app.js                  # M3: Web simulator agent integration
+├── pi5_runner.py               # M3: Raspberry Pi 5 CPU inference runner (56-dim obs, multi-head output)
 ├── tests/
-│   ├── test_engine.js          # JS engine unit tests
-│   └── test_e2e_*.py           # E2E Testing Track test cases (Tiers 1–4)
-└── .agents/teamwork/           # Agent metadata, plans, and coordination files
+│   ├── test_engine.js          # M1: JS engine unit tests
+│   └── test_e2e_requirements.py# E2E Track: Comprehensive requirement-driven opaque-box test suite
+└── .agents/teamwork/           # Orchestrator & subagent metadata, plans, and coordination files
 ```

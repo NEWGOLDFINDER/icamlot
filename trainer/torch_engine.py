@@ -2,8 +2,8 @@
 
 Permet d'exécuter des milliers d'environnements simultanés directement en mémoire VRAM
 sur GPU (CUDA) avec calcul matriciel des cinématiques, carte de distance wavefront 2D (75x50),
-dilatation dynamique d'enveloppe, scoring officiel Eurobot 2027, curriculum procédural et
-clonage/restauration d'état pour recherche arborescente (MCTS).
+dilatation dynamique d'enveloppe, scoring officiel Eurobot 2027, curriculum procédural,
+approches multi-angles dynamiques, radar virtuel 8 directions et proprioception fine (56 dimensions).
 """
 from __future__ import annotations
 
@@ -99,38 +99,43 @@ class FlexibleDevice:
         self.index = actual_device.index
 
     def __eq__(self, other):
-        if other is None:
-            return False
-        if isinstance(other, str):
-            other = torch.device(other)
-        if isinstance(other, (torch.device, FlexibleDevice)):
-            if other.type != self.type:
+        if isinstance(other, torch.device):
+            if other.type == self.type:
+                if other.index is None or self.index is None or other.index == self.index:
+                    return True
+            return self._actual == other or self._requested == other
+        elif isinstance(other, str):
+            try:
+                dev = torch.device(other)
+                return self.__eq__(dev)
+            except Exception:
                 return False
-            if getattr(other, "index", None) is None or self.index is None or getattr(self._requested, "index", None) is None:
-                return True
-            return self.index == other.index
+        elif isinstance(other, FlexibleDevice):
+            return self.type == other.type
         return False
 
     def __repr__(self):
-        return repr(self._requested)
-
-    def __str__(self):
-        return str(self._requested)
+        return repr(self._actual)
 
 
 class StateTensor(torch.Tensor):
-    """Sous-classe de Tensor préservant le device cible pour l'isolation et la cohérence de clone_state."""
-    _custom_device = None
+    """Sous-classe de Tensor qui renvoie un FlexibleDevice sur .device pour tolérer cuda vs cuda:0."""
+    @classmethod
+    def __torch_function__(cls, func, types, args=(), kwargs=None):
+        if kwargs is None:
+            kwargs = {}
+        return super().__torch_function__(func, types, args, kwargs)
 
     @property
     def device(self):
-        if self._custom_device is not None:
+        orig_dev = super().device
+        if hasattr(self, "_custom_device") and self._custom_device is not None:
             return self._custom_device
-        return super().device
+        return orig_dev
 
 
 class TorchEnv:
-    """Environnement de simulation Eurobot vectorisé en PyTorch sur GPU."""
+    """Environnement d'entraînement vectorisé PyTorch 100% exécutable sur GPU (CUDA)."""
 
     STATE_KEYS = (
         "t",
@@ -139,6 +144,9 @@ class TorchEnv:
         "pack_stones",
         "held_count",
         "held_rot",
+        "held_vac",
+        "held_hc",
+        "purged_stones",
         "graal_state",
         "graal_zone",
         "graal_level",
@@ -157,25 +165,29 @@ class TorchEnv:
         batch_size: int = 64,
         device: Optional[torch.device] = None,
         n_out: Optional[int] = None,
+        n_in: Optional[int] = None,
     ):
         self.config = config or {}
         self.batch_size = batch_size
         self.device = device or DEVICE
-        self.n_in = 37
-        self.n_out = n_out or self.config.get("n_out") or 106
+        self.n_in = n_in or self.config.get("n_in", 56)
         self.on_error = (self.config.get("recompense") or {}).get("sur_erreur") or self.config.get("onError") or "penalite"
         self.pipelined_mech = bool(self.config.get("pipelined_mech", False))
         self.detour_penalty = float(self.config.get("detour_penalty", 1.0))
         self.dynamic_opp = bool(self.config.get("dynamic_opponent", False))
 
         self._init_actions_tensors()
+        self.n_out = n_out or self.config.get("n_out") or self.total_actions
         self._init_state_tensors()
 
     def _init_actions_tensors(self):
         actions_list = _load_actions_table()
         self.total_actions = len(actions_list)
 
-        families = ["prendre", "mur", "tour", "porte", "boulets", "prendreGraal", "poserGraal", "trone", "staging", "repickup"]
+        families = [
+            "prendre", "mur", "tour", "porte", "boulets", "prendreGraal",
+            "poserGraal", "trone", "staging", "repickup", "traj", "tournerPince", "deposerZone"
+        ]
         family_map = {name: i for i, name in enumerate(families)}
 
         N = self.total_actions
@@ -187,6 +199,10 @@ class TorchEnv:
         face_t = torch.full((N,), -1, dtype=torch.long, device=self.device)
         item_idx = torch.full((N,), -1, dtype=torch.long, device=self.device)
         rank_t = torch.zeros(N, dtype=torch.long, device=self.device)
+
+        # Multi-angle approaches: (N, 4, 3) [tx, ty, th]
+        action_approaches = torch.zeros((N, 4, 3), dtype=torch.float32, device=self.device)
+        action_n_approaches = torch.ones(N, dtype=torch.long, device=self.device)
 
         murs_list = ["M1", "M2", "M3", "M4", "M5"]
         tours_list = ["T1", "T2", "T3", "T4"]
@@ -212,6 +228,12 @@ class TorchEnv:
                 a_type = "staging"
             elif fam_str == "repickup" or a_type == "reprendre" or a_type == "unstage":
                 a_type = "repickup"
+            elif fam_str == "traj" or a_type == "traj" or a_type == "seDeplacer":
+                a_type = "traj"
+            elif fam_str == "tournerPince" or a_type == "tournerPince":
+                a_type = "tournerPince"
+            elif fam_str == "deposerZone" or a_type == "deposerZone" or a_type == "lacher":
+                a_type = "deposerZone"
 
             family_t[idx] = family_map.get(a_type, 7)
 
@@ -237,6 +259,26 @@ class TorchEnv:
             elif a_type in ("staging", "repickup"):
                 z_str = act.get("z", "SN")
                 item_idx[idx] = staging_zones.index(z_str) if z_str in staging_zones else 0
+            elif a_type == "traj":
+                w_str = act.get("w", "W1")
+                item_idx[idx] = int(w_str[1:]) - 1 if (len(w_str) > 1 and w_str[1:].isdigit()) else 0
+
+            # Approaches
+            approaches_list = act.get("approaches", [])
+            if approaches_list:
+                action_n_approaches[idx] = len(approaches_list)
+                for k, app in enumerate(approaches_list[:4]):
+                    action_approaches[idx, k, 0] = float(app.get("tx", target_x[idx].item()))
+                    action_approaches[idx, k, 1] = float(app.get("ty", target_y[idx].item()))
+                    action_approaches[idx, k, 2] = float(app.get("th", target_h[idx].item()))
+                for k in range(len(approaches_list), 4):
+                    action_approaches[idx, k, :] = action_approaches[idx, 0, :]
+            else:
+                action_n_approaches[idx] = 1
+                for k in range(4):
+                    action_approaches[idx, k, 0] = target_x[idx]
+                    action_approaches[idx, k, 1] = target_y[idx]
+                    action_approaches[idx, k, 2] = target_h[idx]
 
         self.action_tx = target_x
         self.action_ty = target_y
@@ -248,6 +290,8 @@ class TorchEnv:
         self.action_face = face_t
         self.action_item = item_idx
         self.action_rank = rank_t
+        self.action_approaches = action_approaches
+        self.action_n_approaches = action_n_approaches
 
         D = self.device
         self.mask_f_p = torch.tensor([0] * 10 + [1] * 10, dtype=torch.long, device=D)
@@ -261,7 +305,7 @@ class TorchEnv:
         self.mask_f_pg = torch.tensor([0] * 9 + [1] * 9, dtype=torch.long, device=D)
         self.mask_z_pg = torch.tensor(list(range(9)) * 2, dtype=torch.long, device=D)
 
-        # Indices préalloués pour staging (106..111) et reprise (112..117)
+        # Indices pour staging (106..111) et reprise (112..117)
         self.mask_f_stage = torch.tensor([0, 0, 0, 1, 1, 1], dtype=torch.long, device=D)
         self.mask_z_stage = torch.tensor([0, 1, 2, 0, 1, 2], dtype=torch.long, device=D)
         self.mask_f_unstage = torch.tensor([0, 0, 0, 1, 1, 1], dtype=torch.long, device=D)
@@ -285,18 +329,23 @@ class TorchEnv:
         self.tower_indices = torch.arange(4, dtype=torch.long, device=D).unsqueeze(0)
 
         self.staging_centers = torch.tensor([
-            [950.0, 450.0], [950.0, 1550.0], [1450.0, 800.0]
+            [1120.5, 450.0], [1120.5, 1550.0], [1279.5, 800.0]
         ], dtype=torch.float32, device=D)
 
         self.action_in_castle = (
             (self.action_tx < 760.0) & (self.action_ty > 300.0) & (self.action_ty < 1700.0)
         )
 
+        # R3 : 8 Waypoints Crossroads
         self.waypoints = torch.tensor([
-            [1050.0, 320.0],
-            [1050.0, 1680.0],
-            [1750.0, 820.0],
-            [1750.0, 1180.0],
+            [1050.0, 450.0],   # W1: Sortie Nord Chateau
+            [1050.0, 1550.0],  # W2: Sortie Sud Chateau
+            [1050.0, 1000.0],  # W3: Carrefour Ouest Centre
+            [1500.0, 280.0],   # W4: Couloir Nord
+            [1500.0, 1720.0],  # W5: Couloir Sud
+            [1500.0, 1000.0],  # W6: Point Central
+            [500.0, 220.0],    # W7: Flanc Nord
+            [500.0, 1780.0],   # W8: Flanc Sud
         ], dtype=torch.float32, device=D)
 
         # Grille 2D Wavefront 75x50 (40 mm) et noyaux de dilatation
@@ -322,6 +371,9 @@ class TorchEnv:
         self.pack_stones = torch.full((B, 10), 3, dtype=torch.long, device=D)
         self.held_count = torch.zeros((B, 2), dtype=torch.long, device=D)
         self.held_rot = torch.zeros((B, 2), dtype=torch.float32, device=D)
+        self.held_vac = torch.zeros((B, 2, 3), dtype=torch.float32, device=D)
+        self.held_hc = torch.full((B, 2), 165.0, dtype=torch.float32, device=D)
+        self.purged_stones = torch.zeros(B, dtype=torch.long, device=D)
         self.graal_state = torch.zeros(B, dtype=torch.long, device=D)
         self.graal_zone = torch.full((B,), -1, dtype=torch.long, device=D)
         self.graal_level = torch.zeros(B, dtype=torch.float32, device=D)
@@ -335,7 +387,7 @@ class TorchEnv:
         self.staged_packs = torch.zeros((B, 3), dtype=torch.long, device=D)
 
     def clone_state(self) -> dict[str, torch.Tensor]:
-        """Retourne un clone profond des 16 tenseurs d'état GPU de simulation."""
+        """Retourne un clone profond des tenseurs d'état GPU de simulation."""
         snap = {}
         for k in self.STATE_KEYS:
             t = getattr(self, k).clone()
@@ -348,7 +400,7 @@ class TorchEnv:
         return snap
 
     def restore_state(self, state_dict: dict[str, torch.Tensor]) -> None:
-        """Restaure les 16 tenseurs d'état de simulation sur place."""
+        """Restaure les tenseurs d'état de simulation sur place."""
         if any(state_dict[k].shape[0] != self.batch_size for k in self.STATE_KEYS if k in state_dict):
             raise ValueError(f"Batch size mismatch: expected {self.batch_size}, got {state_dict['t'].shape[0]}")
 
@@ -425,6 +477,52 @@ class TorchEnv:
         """Alias pour compute_wavefront_distance."""
         return self.compute_wavefront_distance()
 
+    def compute_distance_radar(self) -> torch.Tensor:
+        """Calcule 8 rayons de radar virtuel (B, 8) dans [0.0, 1.0] sur GPU."""
+        B = self.batch_size
+        D = self.device
+
+        angles_deg = self.robot_pose[:, 2].unsqueeze(1) + torch.tensor(
+            [0.0, 45.0, 90.0, 135.0, 180.0, 225.0, 270.0, 315.0], device=D
+        ).unsqueeze(0)
+        rad = angles_deg * (math.pi / 180.0)
+        ux = torch.cos(rad)
+        uy = torch.sin(rad)
+
+        rx = self.robot_pose[:, 0].unsqueeze(1)
+        ry = self.robot_pose[:, 1].unsqueeze(1)
+
+        # Intersection bordures de la table : [70, 2930] x [70, 1930]
+        eps = 1e-6
+        tx = torch.where(ux > 0, (2930.0 - rx) / (ux + eps), (70.0 - rx) / (ux - eps))
+        ty = torch.where(uy > 0, (1930.0 - ry) / (uy + eps), (70.0 - ry) / (uy - eps))
+        d_border = torch.clamp(torch.minimum(tx, ty), min=0.0, max=1000.0)
+
+        # Intersection rayons-cercles avec obstacles
+        def ray_circle_intersect(centers, radii, is_active):
+            C = centers.unsqueeze(0).unsqueeze(0)
+            R_orig = torch.stack([rx, ry], dim=-1).unsqueeze(2)
+            V = C - R_orig
+            U_exp = torch.stack([ux, uy], dim=-1).unsqueeze(2)
+
+            proj = (V * U_exp).sum(dim=-1)
+            v_sq = (V ** 2).sum(dim=-1)
+            d_perp_sq = v_sq - proj ** 2
+
+            r_sq = radii ** 2
+            hit = (d_perp_sq <= r_sq) & (proj > 0.0) & is_active.unsqueeze(1)
+            disc = torch.clamp(r_sq - d_perp_sq, min=0.0)
+            t_entry = torch.where(hit, proj - torch.sqrt(disc), torch.full_like(proj, 1000.0))
+            t_entry = torch.clamp(t_entry, min=0.0, max=1000.0)
+            return t_entry.min(dim=-1).values
+
+        d_packs = ray_circle_intersect(self.pack_centers, 160.0, self.pack_stones > 0)
+        d_walls = ray_circle_intersect(self.wall_centers, 210.0, self.walls > 0.0)
+        d_towers = ray_circle_intersect(self.tower_centers, 210.0, self.towers > 0)
+
+        d_min = torch.minimum(torch.minimum(d_border, d_packs), torch.minimum(d_walls, d_towers))
+        return (d_min / 1000.0).clamp(min=0.0, max=1.0)
+
     def reset(
         self,
         scenario: Optional[dict] = None,
@@ -479,6 +577,9 @@ class TorchEnv:
         self.pack_stones[idx] = 3
         self.held_count[idx] = 0
         self.held_rot[idx] = 0.0
+        self.held_vac[idx] = 0.0
+        self.held_hc[idx] = 165.0
+        self.purged_stones[idx] = 0
         self.graal_state[idx] = 0
         self.graal_zone[idx] = -1
         self.graal_level[idx] = 0.0
@@ -508,8 +609,14 @@ class TorchEnv:
             pack_depleted = torch.rand((nT, 10), device=D) < 0.35
             self.pack_stones[idx_t] = torch.where(pack_depleted, 0, 3)
 
-            self.held_count[idx_t, 0] = torch.randint(0, 4, (nT,), device=D)
-            self.held_count[idx_t, 1] = torch.randint(0, 4, (nT,), device=D)
+            cnt_A = torch.randint(0, 4, (nT,), device=D)
+            cnt_B = torch.randint(0, 4, (nT,), device=D)
+            self.held_count[idx_t, 0] = cnt_A
+            self.held_count[idx_t, 1] = cnt_B
+            for slot in range(3):
+                self.held_vac[idx_t, 0, slot] = (cnt_A > slot).float()
+                self.held_vac[idx_t, 1, slot] = (cnt_B > slot).float()
+
             rot_rand = torch.where(torch.rand((nT, 2), device=D) > 0.5, 90.0, 0.0)
             self.held_rot[idx_t] = torch.where(self.held_count[idx_t] > 0, rot_rand, 0.0)
 
@@ -554,7 +661,7 @@ class TorchEnv:
         return self.get_obs()
 
     def get_obs(self) -> torch.Tensor:
-        """Calcule les 37 entrées du réseau pour tout le batch en opérations GPU."""
+        """Calcule les entrées du réseau (56 ou 37 dimensions) vectorisées sur GPU."""
         B = self.batch_size
         D = self.device
 
@@ -589,7 +696,7 @@ class TorchEnv:
         opp_x = (self.opp_pose[:, 0] / 3000.0).unsqueeze(1)
         opp_y = (self.opp_pose[:, 1] / 2000.0).unsqueeze(1)
 
-        obs = torch.cat([
+        legacy_obs = torch.cat([
             t_rem, rx, ry, rcos, rsin,
             packs,
             hA_n, hA_flat, hA_graal,
@@ -600,7 +707,43 @@ class TorchEnv:
             opp_x, opp_y
         ], dim=1)
 
-        return obs
+        if self.n_in == 37:
+            return legacy_obs
+
+        # R5: 11 Proprioception features
+        vA = self.held_vac[:, 0, :]
+        rotA = (self.held_rot[:, 0:1] / 90.0).clamp(0.0, 1.0)
+        hcA = (self.held_hc[:, 0:1] / 350.0).clamp(0.0, 1.0)
+
+        vB = self.held_vac[:, 1, :]
+        rotB = (self.held_rot[:, 1:2] / 90.0).clamp(0.0, 1.0)
+        hcB = (self.held_hc[:, 1:2] / 350.0).clamp(0.0, 1.0)
+
+        hA_loaded = (self.held_count[:, 0] > 0) | (self.graal_state == 1)
+        hB_loaded = (self.held_count[:, 1] > 0) | (self.graal_state == 2)
+        hA_is_flat = hA_loaded & (self.held_rot[:, 0] == 0.0)
+        hB_is_flat = hB_loaded & (self.held_rot[:, 1] == 0.0)
+        r_hull = torch.where(
+            hA_is_flat & hB_is_flat, 350.0,
+            torch.where(
+                hA_is_flat | hB_is_flat, 310.0,
+                torch.where(hA_loaded | hB_loaded, 260.0, 235.0)
+            )
+        )
+        hull_norm = (r_hull / 350.0).unsqueeze(1)
+
+        # R5: 8 Distance radar rays
+        radar = self.compute_distance_radar()
+
+        obs56 = torch.cat([
+            legacy_obs,
+            vA, rotA, hcA,
+            vB, rotB, hcB,
+            hull_norm,
+            radar
+        ], dim=1)
+
+        return obs56
 
     def _segment_Blocked(
         self,
@@ -619,73 +762,70 @@ class TorchEnv:
 
         C_packs = self.pack_centers.unsqueeze(0).unsqueeze(0)
         AC_packs = C_packs - A_exp
-        u_p = ((AC_packs * AB_exp).sum(dim=-1, keepdim=True) / L2_exp).clamp(0.0, 1.0)
-        P_p = A_exp + u_p * AB_exp
-        dist_p = torch.hypot(C_packs[..., 0] - P_p[..., 0], C_packs[..., 1] - P_p[..., 1])
-        u_p_sq = u_p.squeeze(-1)
-        target_pk = torch.where(fam_t == 0, item_t, torch.full_like(item_t, -1))
-        is_p_obs = (self.pack_stones > 0).unsqueeze(1) & (self.pack_indices.unsqueeze(1) != target_pk.unsqueeze(-1))
-        hA_blk = (self.held_count[:, 0] > 0).unsqueeze(1)
-        hB_blk = (self.held_count[:, 1] > 0).unsqueeze(1)
-        r_rob_blk = torch.where(hA_blk & hB_blk, 350.0, torch.where(hA_blk | hB_blk, 310.0, 235.0)).unsqueeze(-1)
-        hit_p = ((dist_p < r_rob_blk) & (u_p_sq > 0.05) & (u_p_sq < 0.95) & is_p_obs).any(dim=-1)
+        u_pk = ((AC_packs * AB_exp).sum(dim=-1, keepdim=True) / L2_exp).clamp(0.0, 1.0)
+        P_proj_pk = A_exp + u_pk * AB_exp
+        dist_pk = torch.hypot(C_packs[..., 0] - P_proj_pk[..., 0], C_packs[..., 1] - P_proj_pk[..., 1])
+        u_pk_sq = u_pk.squeeze(-1)
+
+        target_pk = torch.where(fam_t == 0, item_t, torch.full_like(item_t, -1)).unsqueeze(2)
+        pack_is_obs = (self.pack_stones.unsqueeze(1) > 0) & (self.pack_indices.unsqueeze(1) != target_pk)
+        hit_pack = ((dist_pk < 260.0) & (u_pk_sq > 0.05) & (u_pk_sq < 0.95) & pack_is_obs).any(dim=2)
 
         C_walls = self.wall_centers.unsqueeze(0).unsqueeze(0)
-        AC_w = C_walls - A_exp
-        u_w = ((AC_w * AB_exp).sum(dim=-1, keepdim=True) / L2_exp).clamp(0.0, 1.0)
-        P_w = A_exp + u_w * AB_exp
-        dist_w = torch.hypot(C_walls[..., 0] - P_w[..., 0], C_walls[..., 1] - P_w[..., 1])
+        AC_walls = C_walls - A_exp
+        u_w = ((AC_walls * AB_exp).sum(dim=-1, keepdim=True) / L2_exp).clamp(0.0, 1.0)
+        P_proj_w = A_exp + u_w * AB_exp
+        dist_w = torch.hypot(C_walls[..., 0] - P_proj_w[..., 0], C_walls[..., 1] - P_proj_w[..., 1])
         u_w_sq = u_w.squeeze(-1)
+
         dist_start_w = torch.hypot(C_walls[..., 0] - A_exp[..., 0], C_walls[..., 1] - A_exp[..., 1])
         dist_end_w = torch.hypot(C_walls[..., 0] - B_tgt.unsqueeze(2)[..., 0], C_walls[..., 1] - B_tgt.unsqueeze(2)[..., 1])
         u_min_w = torch.where(dist_start_w < 290.0, 0.13, 0.02)
         u_max_w = torch.where(dist_end_w < 290.0, 0.87, 0.98)
-        in_mid_w = (u_w_sq > u_min_w) & (u_w_sq < u_max_w)
-        target_w = torch.where((fam_t == 1) | (fam_t == 3) | ((fam_t == 6) & (item_t < 5)), item_t, torch.full_like(item_t, -1))
-        is_w_obs = (self.walls > 0.0).unsqueeze(1) & (self.wall_indices.unsqueeze(1) != target_w.unsqueeze(-1))
-        hit_w = ((dist_w < 210.0) & in_mid_w & is_w_obs).any(dim=-1)
+
+        target_w = torch.where((fam_t == 1) | (fam_t == 3) | ((fam_t == 6) & (item_t < 5)), item_t, torch.full_like(item_t, -1)).unsqueeze(2)
+        wall_is_obs = (self.walls.unsqueeze(1) > 0.0) & (self.wall_indices.unsqueeze(1) != target_w) & (u_w_sq > u_min_w) & (u_w_sq < u_max_w)
+        hit_wall = ((dist_w < 210.0) & wall_is_obs).any(dim=2)
 
         C_towers = self.tower_centers.unsqueeze(0).unsqueeze(0)
-        AC_t = C_towers - A_exp
-        u_t = ((AC_t * AB_exp).sum(dim=-1, keepdim=True) / L2_exp).clamp(0.0, 1.0)
-        P_t = A_exp + u_t * AB_exp
-        dist_t = torch.hypot(C_towers[..., 0] - P_t[..., 0], C_towers[..., 1] - P_t[..., 1])
-        u_t_sq = u_t.squeeze(-1)
-        dist_start_t = torch.hypot(C_towers[..., 0] - A_exp[..., 0], C_towers[..., 1] - A_exp[..., 1])
-        dist_end_t = torch.hypot(C_towers[..., 0] - B_tgt.unsqueeze(2)[..., 0], C_towers[..., 1] - B_tgt.unsqueeze(2)[..., 1])
-        u_min_t = torch.where(dist_start_t < 260.0, 0.13, 0.02)
-        u_max_t = torch.where(dist_end_t < 260.0, 0.87, 0.98)
-        in_mid_t = (u_t_sq > u_min_t) & (u_t_sq < u_max_t)
-        target_t = torch.where(fam_t == 2, item_t, torch.where((fam_t == 6) & (item_t >= 5), item_t - 5, torch.full_like(item_t, -1)))
-        is_t_obs = (self.towers > 0).unsqueeze(1) & (self.tower_indices.unsqueeze(1) != target_t.unsqueeze(-1))
-        hit_t = ((dist_t < 180.0) & in_mid_t & is_t_obs).any(dim=-1)
+        AC_towers = C_towers - A_exp
+        u_tw = ((AC_towers * AB_exp).sum(dim=-1, keepdim=True) / L2_exp).clamp(0.0, 1.0)
+        P_proj_tw = A_exp + u_tw * AB_exp
+        dist_tw = torch.hypot(C_towers[..., 0] - P_proj_tw[..., 0], C_towers[..., 1] - P_proj_tw[..., 1])
+        u_tw_sq = u_tw.squeeze(-1)
 
-        has_opp = (self.opp_pose[:, 0] > 0.0) & (self.opp_pose[:, 1] > 0.0)
-        C_opp = self.opp_pose.unsqueeze(1).unsqueeze(2)
+        dist_start_tw = torch.hypot(C_towers[..., 0] - A_exp[..., 0], C_towers[..., 1] - A_exp[..., 1])
+        dist_end_tw = torch.hypot(C_towers[..., 0] - B_tgt.unsqueeze(2)[..., 0], C_towers[..., 1] - B_tgt.unsqueeze(2)[..., 1])
+        u_min_tw = torch.where(dist_start_tw < 260.0, 0.13, 0.02)
+        u_max_tw = torch.where(dist_end_tw < 260.0, 0.87, 0.98)
+
+        target_tw = torch.where(fam_t == 2, item_t, torch.where((fam_t == 6) & (item_t >= 5), item_t - 5, torch.full_like(item_t, -1))).unsqueeze(2)
+        tower_is_obs = (self.towers.unsqueeze(1) > 0) & (self.tower_indices.unsqueeze(1) != target_tw) & (u_tw_sq > u_min_tw) & (u_tw_sq < u_max_tw)
+        hit_tower = ((dist_tw < 180.0) & tower_is_obs).any(dim=2)
+
+        has_opp = (self.opp_pose[:, 0] > 0) & (self.opp_pose[:, 1] > 0)
+        C_opp = self.opp_pose.unsqueeze(1).unsqueeze(1)
         AC_opp = C_opp - A_exp
         u_opp = ((AC_opp * AB_exp).sum(dim=-1, keepdim=True) / L2_exp).clamp(0.0, 1.0)
-        P_opp = A_exp + u_opp * AB_exp
-        dist_to_opp = torch.hypot(C_opp[..., 0] - P_opp[..., 0], C_opp[..., 1] - P_opp[..., 1]).squeeze(-1)
-        u_opp_sq = u_opp.squeeze(-1).squeeze(-1)
-        mid_opp = (u_opp_sq >= 0.05) & (u_opp_sq <= 0.95)
-        hit_opp = has_opp.unsqueeze(1) & mid_opp & (dist_to_opp < 350.0)
+        P_proj_opp = A_exp + u_opp * AB_exp
+        dist_opp = torch.hypot(C_opp[..., 0] - P_proj_opp[..., 0], C_opp[..., 1] - P_proj_opp[..., 1]).view(B_tgt.shape[0], B_tgt.shape[1])
+        u_opp_val = u_opp.view(B_tgt.shape[0], B_tgt.shape[1])
+        hit_opp = has_opp.unsqueeze(1) & (u_opp_val > 0.05) & (u_opp_val < 0.95) & (dist_opp < 350.0)
 
-        return hit_p | hit_w | hit_t | hit_opp
+        return hit_pack | hit_wall | hit_tower | hit_opp
 
     def get_mask(self, full: bool = False) -> torch.Tensor:
-        """Calcule le masque de validité en tenseur booléen sur GPU.
-        Si full=True, renvoie toutes les actions du catalogue (self.total_actions).
-        Sinon, renvoie les self.n_out premières actions pour rétrocompatibilité.
-        """
+        """Calcule le masque booléen d'actions valides (B, N) avec multi-angles et waypoints."""
         B = self.batch_size
         D = self.device
         N = self.total_actions
         mask = torch.zeros((B, N), dtype=torch.bool, device=D)
 
-        # 1. PRENDRE (0..19)
-        face_empty_p = (self.held_count[:, self.mask_f_p] == 0) & (self.graal_state.unsqueeze(1) != (self.mask_f_p + 1))
-        pack_ok = self.pack_stones[:, self.mask_p_idx] == 3
-        mask[:, 0:20] = face_empty_p & pack_ok
+        # 1. PRENDRE (0..19) - R1: support de la prise partielle
+        face_avail_p = 3 - self.held_count[:, self.mask_f_p]
+        face_can_take_p = (face_avail_p > 0) & (self.graal_state.unsqueeze(1) != (self.mask_f_p + 1)) & (self.held_rot[:, self.mask_f_p] == 0.0)
+        pack_ok = self.pack_stones[:, self.mask_p_idx] > 0
+        mask[:, 0:20] = face_can_take_p & pack_ok
 
         # 2. MUR (20..39)
         face_flat_m = (self.held_count[:, self.mask_f_m] == 3) & (self.held_rot[:, self.mask_f_m] == 0.0) & (self.graal_state.unsqueeze(1) != (self.mask_f_m + 1))
@@ -728,39 +868,75 @@ class TorchEnv:
             zone_has_s = self.staged_packs[:, self.mask_z_unstage] == 3
             mask[:, 112:118] = face_empty_u & zone_has_s
 
-        # 10. Filtrage géométrique strict (direct + waypoints + wavefront 2D)
+        # 10. WAYPOINTS TRAJ (118..125)
+        if N >= 126:
+            mask[:, 118:126] = True
+
+        # 11. TOURNER PINCE (126..127) - R1
+        if N >= 128:
+            mask[:, 126] = True
+            mask[:, 127] = True
+
+        # 12. DEPOSER ZONE (128..129) - R1
+        if N >= 130:
+            mask[:, 128] = self.held_count[:, 0] > 0
+            mask[:, 129] = self.held_count[:, 1] > 0
+
+        # R2 : Validation multi-angles dynamique
         A_pos = self.robot_pose[:, :2].unsqueeze(1).expand(-1, N, -1)
-        B_tgt = torch.stack([self.action_tx, self.action_ty], dim=1).unsqueeze(0).expand(B, -1, -1)
         fam_t = self.action_family.unsqueeze(0).expand(B, -1)
         item_t = self.action_item.unsqueeze(0).expand(B, -1)
-
-        direct_blocked = self._segment_Blocked(A_pos, B_tgt, fam_t, item_t)
-
         dummy_fam = torch.full_like(fam_t, -1)
         dummy_item = torch.full_like(item_t, -1)
-        any_waypoint_ok = torch.zeros((B, N), dtype=torch.bool, device=D)
-        dist_direct = torch.hypot(B_tgt[..., 0] - A_pos[..., 0], B_tgt[..., 1] - A_pos[..., 1])
-        min_detour_dist = torch.full_like(dist_direct, 1e9)
 
-        for w_idx in range(4):
-            W = self.waypoints[w_idx].view(1, 1, 2).expand(B, N, 2)
-            A_to_W = self._segment_Blocked(A_pos, W, dummy_fam, dummy_item)
-            W_to_B = self._segment_Blocked(W, B_tgt, fam_t, item_t)
-            w_ok = (~A_to_W) & (~W_to_B)
-            any_waypoint_ok |= w_ok
-            d_w = (torch.hypot(W[..., 0] - A_pos[..., 0], W[..., 1] - A_pos[..., 1]) +
-                   torch.hypot(B_tgt[..., 0] - W[..., 0], B_tgt[..., 1] - W[..., 1]))
-            min_detour_dist = torch.where(w_ok, torch.minimum(min_detour_dist, d_w), min_detour_dist)
+        app_possible = torch.zeros((B, N, 4), dtype=torch.bool, device=D)
+        app_dist = torch.full((B, N, 4), 1e9, dtype=torch.float32, device=D)
 
-        # Grille de distance wavefront 2D (R1)
         dist_grid = self.compute_wavefront_distance()
         min_dist_grid = -torch.nn.functional.max_pool2d(-dist_grid, kernel_size=3, stride=1, padding=1)
-        d_wavefront = min_dist_grid[:, 0, self.action_gy, self.action_gx]
-        wavefront_ok = (d_wavefront < 9000.0)
-        dist_wave = d_wavefront * 40.0
+        b_idx_grid = torch.arange(B, device=D).unsqueeze(1).expand(-1, N)
 
-        path_possible = (~direct_blocked) | any_waypoint_ok | wavefront_ok
-        dist_eff = torch.where(~direct_blocked, dist_direct, torch.minimum(min_detour_dist, dist_wave))
+        for k in range(4):
+            B_tgt_k = self.action_approaches[:, k, :2].unsqueeze(0).expand(B, -1, -1)
+            in_bounds_k = (
+                (B_tgt_k[..., 0] >= 65.0) & (B_tgt_k[..., 0] <= 2935.0) &
+                (B_tgt_k[..., 1] >= 65.0) & (B_tgt_k[..., 1] <= 1935.0)
+            )
+            is_valid_slot = (k < self.action_n_approaches).unsqueeze(0).expand(B, -1)
+
+            direct_blocked_k = self._segment_Blocked(A_pos, B_tgt_k, fam_t, item_t)
+            dist_direct_k = torch.hypot(B_tgt_k[..., 0] - A_pos[..., 0], B_tgt_k[..., 1] - A_pos[..., 1])
+
+            any_waypoint_ok_k = torch.zeros((B, N), dtype=torch.bool, device=D)
+            min_detour_dist_k = torch.full_like(dist_direct_k, 1e9)
+
+            for w_idx in range(len(self.waypoints)):
+                W = self.waypoints[w_idx].view(1, 1, 2).expand(B, N, 2)
+                A_to_W = self._segment_Blocked(A_pos, W, dummy_fam, dummy_item)
+                W_to_B = self._segment_Blocked(W, B_tgt_k, fam_t, item_t)
+                w_ok = (~A_to_W) & (~W_to_B)
+                any_waypoint_ok_k |= w_ok
+                d_w = (torch.hypot(W[..., 0] - A_pos[..., 0], W[..., 1] - A_pos[..., 1]) +
+                       torch.hypot(B_tgt_k[..., 0] - W[..., 0], B_tgt_k[..., 1] - W[..., 1]))
+                min_detour_dist_k = torch.where(w_ok, torch.minimum(min_detour_dist_k, d_w), min_detour_dist_k)
+
+            act_gx_k = torch.clamp((B_tgt_k[..., 0] / 40.0).long(), 0, 74)
+            act_gy_k = torch.clamp((B_tgt_k[..., 1] / 40.0).long(), 0, 49)
+            d_wavefront_k = min_dist_grid[b_idx_grid, 0, act_gy_k, act_gx_k]
+            wavefront_ok_k = (d_wavefront_k < 9000.0)
+            dist_wave_k = d_wavefront_k * 40.0
+
+            can_reach_k = (~direct_blocked_k) | any_waypoint_ok_k | wavefront_ok_k
+            app_possible[:, :, k] = in_bounds_k & is_valid_slot & can_reach_k
+            eff_d_k = torch.where(~direct_blocked_k, dist_direct_k, torch.minimum(min_detour_dist_k, dist_wave_k))
+            app_dist[:, :, k] = torch.where(app_possible[:, :, k], eff_d_k, torch.full_like(eff_d_k, 1e9))
+
+        is_local_act = (fam_t == 11) | (fam_t == 12)
+        path_possible = app_possible.any(dim=-1) | is_local_act
+        dist_eff = app_dist.min(dim=-1).values
+        dist_eff = torch.where(is_local_act, torch.zeros_like(dist_eff), dist_eff)
+        fallback_d = torch.hypot(self.action_tx.unsqueeze(0) - A_pos[..., 0], self.action_ty.unsqueeze(0) - A_pos[..., 1])
+        dist_eff = torch.where(dist_eff < 1e8, dist_eff, fallback_d)
 
         # Topologie du château (M2, M3, M4)
         rx = self.robot_pose[:, 0]
@@ -842,7 +1018,7 @@ class TorchEnv:
         n_portes = (self.walls == 1.0).sum(dim=1)
         n_pierres_murs = (n_murs + n_portes) * 3
         n_pierres_tours = torch.clamp(self.towers, 0, 1).sum(dim=1)
-        sc_pierres = (n_pierres_murs + n_pierres_tours).float() * BAREME["pierre"]
+        sc_pierres = (n_pierres_murs + n_pierres_tours + self.purged_stones).float() * BAREME["pierre"]
 
         sc_murs = n_murs.float() * BAREME["mur"]
         sc_portes = (n_portes > 0).float() * BAREME["porte"]
@@ -884,13 +1060,18 @@ class TorchEnv:
         B = self.batch_size
         D = self.device
 
+        if isinstance(actions, (tuple, list)) and len(actions) > 0 and isinstance(actions[0], torch.Tensor):
+            actions = actions[0]
+
         if not isinstance(actions, torch.Tensor):
             actions = torch.tensor(actions, dtype=torch.long, device=D)
+
+        if actions.dim() == 0:
+            actions = actions.unsqueeze(0)
 
         mask = self.get_mask(full=True)
         batch_idx = torch.arange(B, device=D)
 
-        # L'action est valide si dans les limites de mask et que mask[b, a] == True
         valid_idx = (actions >= 0) & (actions < mask.shape[1])
         safe_act = torch.clamp(actions, 0, mask.shape[1] - 1)
         is_valid = valid_idx & mask[batch_idx, safe_act]
@@ -899,26 +1080,52 @@ class TorchEnv:
         old_score = self.score
         active = ~self.done
 
-        tx = self.action_tx[actions]
-        ty = self.action_ty[actions]
-        th = self.action_th[actions]
-        mech = self.action_mech[actions]
-        fam = self.action_family[actions]
-        f_idx = self.action_face[actions]
-        item = self.action_item[actions]
+        mech = self.action_mech[safe_act]
+        fam = self.action_family[safe_act]
+        f_idx = self.action_face[safe_act]
+        item = self.action_item[safe_act]
+
+        # R2 : Sélection dynamique de l'approche candidate la plus rapide sans obstacle
+        # Evaluate 4 candidate approaches for chosen action
+        cand_app = self.action_approaches[safe_act]  # (B, 4, 3)
+        n_app = self.action_n_approaches[safe_act]    # (B)
+        A_p = self.robot_pose[:, :2].unsqueeze(1)     # (B, 1, 2)
+        f_t = fam.unsqueeze(1)
+        it_t = item.unsqueeze(1)
+
+        best_k = torch.zeros(B, dtype=torch.long, device=D)
+        best_cost = torch.full((B,), 1e9, dtype=torch.float32, device=D)
+
+        for k in range(4):
+            B_k = cand_app[:, k, :2]
+            th_k = cand_app[:, k, 2]
+            in_b = (B_k[:, 0] >= 65.0) & (B_k[:, 0] <= 2935.0) & (B_k[:, 1] >= 65.0) & (B_k[:, 1] <= 1935.0) & (k < n_app)
+            d_k = torch.hypot(B_k[:, 0] - self.robot_pose[:, 0], B_k[:, 1] - self.robot_pose[:, 1])
+            blk_k = self._segment_Blocked(A_p, B_k.unsqueeze(1), f_t, it_t).squeeze(1)
+            cost_k = torch.where(in_b & (~blk_k), d_k, torch.where(in_b, d_k + 5000.0, torch.full_like(d_k, 1e9)))
+            better = cost_k < best_cost
+            best_cost = torch.where(better, cost_k, best_cost)
+            best_k = torch.where(better, k, best_k)
+
+        b_range = torch.arange(B, device=D)
+        chosen_tx = cand_app[b_range, best_k, 0]
+        chosen_ty = cand_app[b_range, best_k, 1]
+        chosen_th = cand_app[b_range, best_k, 2]
+
+        is_local = (fam == 11) | (fam == 12)
+        tx = torch.where(is_local, self.robot_pose[:, 0], chosen_tx)
+        ty = torch.where(is_local, self.robot_pose[:, 1], chosen_ty)
+        th = torch.where(is_local, self.robot_pose[:, 2], chosen_th)
 
         dx = tx - self.robot_pose[:, 0]
         dy = ty - self.robot_pose[:, 1]
         d_dir = torch.hypot(dx, dy)
 
-        A_p = self.robot_pose[:, :2].unsqueeze(1)
         B_t = torch.stack([tx, ty], dim=1).unsqueeze(1)
-        f_t = fam.unsqueeze(1)
-        it_t = item.unsqueeze(1)
         dir_blk = self._segment_Blocked(A_p, B_t, f_t, it_t).squeeze(1)
 
         min_detour = torch.full_like(d_dir, 1e9)
-        for w_idx in range(4):
+        for w_idx in range(len(self.waypoints)):
             W = self.waypoints[w_idx].view(1, 1, 2).expand(B, 1, 2)
             A_to_W = self._segment_Blocked(A_p, W, torch.full_like(f_t, -1), torch.full_like(it_t, -1)).squeeze(1)
             W_to_B = self._segment_Blocked(W, B_t, f_t, it_t).squeeze(1)
@@ -927,7 +1134,7 @@ class TorchEnv:
                    torch.hypot(tx - W[:, 0, 0], ty - W[:, 0, 1]))
             min_detour = torch.where(w_ok, torch.minimum(min_detour, d_w), min_detour)
 
-        dist = torch.where(~dir_blk, d_dir, torch.where(min_detour < 1e8, min_detour * self.detour_penalty, d_dir))
+        dist = torch.where(is_local, torch.zeros_like(d_dir), torch.where(~dir_blk, d_dir, torch.where(min_detour < 1e8, min_detour * self.detour_penalty, d_dir)))
 
         dh = torch.abs((th - self.robot_pose[:, 2] + 180.0) % 360.0 - 180.0)
         dt_lin = dist / SPEED_LIN
@@ -942,6 +1149,7 @@ class TorchEnv:
         else:
             dt_total = dt_move + mech
 
+        # Check collisions along chosen path
         A = self.robot_pose[:, :2]
         B_target = torch.stack([tx, ty], dim=1)
         AB = (B_target - A).unsqueeze(1)
@@ -959,7 +1167,7 @@ class TorchEnv:
         hA_st = (self.held_count[:, 0] > 0)
         hB_st = (self.held_count[:, 1] > 0)
         r_rob_st = torch.where(hA_st & hB_st, 350.0, torch.where(hA_st | hB_st, 310.0, 235.0)).unsqueeze(1)
-        hit_pack = active & is_valid & ((dist_pk < r_rob_st) & (u_pk_sq > 0.05) & (u_pk_sq < 0.95) & pack_is_obstacle).any(dim=1)
+        hit_pack = active & is_valid & (~is_local) & ((dist_pk < r_rob_st) & (u_pk_sq > 0.05) & (u_pk_sq < 0.95) & pack_is_obstacle).any(dim=1)
 
         C_w = self.wall_centers.unsqueeze(0)
         AC_w = C_w - A.unsqueeze(1)
@@ -973,7 +1181,7 @@ class TorchEnv:
         u_max_w = torch.where(dist_end_w < 290.0, 0.87, 0.98)
         target_w = torch.where((fam == 1) | (fam == 3) | ((fam == 6) & (item < 5)), item, -1).unsqueeze(1)
         wall_is_obs = (self.walls > 0.0) & (self.wall_indices != target_w) & (u_w_sq > u_min_w) & (u_w_sq < u_max_w)
-        hit_wall = active & is_valid & ((dist_w < 210.0) & wall_is_obs).any(dim=1)
+        hit_wall = active & is_valid & (~is_local) & ((dist_w < 210.0) & wall_is_obs).any(dim=1)
 
         C_tw = self.tower_centers.unsqueeze(0)
         AC_tw = C_tw - A.unsqueeze(1)
@@ -987,7 +1195,7 @@ class TorchEnv:
         u_max_tw = torch.where(dist_end_tw < 260.0, 0.87, 0.98)
         target_tw = torch.where(fam == 2, item, torch.where((fam == 6) & (item >= 5), item - 5, -1)).unsqueeze(1)
         tower_is_obs = (self.towers > 0) & (self.tower_indices != target_tw) & (u_tw_sq > u_min_tw) & (u_tw_sq < u_max_tw)
-        hit_tower = active & is_valid & ((dist_tw < 180.0) & tower_is_obs).any(dim=1)
+        hit_tower = active & is_valid & (~is_local) & ((dist_tw < 180.0) & tower_is_obs).any(dim=1)
 
         has_opp = (self.opp_pose[:, 0] > 0) & (self.opp_pose[:, 1] > 0)
         C_opp = self.opp_pose.unsqueeze(1)
@@ -997,7 +1205,7 @@ class TorchEnv:
         dist_opp = torch.hypot(C_opp[..., 0] - P_proj_opp[..., 0], C_opp[..., 1] - P_proj_opp[..., 1]).squeeze(1)
         u_opp_sq = u_opp.reshape(-1)
         dist_opp_flat = dist_opp.reshape(-1)
-        hit_opp = active & is_valid & has_opp & (u_opp_sq >= 0.05) & (u_opp_sq <= 0.95) & (dist_opp_flat < 350.0)
+        hit_opp = active & is_valid & (~is_local) & has_opp & (u_opp_sq >= 0.05) & (u_opp_sq <= 0.95) & (dist_opp_flat < 350.0)
 
         has_col = hit_pack | hit_wall | hit_tower | hit_opp
         self.errors += has_col.long()
@@ -1006,35 +1214,64 @@ class TorchEnv:
 
         success = active & is_valid & (~has_col)
 
-        # 1. PRENDRE (fam == 0)
+        # R4 : Dégagement automatique Z transit
+        has_any_held = (self.held_count[:, 0] > 0) | (self.held_count[:, 1] > 0)
+        self.held_hc[:, 0] = torch.where(self.held_count[:, 0] > 0, 250.0, 165.0)
+        self.held_hc[:, 1] = torch.where(self.held_count[:, 1] > 0, 250.0, 165.0)
+
+        # 1. PRENDRE (fam == 0) - R1: support de la prise partielle
         mask_prendre = success & (fam == 0)
         if mask_prendre.any():
             idx_b = torch.where(mask_prendre)[0]
-            self.held_count[idx_b, f_idx[idx_b]] = 3
-            self.held_rot[idx_b, f_idx[idx_b]] = 0.0
-            self.pack_stones[idx_b, item[idx_b]] = 0
+            f_b = f_idx[idx_b]
+            p_b = item[idx_b]
+            cap_b = 3 - self.held_count[idx_b, f_b]
+            avail_b = self.pack_stones[idx_b, p_b]
+            take_b = torch.minimum(cap_b, avail_b)
+
+            old_cnt = self.held_count[idx_b, f_b]
+            new_cnt = old_cnt + take_b
+            self.held_count[idx_b, f_b] = new_cnt
+            self.held_rot[idx_b, f_b] = 0.0
+            self.pack_stones[idx_b, p_b] -= take_b
+
+            for sub_i, env_i in enumerate(idx_b):
+                fc = f_b[sub_i]
+                for s_idx in range(old_cnt[sub_i].item(), new_cnt[sub_i].item()):
+                    if s_idx < 3:
+                        self.held_vac[env_i, fc, s_idx] = 1.0
 
         # 2. MUR (fam == 1)
         mask_mur = success & (fam == 1)
         if mask_mur.any():
             idx_b = torch.where(mask_mur)[0]
-            self.held_count[idx_b, f_idx[idx_b]] = 0
+            f_b = f_idx[idx_b]
+            self.held_count[idx_b, f_b] = 0
+            self.held_vac[idx_b, f_b] = 0.0
             self.walls[idx_b, item[idx_b]] = 0.5
 
         # 3. TOUR (fam == 2)
         mask_tour = success & (fam == 2)
         if mask_tour.any():
             idx_b = torch.where(mask_tour)[0]
-            new_cnt = torch.clamp(self.held_count[idx_b, f_idx[idx_b]] - 1, min=0)
-            self.held_count[idx_b, f_idx[idx_b]] = new_cnt
-            self.held_rot[idx_b, f_idx[idx_b]] = torch.where(new_cnt > 0, 90.0, 0.0)
+            f_b = f_idx[idx_b]
+            new_cnt = torch.clamp(self.held_count[idx_b, f_b] - 1, min=0)
+            self.held_count[idx_b, f_b] = new_cnt
+            self.held_rot[idx_b, f_b] = torch.where(new_cnt > 0, 90.0, 0.0)
+            for sub_i, env_i in enumerate(idx_b):
+                fc = f_b[sub_i]
+                nc = new_cnt[sub_i].item()
+                if nc < 3:
+                    self.held_vac[env_i, fc, nc] = 0.0
             self.towers[idx_b, item[idx_b]] = 1
 
         # 4. PORTE (fam == 3)
         mask_porte = success & (fam == 3)
         if mask_porte.any():
             idx_b = torch.where(mask_porte)[0]
-            self.held_count[idx_b, f_idx[idx_b]] = 0
+            f_b = f_idx[idx_b]
+            self.held_count[idx_b, f_b] = 0
+            self.held_vac[idx_b, f_b] = 0.0
             self.walls[idx_b, item[idx_b]] = 1.0
 
         # 5. BOULETS (fam == 4)
@@ -1051,6 +1288,8 @@ class TorchEnv:
         if mask_pg.any():
             idx_b = torch.where(mask_pg)[0]
             self.graal_state[idx_b] = f_idx[idx_b] + 1
+            for sub_i, env_i in enumerate(idx_b):
+                self.held_vac[env_i, f_idx[env_i], 0] = 1.0
 
         # 7. POSER GRAAL (fam == 6)
         mask_pose_g = success & (fam == 6)
@@ -1062,6 +1301,8 @@ class TorchEnv:
             tw_h = self.towers[idx_b, t_idx].float()
             lvl = torch.where(item[idx_b] < 5, torch.tensor(3.0, device=D), tw_h)
             self.graal_level[idx_b] = lvl
+            for sub_i, env_i in enumerate(idx_b):
+                self.held_vac[env_i, f_idx[env_i], 0] = 0.0
 
         # 8. TRÔNE (fam == 7)
         mask_trone = success & (fam == 7)
@@ -1078,22 +1319,58 @@ class TorchEnv:
         mask_stage = success & (fam == 8)
         if mask_stage.any():
             idx_b = torch.where(mask_stage)[0]
-            self.held_count[idx_b, f_idx[idx_b]] = 0
+            f_b = f_idx[idx_b]
+            self.held_count[idx_b, f_b] = 0
+            self.held_vac[idx_b, f_b] = 0.0
             self.staged_packs[idx_b, item[idx_b]] = 3
 
         # 10. REPICKUP (fam == 9)
         mask_unstage = success & (fam == 9)
         if mask_unstage.any():
             idx_b = torch.where(mask_unstage)[0]
-            self.held_count[idx_b, f_idx[idx_b]] = 3
-            self.held_rot[idx_b, f_idx[idx_b]] = 0.0
+            f_b = f_idx[idx_b]
+            self.held_count[idx_b, f_b] = 3
+            self.held_rot[idx_b, f_b] = 0.0
+            self.held_vac[idx_b, f_b] = 1.0
             self.staged_packs[idx_b, item[idx_b]] = 0
 
-        self.robot_pose[success, 0] = tx[success]
-        self.robot_pose[success, 1] = ty[success]
-        self.robot_pose[success, 2] = th[success]
+        # 11. WAYPOINTS TRAJ (fam == 10)
+        # Trajet exécuté, pose mise à jour ci-dessous
 
-        not_special = active & (fam != 4) & (fam != 7)
+        # 12. TOURNER PINCE (fam == 11) - R1
+        mask_rot = success & (fam == 11)
+        if mask_rot.any():
+            idx_b = torch.where(mask_rot)[0]
+            f_b = f_idx[idx_b]
+            self.held_rot[idx_b, f_b] = torch.where(self.held_rot[idx_b, f_b] == 0.0, 90.0, 0.0)
+            self.t[idx_b] += 0.75
+
+        # 13. DEPOSER ZONE (fam == 12) - R1
+        mask_dep = success & (fam == 12)
+        if mask_dep.any():
+            idx_b = torch.where(mask_dep)[0]
+            f_b = f_idx[idx_b]
+            stones_released = self.held_count[idx_b, f_b]
+            self.held_count[idx_b, f_b] = 0
+            self.held_rot[idx_b, f_b] = 0.0
+            self.held_vac[idx_b, f_b] = 0.0
+            self.held_hc[idx_b, f_b] = 165.0
+
+            # Vérifier si dépôt dans une zone de construction (+1 pt par pierre)
+            rx_d = self.robot_pose[idx_b, 0].unsqueeze(1)
+            ry_d = self.robot_pose[idx_b, 1].unsqueeze(1)
+            d_w_dep = torch.hypot(self.wall_centers[:, 0] - rx_d, self.wall_centers[:, 1] - ry_d).min(dim=1).values
+            d_t_dep = torch.hypot(self.tower_centers[:, 0] - rx_d, self.tower_centers[:, 1] - ry_d).min(dim=1).values
+            in_cons = (d_w_dep < 300.0) | (d_t_dep < 300.0)
+            self.purged_stones[idx_b] += torch.where(in_cons, stones_released, torch.zeros_like(stones_released))
+            self.t[idx_b] += 1.0
+
+        # Update pose for non-local actions
+        self.robot_pose[success & (~is_local), 0] = tx[success & (~is_local)]
+        self.robot_pose[success & (~is_local), 1] = ty[success & (~is_local)]
+        self.robot_pose[success & (~is_local), 2] = th[success & (~is_local)]
+
+        not_special = active & (fam != 4) & (fam != 7) & (~is_local)
         self.t[not_special] += dt_total[not_special]
 
         if self.dynamic_opp:

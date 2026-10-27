@@ -1,4 +1,4 @@
-/* Catalogue des 106 actions du réseau (cahier des charges, annexe A) et masque de validité. */
+/* Catalogue des actions du réseau (106 actions de base + extensions tactiques V2) et masque de validité. */
 (function (root) {
   var FACES = ['A', 'B'];
   var PACKS = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'P9', 'P10'];
@@ -6,6 +6,20 @@
   var TOURS = ['T1', 'T2', 'T3', 'T4'];
   var COTES = ['ext', 'int'];
   var GRAAL_ZONES = MURS.concat(TOURS);
+  var STAGING_ZONES = ['SN', 'SS', 'SC'];
+
+  var WAYPOINTS_INFO = [
+    { id: 'W1', x: 1050, y: 450, label: 'Sortie Nord Château (1050, 450)' },
+    { id: 'W2', x: 1050, y: 1550, label: 'Sortie Sud Château (1050, 1550)' },
+    { id: 'W3', x: 1050, y: 1000, label: 'Carrefour Ouest Centre (1050, 1000)' },
+    { id: 'W4', x: 1500, y: 280, label: 'Couloir Nord (1500, 280)' },
+    { id: 'W5', x: 1500, y: 1720, label: 'Couloir Sud (1500, 1720)' },
+    { id: 'W6', x: 1500, y: 1000, label: 'Point Central (1500, 1000)' },
+    { id: 'W7', x: 500, y: 220, label: 'Flanc Nord (500, 220)' },
+    { id: 'W8', x: 500, y: 1780, label: 'Flanc Sud (500, 1780)' }
+  ];
+  var WAYPOINTS = WAYPOINTS_INFO.map(function (w) { return [w.x, w.y]; });
+
   var FAMILLES = [
     { id: 'prendre', label: 'Prendre un paquet', n: 20 },
     { id: 'mur', label: 'Poser un mur', n: 20 },
@@ -14,39 +28,84 @@
     { id: 'boulets', label: 'Lâcher les boulets', n: 1 },
     { id: 'prendreGraal', label: 'Prendre le Graal', n: 2 },
     { id: 'poserGraal', label: 'Poser le Graal', n: 18 },
-    { id: 'trone', label: 'Retour au trône', n: 1 }
+    { id: 'trone', label: 'Retour au trône', n: 1 },
+    { id: 'staging', label: 'Déposer relais', n: 6 },
+    { id: 'repickup', label: 'Reprendre relais', n: 6 },
+    { id: 'traj', label: 'Naviguer carrefour', n: 8 },
+    { id: 'tournerPince', label: 'Tourner pince', n: 2 },
+    { id: 'deposerZone', label: 'Déposer zone', n: 2 }
   ];
 
   function buildAll() {
     var out = [];
+    // 0..19 : Prendre paquet P1..P10
     FACES.forEach(function (f) {
       PACKS.forEach(function (p) { out.push({ i: out.length, famille: 'prendre', a: 'prendre', f: f, p: p, label: 'Prendre ' + p + ' · face ' + f }); });
     });
+    // 20..39 : Murs M1..M5
     FACES.forEach(function (f) {
       MURS.forEach(function (z) {
         COTES.forEach(function (side) { out.push({ i: out.length, famille: 'mur', a: 'mur', f: f, z: z, side: side, label: 'Mur ' + z + ' · ' + side + ' · face ' + f }); });
       });
     });
+    // 40..63 : Tours T1..T4
     FACES.forEach(function (f) {
       TOURS.forEach(function (z) {
         [0, 1, 2].forEach(function (rank) { out.push({ i: out.length, famille: 'tour', a: 'tour', f: f, z: z, rank: rank, label: 'Tour ' + z + ' · pierre ' + (rank + 1) + ' · face ' + f }); });
       });
     });
+    // 64..83 : Portes M1..M5
     FACES.forEach(function (f) {
       MURS.forEach(function (z) {
         COTES.forEach(function (side) { out.push({ i: out.length, famille: 'porte', a: 'porte', f: f, z: z, side: side, label: 'Porte ' + z + ' · ' + side + ' · face ' + f }); });
       });
     });
+    // 84 : Boulets
     out.push({ i: out.length, famille: 'boulets', a: 'boulets', label: 'Lâcher les boulets' });
+    // 85..86 : Prendre Graal
     FACES.forEach(function (f) { out.push({ i: out.length, famille: 'prendreGraal', a: 'prendreGraal', f: f, label: 'Prendre le Graal · face ' + f }); });
+    // 87..104 : Poser Graal
     FACES.forEach(function (f) {
       GRAAL_ZONES.forEach(function (z) { out.push({ i: out.length, famille: 'poserGraal', a: 'poserGraal', f: f, z: z, label: 'Poser le Graal sur ' + z + ' · face ' + f }); });
     });
+    // 105 : Trône
     out.push({ i: out.length, famille: 'trone', a: 'trone', label: 'Aller dans la salle du trône' });
+
+    // 106..111 : Staging / Relais sur SN, SS, SC (Face A et B)
+    FACES.forEach(function (f) {
+      STAGING_ZONES.forEach(function (z) {
+        out.push({ i: out.length, famille: 'staging', a: 'staging', f: f, z: z, label: 'Déposer relais ' + z + ' · face ' + f });
+      });
+    });
+
+    // 112..117 : Reprise relais depuis SN, SS, SC (Face A et B)
+    FACES.forEach(function (f) {
+      STAGING_ZONES.forEach(function (z) {
+        out.push({ i: out.length, famille: 'repickup', a: 'reprendre', f: f, z: z, label: 'Reprendre relais ' + z + ' · face ' + f });
+      });
+    });
+
+    // 118..125 : 8 Actions de repositionnement / navigation waypoints
+    WAYPOINTS_INFO.forEach(function (w) {
+      out.push({ i: out.length, famille: 'traj', a: 'traj', w: w.id, tx: w.x, ty: w.y, th: 0, label: 'Trajet ' + w.label });
+    });
+
+    // 126..127 : Rotation pince Face A / Face B (0° <-> 90°)
+    FACES.forEach(function (f) {
+      out.push({ i: out.length, famille: 'tournerPince', a: 'tournerPince', f: f, r: 0, label: 'Tourner pince face ' + f });
+    });
+
+    // 128..129 : Déposer zone / lacher Face A / Face B (purger / débloquer pince)
+    FACES.forEach(function (f) {
+      out.push({ i: out.length, famille: 'deposerZone', a: 'deposerZone', f: f, label: 'Déposer zone face ' + f });
+    });
+
     return out;
   }
   var ALL = buildAll();
-  if (ALL.length !== 106) throw new Error('Le catalogue doit compter 106 actions, pas ' + ALL.length + '.');
+  var ALL_BASE = ALL.slice(0, 106);
+  if (ALL.length !== 130) throw new Error('Le catalogue étendu doit compter 130 actions, pas ' + ALL.length + '.');
+  if (ALL_BASE.length !== 106) throw new Error('Le catalogue de base doit compter 106 actions, pas ' + ALL_BASE.length + '.');
 
   function filterByFamilles(familles) {
     var set = {};
@@ -58,6 +117,10 @@
     catalogue = catalogue || ALL;
     for (var i = 0; i < catalogue.length; i++) {
       var a = catalogue[i];
+      if (st.a === 'tourner' && a.famille === 'tournerPince' && a.f === st.f) return i;
+      if (st.a === 'lacher' && a.famille === 'deposerZone' && a.f === st.f) return i;
+      if (st.a === 'seDeplacer' && a.famille === 'traj' && Math.hypot((a.tx || 0) - (st.x || 0), (a.ty || 0) - (st.y || 0)) < 10) return i;
+      if (st.a === 'traj' && a.famille === 'traj' && st.pts && st.pts[0] && Math.hypot((a.tx || 0) - (st.pts[0].x || 0), (a.ty || 0) - (st.pts[0].y || 0)) < 10) return i;
       if (a.a !== (st.a === 'tir' ? 'boulets' : st.a)) continue;
       if (a.f && a.f !== st.f) continue;
       if (a.p && a.p !== st.p) continue;
@@ -74,20 +137,36 @@
     }
     return -1;
   }
+
   function toProgramStep(act, sim) {
-    var st = { a: act.a === 'boulets' ? 'tir' : act.a };
+    var st = { a: act.a === 'boulets' ? 'tir' : (act.a === 'reprendre' ? 'prendre' : act.a) };
     var blue = teamOf(sim) === 'blue';
     if (act.f) st.f = act.f;
     if (act.p) st.p = act.p;
     if (act.z) st.z = act.z;
     if (act.side) st.side = act.side;
-    if (act.pm) st.pm = act.pm;
+    // R4 : Mode de placement adaptatif proche par défaut pour constructions
+    if (act.a === 'mur' || act.a === 'tour' || act.a === 'porte') {
+      st.pm = act.pm || 'proche';
+    } else if (act.pm) {
+      st.pm = act.pm;
+    }
     if (act.a === 'tour') {
       var held = sim.held()[act.f];
       var stack = held && held.stack ? held.stack : [];
       var target = stack.filter(function (x) { return x; })[act.rank];
-      /* le programme est écrit dans le repère du cerveau : un robot bleu le rejouera par mirrorStep */
       st.s = target ? (blue ? ENGINE.mirrorId(target.id.split('.')[0]) + '.' + target.id.split('.')[1] : target.id) : 'P1.1';
+    }
+    if (act.a === 'traj') {
+      st.pts = [{ x: blue ? 3000 - act.tx : act.tx, y: act.ty }];
+    }
+    if (act.a === 'tournerPince' || act.famille === 'tournerPince') {
+      var curRot = (sim.pose()[act.f] && sim.pose()[act.f].rot) || 0;
+      st.a = 'tourner';
+      st.r = (curRot === 90) ? 0 : 90;
+    }
+    if (act.a === 'deposerZone' || act.famille === 'deposerZone') {
+      st.a = 'lacher';
     }
     return st;
   }
@@ -100,7 +179,9 @@
     return n === 3 && sim.pose()[f].rot === 0;
   }
   function faceHoldsGraal(sim, f) { var h = sim.held()[f]; return !!(h && h.graal); }
-  function packetStacked(sim, p) {
+
+  // R1 : Support de la reprise de paquets déposés (cur.k === 'free') et de la prise partielle
+  function packetStacked(sim, p, f) {
     var idx = -1;
     if (typeof ENGINE !== 'undefined' && ENGINE.PK) {
       ENGINE.PK.forEach(function (pk, i) { if (pk.id === p) idx = i; });
@@ -110,44 +191,54 @@
     if (idx < 0) return false;
     var stones = typeof sim.stones === 'function' ? sim.stones() : (sim.stones || []);
     var sts = stones.filter(function (st) { return st.pk === idx; });
-    if (sts.length !== 3) return false;
 
-    // 1. Paquet intact au point de départ (home)
-    var allHome = sts.every(function (x) { return x.cur && x.cur.k === 'home'; });
-    if (allHome) {
-      if (sim.claimed && sts.some(function (x) { return sim.claimed(x.id); })) return false;
-      return true;
+    // Pierres disponibles sur la table (home ou free)
+    var avail = sts.filter(function (x) {
+      return x.cur && (x.cur.k === 'home' || x.cur.k === 'free') && !(sim.claimed && sim.claimed(x.id));
+    });
+    if (avail.length === 0) return false;
+
+    // Prise partielle : vérifier la capacité disponible sur la face
+    if (f && sim.held && sim.held()[f]) {
+      var h = sim.held()[f];
+      var heldN = h.stack ? h.stack.filter(function (x) { return x; }).length : 0;
+      if (heldN >= 3) return false;
     }
 
+    // 1. Paquet intact au point de départ (home)
+    var allHome = avail.every(function (x) { return x.cur && x.cur.k === 'home'; });
+    if (allHome) return true;
+
     // 2. Paquet déposé / relayé sur la table (cur.k === 'free')
-    var allFree = sts.every(function (x) { return x.cur && x.cur.k === 'free'; });
+    var allFree = avail.every(function (x) { return x.cur && x.cur.k === 'free'; });
     if (!allFree) return false;
 
     // Vérifier qu'aucune pierre n'est debout (doit être empilée à plat)
-    if (sts.some(function (x) { return x.cur.geo && x.cur.geo.vertical; })) return false;
+    if (avail.some(function (x) { return x.cur.geo && x.cur.geo.vertical; })) return false;
 
-    // Vérifier la co-localisation horizontale des 3 pierres (tolérance 25 mm)
-    var p0 = sts[0].cur.geo && sts[0].cur.geo.fo;
-    if (!p0) return false;
-    for (var i = 1; i < sts.length; i++) {
-      var pi = sts[i].cur.geo && sts[i].cur.geo.fo;
-      if (!pi) return false;
-      if (Math.hypot(pi.cx - p0.cx, pi.cy - p0.cy) > 25.0) return false;
+    // Vérifier la co-localisation horizontale des pierres (tolérance 25 mm)
+    if (avail.length > 1) {
+      var p0 = avail[0].cur.geo && avail[0].cur.geo.fo;
+      if (!p0) return false;
+      for (var i = 1; i < avail.length; i++) {
+        var pi = avail[i].cur.geo && avail[i].cur.geo.fo;
+        if (!pi) return false;
+        if (Math.hypot(pi.cx - p0.cx, pi.cy - p0.cy) > 25.0) return false;
+      }
     }
 
     // Vérifier qu'aucun objet n'est posé par-dessus la pierre supérieure
-    var sorted = sts.slice().sort(function (a, b) {
+    var sorted = avail.slice().sort(function (a, b) {
       var za = (a.cur.geo && a.cur.geo.zc) || 0;
       var zb = (b.cur.geo && b.cur.geo.zc) || 0;
       return za - zb;
     });
-    if (sim.covered && sim.covered(sorted[2], sts)) return false;
-
-    // Vérifier qu'aucune pierre n'est réservée / prise par l'adversaire
-    if (sim.claimed && sts.some(function (x) { return sim.claimed(x.id); })) return false;
+    var topStone = sorted[sorted.length - 1];
+    if (sim.covered && sim.covered(topStone, avail)) return false;
 
     return true;
   }
+
   function stoneHeldRank(sim, f, rank) {
     var h = sim.held()[f];
     if (!h || !h.stack) return false;
@@ -158,12 +249,11 @@
     var isWall = z && z[0] === 'M';
     var zr = zone.tan !== undefined ? rectPoly({ cx: zone.c[0], cy: zone.c[1], hl: 200, hn: 100, ang: zone.tan + 90 }) : null;
     var n = 0;
-    /* pierres posées par ce robot, puis celles de l'autre robot (la zone est occupée aussi) */
     var all = [];
     sim.stones().forEach(function (st) { if (st.cur.k === 'free' && st.cur.geo) all.push(st.cur.geo); });
     (sim.foreign ? sim.foreign() : []).forEach(function (g) { all.push(g); });
     all.forEach(function (g) {
-      if (!isWall && !g.vertical) return; // pour une tour, seule une pierre verticale compte
+      if (!isWall && !g.vertical) return;
       if (zr) { if (overlap(g.foot, zr, 0)) n++; return; }
       var d = 1e9, P = g.foot;
       if (ENGINE.inPoly(zone.c[0], zone.c[1], P)) { n++; return; }
@@ -183,8 +273,8 @@
   function towerComplete(sim, z) { return zoneStoneCount(sim, z) >= 1; }
 
   function validDoorTarget(act) {
-    if (act.z === 'M5') return false; // Pas de place pour déployer la porte près de la bordure basse
-    if (act.z === 'M1' && act.side === 'ext') return false; // Pas de place pour déployer la porte côté extérieur haut
+    if (act.z === 'M5') return false;
+    if (act.z === 'M1' && act.side === 'ext') return false;
     return true;
   }
   function castleHasDoor(sim) {
@@ -195,9 +285,7 @@
     return o.doors.some(function (id) { return SCORE.own(id, team); });
   }
 
-  /* Une action est écrite dans le repère du cerveau (jaune : P1–P10, M1–M5, T1–T4). Pour un robot bleu, les mêmes
-     numéros désignent les cibles en miroir : on les traduit en vrais numéros avant de lire la table. */
-  function teamOf(sim) { var P = sim.params && sim.params(); return (P && P.team) || 'yellow'; }
+  function teamOf(sim) { if (!sim) return 'yellow'; var P = sim.params && sim.params(); return (P && P.team) || 'yellow'; }
   function real(act, sim) {
     if (teamOf(sim) !== 'blue') return act;
     var o = {}; Object.keys(act).forEach(function (k) { o[k] = act[k]; });
@@ -205,6 +293,7 @@
     if (o.z) o.z = ENGINE.mirrorId(o.z);
     return o;
   }
+
   var PACK_CENTERS = [
     [750, 55], [1250, 55], [1750, 55], [2250, 55],
     [750, 1945], [1250, 1945], [1750, 1945], [2250, 1945],
@@ -225,7 +314,7 @@
     'PG_T1': [400, 320], 'PG_T2': [750, 670], 'PG_T3': [750, 1170], 'PG_T4': [400, 1520],
     'SN': [1120.5, 450.0], 'SS': [1120.5, 1550.0], 'SC': [1279.5, 800.0]
   };
-  var STAGING_ZONES = ['SN', 'SS', 'SC'];
+
   var STAGING_TARGETS = {
     'SN': [1120.5, 450.0],
     'SS': [1120.5, 1550.0],
@@ -233,6 +322,8 @@
   };
 
   function getActionTarget(act, sim) {
+    if (!act) return null;
+    if (act.tx != null && act.ty != null) return [act.tx, act.ty];
     if (act.p) {
       if (sim && typeof sim.stones === 'function') {
         var pkIdx = parseInt(act.p.replace(/\D/g, ''), 10) - 1;
@@ -266,6 +357,72 @@
     if (act.famille === 'boulets' || act.famille === 'trone') return [250, 1000];
     if (act.famille === 'prendreGraal') return [295.3, 1067.3];
     return null;
+  }
+
+  // R2 : Approches multi-angles dynamiques (dual opposé pour paquets, 4 cardinaux pour tours)
+  function getActionTargets(act, sim) {
+    if (!act) return [];
+    if (act.w) {
+      for (var wi = 0; wi < WAYPOINTS_INFO.length; wi++) {
+        if (WAYPOINTS_INFO[wi].id === act.w) return [[WAYPOINTS_INFO[wi].x, WAYPOINTS_INFO[wi].y]];
+      }
+    }
+    if (act.famille === 'traj' && act.tx != null) {
+      return [[act.tx, act.ty]];
+    }
+    if (act.famille === 'tournerPince' || act.famille === 'deposerZone') {
+      if (sim && typeof sim.pose === 'function') {
+        var sp = sim.pose();
+        return [[sp.x, sp.y]];
+      }
+      return [[250, 1000]];
+    }
+    if (act.p) {
+      var pId = act.p;
+      if (pId === 'P9') return [[1249.5, 500], [1750.5, 500]];
+      if (pId === 'P10') return [[1249.5, 1500], [1750.5, 1500]];
+      if (ACTION_TARGETS[pId]) {
+        var base = ACTION_TARGETS[pId];
+        if (pId === 'P1' || pId === 'P2' || pId === 'P3' || pId === 'P4') {
+          return [[base[0], 305.5], [base[0], -195.5]];
+        }
+        if (pId === 'P5' || pId === 'P6' || pId === 'P7' || pId === 'P8') {
+          return [[base[0], 1694.5], [base[0], 2195.5]];
+        }
+        return [base];
+      }
+    }
+    if (act.z) {
+      if (act.famille === 'tour' || (act.famille === 'poserGraal' && act.z && act.z.charAt(0) === 'T')) {
+        var twCenters = {
+          'T1': [500, 400], 'T2': [850, 750], 'T3': [850, 1250], 'T4': [500, 1600]
+        };
+        var c = twCenters[act.z];
+        if (c) {
+          return [
+            [c[0] - 170.5, c[1]], // Ouest / Extérieur
+            [c[0] + 170.5, c[1]], // Est / Intérieur
+            [c[0], c[1] - 170.5], // Nord / Haut
+            [c[0], c[1] + 170.5]  // Sud / Bas
+          ];
+        }
+      }
+      if (act.famille === 'mur' || act.famille === 'porte') {
+        var key = act.z + '_' + (act.side || 'ext');
+        if (ACTION_TARGETS[key]) return [ACTION_TARGETS[key]];
+      }
+      if (act.famille === 'poserGraal') {
+        var pgKey = 'PG_' + act.z;
+        if (ACTION_TARGETS[pgKey]) return [ACTION_TARGETS[pgKey]];
+      }
+      if ((act.famille === 'staging' || act.famille === 'repickup') && ACTION_TARGETS[act.z]) {
+        return [ACTION_TARGETS[act.z]];
+      }
+    }
+    if (act.famille === 'boulets' || act.famille === 'trone') return [[250, 1000]];
+    if (act.famille === 'prendreGraal') return [[295.3, 1067.3]];
+    var single = getActionTarget(act, sim);
+    return single ? [single] : [];
   }
 
   var BUILD_OBSTACLES = [
@@ -303,14 +460,6 @@
     return Math.hypot(cx - px, cy - py) < r;
   }
 
-  var WAYPOINTS = [
-    [1050, 320],   // Nord-Ouest
-    [1050, 1680],  // Sud-Ouest
-    [1750, 820],   // Nord-Est
-    [1750, 1180],  // Sud-Est
-    [1050, 1000]   // Entrée Centre Château (Est)
-  ];
-
   function isSegmentBlocked(ax, ay, bx, by, act, sim) {
     var abx = bx - ax, aby = by - ay;
     var l2 = abx * abx + aby * aby;
@@ -326,7 +475,7 @@
     if (nA > 0 && nB > 0) rRob = 350;
     else if (nA > 0 || nB > 0) rRob = 310;
 
-    // 1. Collision avec les paquets P1..P10 encore au sol (boîte rectangulaire dilatée)
+    // 1. Collision avec les paquets P1..P10 encore au sol
     for (var k = 0; k < 10; k++) {
       var pkId = 'P' + (k + 1);
       if (pkId === targetPk) continue;
@@ -419,21 +568,29 @@
     return bestDist < Infinity ? bestDist : null;
   }
 
+  // R2 : Validation multi-angle : valide si AU MOINS UN angle est libre
   function hitsCrates(act, sim) {
-    if (act && (act.famille === 'boulets' || act.famille === 'trone')) return false;
+    if (!act) return false;
+    if (act.famille === 'boulets' || act.famille === 'trone' || act.famille === 'tournerPince' || act.famille === 'deposerZone') return false;
     if (!sim || typeof sim.pose !== 'function') return false;
     var s = sim.pose();
     if (!s || s.x == null) return false;
-    var rawTgt = getActionTarget(act);
-    if (!rawTgt) return false;
+    var tgts = getActionTargets(act, sim);
+    if (!tgts || !tgts.length) return false;
 
     var isBlue = (sim.params && sim.params().team === 'blue');
-    var tx = isBlue ? 3000 - rawTgt[0] : rawTgt[0];
-    var ty = rawTgt[1];
-    var ax = s.x, ay = s.y;
-
-    var effDist = getEffectiveActionDistance(ax, ay, tx, ty, act, sim);
-    return effDist == null;
+    var bestDist = Infinity;
+    for (var i = 0; i < tgts.length; i++) {
+      var raw = tgts[i];
+      var tx = isBlue ? 3000 - raw[0] : raw[0];
+      var ty = raw[1];
+      if (tx < 70 || tx > 2930 || ty < 70 || ty > 1930) continue;
+      var effDist = getEffectiveActionDistance(s.x, s.y, tx, ty, act, sim);
+      if (effDist != null && effDist < bestDist) {
+        bestDist = effDist;
+      }
+    }
+    return bestDist === Infinity;
   }
 
   function valid(act, sim) {
@@ -441,25 +598,41 @@
 
     // Anticipation temporelle : budget temps pour rentrer au trône et tirer les boulets (<= 100s)
     if (act.famille !== 'boulets' && act.famille !== 'trone' && typeof sim.pose === 'function' && typeof sim.time === 'function') {
-      var rawTgt = getActionTarget(act);
-      if (rawTgt) {
+      var tgts = getActionTargets(act, sim);
+      if (tgts && tgts.length) {
         var s = sim.pose();
         var isBlue = (sim.params && sim.params().team === 'blue');
-        var tx = isBlue ? 3000 - rawTgt[0] : rawTgt[0], ty = rawTgt[1];
         var thX = isBlue ? 2750 : 250, thY = 1000;
-        var MECH_DURATIONS = { 'prendre': 1.8, 'mur': 1.6, 'tour': 2.2, 'porte': 4.8, 'boulets': 5.0, 'prendreGraal': 2.5, 'poserGraal': 2.9, 'trone': 2.0 };
+        var MECH_DURATIONS = {
+          'prendre': 1.8, 'mur': 1.6, 'tour': 2.2, 'porte': 4.8, 'boulets': 5.0,
+          'prendreGraal': 2.5, 'poserGraal': 2.9, 'trone': 2.0,
+          'staging': 1.6, 'repickup': 1.6, 'traj': 0.2, 'tournerPince': 0.75, 'deposerZone': 1.0
+        };
         var mech = act.mech || MECH_DURATIONS[act.famille] || 1.0;
-        var effDist = getEffectiveActionDistance(s.x, s.y, tx, ty, act, sim) || Math.hypot(tx - s.x, ty - s.y);
-        var dt_act = effDist / 500.0 + mech;
-        var dt_throne = Math.hypot(thX - tx, thY - ty) / 500.0 + 0.5;
+        var minTime = Infinity;
+        for (var ti = 0; ti < tgts.length; ti++) {
+          var rawTgt = tgts[ti];
+          var tx = isBlue ? 3000 - rawTgt[0] : rawTgt[0], ty = rawTgt[1];
+          if (tx < 70 || tx > 2930 || ty < 70 || ty > 1930) continue;
+          var effDist = getEffectiveActionDistance(s.x, s.y, tx, ty, act, sim) || Math.hypot(tx - s.x, ty - s.y);
+          var dt_act = effDist / 500.0 + mech;
+          var dt_throne = Math.hypot(thX - tx, thY - ty) / 500.0 + 0.5;
+          var tTotal = dt_act + dt_throne;
+          if (tTotal < minTime) minTime = tTotal;
+        }
         var ballsFired = sim.balls && sim.balls().shots;
         var dt_tir = ballsFired ? 0.0 : 6.1;
-        if (sim.time() + dt_act + dt_throne + dt_tir > 100.0) return false;
+        if (minTime < Infinity && sim.time() + minTime + dt_tir > 100.0) return false;
       }
     }
+
     act = real(act, sim);
     switch (act.famille) {
-      case 'prendre': return faceEmpty(sim, act.f) && packetStacked(sim, act.p);
+      case 'prendre':
+        var h = sim.held()[act.f];
+        var heldCount = (h && h.stack) ? h.stack.filter(function (x) { return x; }).length : 0;
+        var faceCanTake = (heldCount === 0) || (heldCount < 3 && ((sim.pose()[act.f] && sim.pose()[act.f].rot) || 0) === 0);
+        return faceCanTake && !faceHoldsGraal(sim, act.f) && packetStacked(sim, act.p, act.f);
       case 'mur': return faceStackFlat(sim, act.f) && !zoneHasBuild(sim, act.z);
       case 'tour': return stoneHeldRank(sim, act.f, act.rank) && !towerComplete(sim, act.z);
       case 'porte': return faceStackFlat(sim, act.f) && !zoneHasBuild(sim, act.z) && !castleHasDoor(sim) && validDoorTarget(act);
@@ -467,6 +640,19 @@
       case 'prendreGraal': return faceEmpty(sim, act.f) && sim.graal().cur.k === 'home';
       case 'poserGraal': return faceHoldsGraal(sim, act.f) && zoneHasBuild(sim, act.z);
       case 'trone': return true;
+      case 'staging':
+        var hS = sim.held()[act.f];
+        var nS = (hS && hS.stack) ? hS.stack.filter(function (x) { return x; }).length : 0;
+        return nS === 3 && ((sim.pose()[act.f] && sim.pose()[act.f].rot) || 0) === 0;
+      case 'repickup':
+        return faceEmpty(sim, act.f) && !faceHoldsGraal(sim, act.f);
+      case 'traj':
+        return true;
+      case 'tournerPince':
+        return true;
+      case 'deposerZone':
+        var hD = sim.held()[act.f];
+        return !!(hD && hD.stack && hD.stack.some(function (x) { return x; }));
       default: return false;
     }
   }
@@ -477,10 +663,13 @@
 
   var api = {
     FACES: FACES, PACKS: PACKS, MURS: MURS, TOURS: TOURS, COTES: COTES, FAMILLES: FAMILLES, ALL: ALL,
+    ALL_BASE: ALL_BASE,
     filterByFamilles: filterByFamilles, toProgramStep: toProgramStep, indexOfStep: indexOfStep,
     valid: valid, mask: mask, hitsCrates: hitsCrates, isSegmentBlocked: isSegmentBlocked,
     getEffectiveActionDistance: getEffectiveActionDistance, packetStacked: packetStacked,
-    getActionTarget: getActionTarget, STAGING_ZONES: STAGING_ZONES, STAGING_TARGETS: STAGING_TARGETS
+    getActionTarget: getActionTarget, getActionTargets: getActionTargets,
+    STAGING_ZONES: STAGING_ZONES, STAGING_TARGETS: STAGING_TARGETS,
+    WAYPOINTS: WAYPOINTS, WAYPOINTS_INFO: WAYPOINTS_INFO
   };
   root.ACTIONS = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

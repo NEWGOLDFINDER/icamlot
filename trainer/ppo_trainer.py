@@ -95,6 +95,42 @@ class PPOTrainer:
         self.finished_scores: List[float] = []
         self.finished_errors: List[int] = []
 
+    @staticmethod
+    def compute_multihead_loss(
+        new_logprob: torch.Tensor,
+        old_logprob: torch.Tensor,
+        advantages: torch.Tensor,
+        clip_coef: float = 0.2,
+    ) -> torch.Tensor:
+        """Calcule la perte surrogate clippée PPO pour politique conjointe multi-têtes."""
+        log_ratio = new_logprob - old_logprob
+        ratio = torch.exp(log_ratio)
+        surr1 = ratio * advantages
+        surr2 = torch.clamp(ratio, 1.0 - clip_coef, 1.0 + clip_coef) * advantages
+        return -torch.min(surr1, surr2).mean()
+
+    @staticmethod
+    def joint_policy_loss(
+        new_logprob: torch.Tensor,
+        old_logprob: torch.Tensor,
+        advantages: torch.Tensor,
+        clip_coef: float = 0.2,
+    ) -> torch.Tensor:
+        """Alias pour le calcul de la perte de politique conjointe multi-têtes."""
+        return PPOTrainer.compute_multihead_loss(new_logprob, old_logprob, advantages, clip_coef)
+
+    @staticmethod
+    def multihead_entropy(
+        primary_logits: torch.Tensor,
+        approach_logits: torch.Tensor,
+        folding_logits: torch.Tensor,
+    ) -> torch.Tensor:
+        """Calcule l'entropie multi-têtes cumulée sur les 3 têtes d'action."""
+        ent_prim = torch.distributions.Categorical(logits=primary_logits).entropy()
+        ent_app = torch.distributions.Categorical(logits=approach_logits).entropy()
+        ent_fold = torch.distributions.Categorical(logits=folding_logits).entropy()
+        return ent_prim + ent_app + ent_fold
+
     def compute_aux_loss(self, aux_preds: torch.Tensor, aux_targets: torch.Tensor) -> torch.Tensor:
         """Calcule la perte auxiliaire multi-tâche (MSE sur cinématique/enveloppe + BCE sur contact)."""
         mse_loss = nn.functional.mse_loss(aux_preds[:, 0:7], aux_targets[:, 0:7])
@@ -174,10 +210,12 @@ class PPOTrainer:
         if current_done is None:
             current_done = torch.zeros(B, dtype=torch.bool, device=D)
 
-        # Buffers de stockage
+        # Buffers de stockage multi-têtes
         obs_buf = torch.zeros((T, B, self.env.n_in), dtype=torch.float32, device=D)
         mask_buf = torch.zeros((T, B, self.env.n_out), dtype=torch.bool, device=D)
-        actions_buf = torch.zeros((T, B), dtype=torch.long, device=D)
+        primary_actions_buf = torch.zeros((T, B), dtype=torch.long, device=D)
+        approach_actions_buf = torch.zeros((T, B), dtype=torch.long, device=D)
+        folding_actions_buf = torch.zeros((T, B), dtype=torch.long, device=D)
         logprobs_buf = torch.zeros((T, B), dtype=torch.float32, device=D)
         rewards_buf = torch.zeros((T, B), dtype=torch.float32, device=D)
         dones_buf = torch.zeros((T, B), dtype=torch.bool, device=D)
@@ -224,7 +262,16 @@ class PPOTrainer:
                     obs, hidden, mask=live_mask
                 )
 
-            actions_buf[step] = action
+            if isinstance(action, (tuple, list)):
+                a_prim, a_app, a_fold = action[0], action[1], action[2]
+            else:
+                a_prim = action
+                a_app = torch.zeros_like(action)
+                a_fold = torch.zeros_like(action)
+
+            primary_actions_buf[step] = a_prim
+            approach_actions_buf[step] = a_app
+            folding_actions_buf[step] = a_fold
             logprobs_buf[step] = logprob
             values_buf[step] = value
 
@@ -292,7 +339,10 @@ class PPOTrainer:
         rollout_data = {
             "obs": obs_buf,
             "mask": mask_buf,
-            "actions": actions_buf,
+            "primary_actions": primary_actions_buf,
+            "approach_actions": approach_actions_buf,
+            "folding_actions": folding_actions_buf,
+            "actions": primary_actions_buf,
             "logprobs": logprobs_buf,
             "rewards": rewards_buf,
             "dones": dones_buf,
@@ -316,7 +366,9 @@ class PPOTrainer:
 
         obs_buf = rollout_data["obs"]                  # (T, B, n_in)
         mask_buf = rollout_data["mask"]                # (T, B, n_out)
-        actions_buf = rollout_data["actions"]          # (T, B)
+        primary_actions_buf = rollout_data.get("primary_actions", rollout_data.get("actions"))
+        approach_actions_buf = rollout_data.get("approach_actions", torch.zeros_like(primary_actions_buf))
+        folding_actions_buf = rollout_data.get("folding_actions", torch.zeros_like(primary_actions_buf))
         logprobs_buf = rollout_data["logprobs"]        # (T, B)
         advantages_buf = rollout_data["advantages"]    # (T, B)
         returns_buf = rollout_data["returns"]          # (T, B)
@@ -356,15 +408,18 @@ class PPOTrainer:
 
                     t_obs = obs_buf[t, mb_env_idx]
                     t_mask = mask_buf[t, mb_env_idx]
-                    t_act = actions_buf[t, mb_env_idx]
+                    t_act_prim = primary_actions_buf[t, mb_env_idx]
+                    t_act_app = approach_actions_buf[t, mb_env_idx]
+                    t_act_fold = folding_actions_buf[t, mb_env_idx]
+                    t_act = (t_act_prim, t_act_app, t_act_fold)
 
                     _, new_lp, ent, val, next_mb_hidden = self.model.get_action_and_value(
                         t_obs, mb_hidden, mask=t_mask, action=t_act
                     )
 
-                    # Prédiction auxiliaire conditionnée par l'état caché et l'action choisie
+                    # Prédiction auxiliaire conditionnée par l'état caché et l'action primaire
                     if self.c_aux > 0.0 and "aux_targets" in rollout_data:
-                        pred_aux = self.model.forward_aux(mb_hidden, t_act)
+                        pred_aux = self.model.forward_aux(mb_hidden, t_act_prim)
                         mb_aux_preds.append(pred_aux)
 
                     mb_hidden = next_mb_hidden
@@ -380,13 +435,8 @@ class PPOTrainer:
                 mb_adv = norm_adv_buf[:, mb_env_idx]
                 mb_ret = returns_buf[:, mb_env_idx]
 
-                # 1. Perte de politique (surrogate objectif clippé PPO)
-                log_ratio = new_logprob - old_logprob
-                ratio = torch.exp(log_ratio)
-
-                surr1 = ratio * mb_adv
-                surr2 = torch.clamp(ratio, 1.0 - self.clip_coef, 1.0 + self.clip_coef) * mb_adv
-                pg_loss = -torch.min(surr1, surr2).mean()
+                # 1. Perte de politique (surrogate objectif clippé PPO multi-têtes)
+                pg_loss = self.compute_multihead_loss(new_logprob, old_logprob, mb_adv, self.clip_coef)
 
                 # 2. Perte de valeur (fonction de valeur du Critique)
                 v_loss = 0.5 * ((new_value - mb_ret) ** 2).mean()
@@ -550,6 +600,7 @@ def main():
     parser.add_argument("--hidden-dim", type=int, default=128, help="Dimension de la mémoire GRU (défaut: 128)")
     parser.add_argument("--eval-every", type=int, default=5, help="Fréquence d'évaluation (en rollouts)")
     parser.add_argument("--pretrain-imitation", action="store_true", default=True, help="Pré-entraîner par imitation avant PPO")
+    parser.add_argument("--no-imitation", dest="pretrain_imitation", action="store_false", help="Désactiver le pré-entraînement par imitation")
     parser.add_argument("--out-pt", type=str, default=".data/weights/ppo_best.pt", help="Fichier de sortie .pt")
     parser.add_argument("--out-onnx", type=str, default=".data/weights/best_brain_pi5.onnx", help="Fichier de sortie .onnx")
     args = parser.parse_args()
@@ -570,6 +621,11 @@ def main():
         save_path_pt=args.out_pt,
         save_path_onnx=args.out_onnx,
     )
+
+
+compute_multihead_loss = PPOTrainer.compute_multihead_loss
+joint_policy_loss = PPOTrainer.joint_policy_loss
+multihead_entropy = PPOTrainer.multihead_entropy
 
 
 if __name__ == "__main__":

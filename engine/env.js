@@ -1,7 +1,7 @@
 /* Environnement d'apprentissage : reset / step, observations, masque, adversaire en mode rapide. */
 (function (root) {
   var MATCH = 100;
-  var DEFAULT_GROUPS = ['temps', 'robot', 'paquets', 'faces', 'constructions', 'graal', 'boulets', 'adversaire'];
+  var DEFAULT_GROUPS = ['temps', 'robot', 'paquets', 'faces', 'constructions', 'graal', 'boulets', 'adversaire', 'proprioception', 'spatial'];
   var GROUPS = [
     { id: 'temps', label: 'Temps', vars: [{ id: 'temps', nom: 'Temps restant', desc: 'Secondes restantes / 100 s', n: 1 }] },
     { id: 'robot', label: 'Robot', vars: [{ id: 'robot', nom: 'Pose du robot', desc: 'x / 3000, y / 2000, cos(cap), sin(cap)', n: 4 }] },
@@ -11,7 +11,7 @@
     { id: 'graal', label: 'Graal', vars: [{ id: 'graal', nom: 'État du Graal', desc: 'au départ / tenu / posé, niveau / 4', n: 4 }] },
     { id: 'boulets', label: 'Boulets', vars: [{ id: 'boulets', nom: 'Boulets lâchés', desc: '0 ou 1', n: 1 }] },
     { id: 'adversaire', label: 'Adversaire (lidar)', vars: [{ id: 'adversaire', nom: 'Position adverse', desc: 'x / 3000, y / 2000 vus par le lidar', n: 2 }] },
-    { id: 'proprioception', label: 'Proprioception', vars: [{ id: 'proprioception', nom: 'État fin des pinces', desc: 'Vide [A0..2, B0..2], rot/90, hc/300, rayon enveloppe', n: 11 }] },
+    { id: 'proprioception', label: 'Proprioception', vars: [{ id: 'proprioception', nom: 'État fin des pinces', desc: 'Vide [A0..2, B0..2], rot/90, hc/350, rayon enveloppe', n: 11 }] },
     { id: 'spatial', label: 'Spatial', vars: [{ id: 'spatial', nom: 'Dégagement corridors (raycasting 8 directions)', desc: 'Distances libres dans 8 directions relatives', n: 8 }] }
   ];
   var GROUP_N = {}; GROUPS.forEach(function (g) { GROUP_N[g.id] = g.vars[0].n; });
@@ -117,8 +117,8 @@
         var pNow = sim.pose();
         var vA = (pNow.A && pNow.A.vac) || [0, 0, 0];
         var vB = (pNow.B && pNow.B.vac) || [0, 0, 0];
-        push(vA[0], vA[1], vA[2], ((pNow.A && pNow.A.rot) || 0) / 90.0, ((pNow.A && pNow.A.hc) || 165) / 300.0);
-        push(vB[0], vB[1], vB[2], ((pNow.B && pNow.B.rot) || 0) / 90.0, ((pNow.B && pNow.B.hc) || 165) / 300.0);
+        push(vA[0], vA[1], vA[2], ((pNow.A && pNow.A.rot) || 0) / 90.0, ((pNow.A && pNow.A.hc) || 165) / 350.0);
+        push(vB[0], vB[1], vB[2], ((pNow.B && pNow.B.rot) || 0) / 90.0, ((pNow.B && pNow.B.hc) || 165) / 350.0);
         var rHull = (sim.hullRadius ? sim.hullRadius() : 235) / 350.0;
         push(rHull);
       }
@@ -132,7 +132,7 @@
           for (var distVal = 50.0; distVal <= maxD; distVal += stepD) {
             var qx = rx + distVal * dx, qy = ry + distVal * dy;
             if (qx < 70 || qx > 2930 || qy < 70 || qy > 1930) { freeD = distVal; break; }
-            if (ACTIONS.hitsCrates(sim, rx, ry, qx, qy, null)) { freeD = distVal; break; }
+            if (ACTIONS.isSegmentBlocked(rx, ry, qx, qy, null, sim)) { freeD = distVal; break; }
           }
           push(freeD / maxD);
         }
@@ -292,7 +292,7 @@
 
   function create(opts) {
     opts = opts || {};
-    var groups = opts.entrees || DEFAULT_GROUPS.slice();
+    var groups = opts.entrees || opts.groups || DEFAULT_GROUPS.slice();
     var familles = opts.familles || ACTIONS.FAMILLES.map(function (f) { return f.id; });
     var catalogue = ACTIONS.filterByFamilles(familles);
     var params = Object.assign({}, ENGINE.DEF, opts.params || {});
@@ -396,6 +396,7 @@
       if (!sim || typeof sim.snapshot !== 'function') return true;
       var snap = snapshot();
       try {
+        var prevColCount = (!skipContacts) ? (sim.result(true).collisions || []).length : 0;
         var brick = ACTIONS.toProgramStep(act, sim);
         var prevErrCount = (snap.sim.errors || []).length;
         var info = exec(brick);
@@ -404,7 +405,7 @@
         var hasCol = false;
         if (!skipContacts) {
           var res = sim.result(true);
-          hasCol = !!(res.collisions && res.collisions.length > 0);
+          hasCol = (res.collisions || []).length > prevColCount;
         }
         restore(snap);
         return !hasErr && !hasCol;
@@ -502,20 +503,23 @@
       belief = snap.belief; lastScore = snap.lastScore; done = snap.done; history = snap.history;
     }
 
-    return { reset: reset, step: step, play: play, testActionSafety: testActionSafety, imitate: imitate, program: program, opponentProgram: opponentProgram, result: result, snapshot: snapshot, restore: restore, catalogue: catalogue, groups: groups, nInputs: nInputs(groups), nOutputs: catalogue.length };
+    var envObj = { reset: reset, step: step, play: play, testActionSafety: testActionSafety, imitate: imitate, program: program, opponentProgram: opponentProgram, result: result, snapshot: snapshot, restore: restore, catalogue: catalogue, groups: groups, nInputs: nInputs(groups), nOutputs: catalogue.length };
+    Object.defineProperty(envObj, 'sim', { get: function () { return sim; }, enumerable: true });
+    return envObj;
   }
 
   function testSimActionSafety(sim, act) {
     if (!sim || typeof sim.snapshot !== 'function') return true;
     var snap = sim.snapshot();
     try {
+      var prevColCount = (sim.result(true).collisions || []).length;
       var brick = ACTIONS.toProgramStep(act, sim);
       var prevErrCount = (snap.errors || []).length;
       var info = sim.exec(brick);
       var curSnap = sim.snapshot();
       var hasErr = (curSnap.errors || []).length > prevErrCount || (info && info.err);
       var res = sim.result(true);
-      var hasCol = !!(res.collisions && res.collisions.length > 0);
+      var hasCol = (res.collisions || []).length > prevColCount;
       sim.restore(snap);
       return !hasErr && !hasCol;
     } catch (e) {

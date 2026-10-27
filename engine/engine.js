@@ -311,7 +311,20 @@
         }
       }
       var G = [], pendTxt = [], pendBackup = { A: pend.A, B: pend.B };
-      ['A', 'B'].forEach(function (f) { if (pend[f]) { G.push({ f: f, from: pend[f].from, seq: pend[f].seq.slice() }); pendTxt.push(f); pend[f] = null; } });
+      ['A', 'B'].forEach(function (f) {
+        var seq = [];
+        if (heldStonesOf(f).length > 0 && s[f].hc < 250) {
+          seq.push({ hc: 250, label: 'Dégagement Z transit' });
+        }
+        if (pend[f]) {
+          seq = seq.concat(pend[f].seq);
+          pendTxt.push(f);
+          pend[f] = null;
+        }
+        if (seq.length) {
+          G.push({ f: f, from: cp(s[f]), seq: seq });
+        }
+      });
       if (grip) {
         var ex = G.filter(function (g) { return g.f === grip.f; })[0];
         if (ex) ex.seq = ex.seq.concat(grip.seq); else G.push({ f: grip.f, from: cp(s[grip.f]), seq: grip.seq });
@@ -1073,9 +1086,27 @@
         var gg = graalGeo(); if (gg) gs.forEach(function (q) { var b = q.g.bottom - q.fall, t2 = q.g.top - q.fall; if (overlap(q.g.foot, gg.foot, 1) && b < gg.top - 1 && t2 > gg.bottom + 1) err('Lâcher : ' + q.x.id + ' tomberait sur le Graal.'); });
         var tag = 'd' + s.t.toFixed(3) + f, v = s[f].vac.slice();
         gs.forEach(function (q) { var land = poseNow(); land[f].hc -= q.fall; release(q.x, f, land); q.x.tag = tag; held[f].stack[q.x.sl] = null; v[q.x.sl] = 0; });
-        if (!heldStonesOf(f).length) held[f] = null;
+        if (!heldStonesOf(f).length) {
+          held[f] = null;
+          if (s[f].rot !== 0) rr(f, 0, 'Retour de la rotation');
+          if (s[f].hc !== 165) zz(f, 165, 'Pince ' + f + ' en position basse');
+        }
         var what = st.q === 'pile' || !st.q ? (dep.length > 1 ? 'la pile' : dep[0].id) : st.q;
         vac(f, v, 'Lâcher : ' + what + (fmax > 1 ? ' tombe de ' + Math.round(fmax) + ' mm' : ' posée') + ' (face ' + f + ')', TL);
+      },
+      deposerZone: function (st) {
+        var f = st.f;
+        var cs = Math.cos(s[f].rot * Math.PI / 180), deb = Math.abs(cs) < 0.5;
+        if (deb) {
+          if (Math.abs(s[f].hc - 160) > 0.5) zz(f, 160, 'Descente des pierres au sol');
+        } else {
+          if (Math.abs(s[f].hc - 165) > 0.5) zz(f, 165, 'Descente à 165 mm');
+        }
+        return steps.lacher(st);
+      },
+      seDeplacer: function (st) {
+        var tx = mir(st.x != null ? st.x : 1050), ty = st.y != null ? st.y : 1000, th = st.h != null ? st.h : s.h;
+        travel([tx, ty], th, 'Déplacement vers waypoint');
       },
       tourner: function (st) {
         var f = st.f, r = +st.r;

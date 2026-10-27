@@ -82,11 +82,13 @@ def export_pi5_onnx(
         opset_version=18,
         do_constant_folding=True,
         input_names=["obs", "hidden"],
-        output_names=["logits", "next_hidden"],
+        output_names=["primary_logits", "approach_logits", "folding_logits", "next_hidden"],
         dynamic_axes={
             "obs": {0: "batch_size"},
             "hidden": {0: "batch_size"},
-            "logits": {0: "batch_size"},
+            "primary_logits": {0: "batch_size"},
+            "approach_logits": {0: "batch_size"},
+            "folding_logits": {0: "batch_size"},
             "next_hidden": {0: "batch_size"},
         },
     )
@@ -119,7 +121,7 @@ def export_pi5_onnx(
             t0 = time.perf_counter()
             for _ in range(runs):
                 outputs = session.run(None, {"obs": obs_np, "hidden": hidden_np})
-                hidden_np = outputs[1]
+                hidden_np = outputs[3]
             t1 = time.perf_counter()
 
             avg_latency_ms = ((t1 - t0) / runs) * 1000.0
@@ -145,5 +147,5 @@ def export_pi5_onnx(
 
 if __name__ == "__main__":
     # Test d'export d'un modèle aléatoire V2
-    model = RecurrentActorCritic(n_in=37, n_out=106, hidden_dim=128)
+    model = RecurrentActorCritic(n_in=56, n_out=130, hidden_dim=128)
     export_pi5_onnx(model, ".data/weights/best_brain_pi5.onnx", hidden_dim=128)

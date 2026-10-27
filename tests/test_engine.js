@@ -55,14 +55,16 @@ check('mêmes contacts', R2.collisions.length === R.collisions.length);
 check('même score', SCORE.scoreAt(R2, ENGINE.DEF).total === sc.total);
 
 console.log('\n3. Catalogue et masque');
-check('106 actions', ACTIONS.ALL.length === 106);
+check('106 actions de base + 24 nouvelles = 130 actions', ACTIONS.ALL_BASE.length === 106 && ACTIONS.ALL.length === 130);
 var e0 = ENV.create();
 var s0 = e0.reset({});
-check('37 entrées par défaut', s0.obs.length === 37, 'n=' + s0.obs.length);
-check('106 sorties par défaut', s0.mask.length === 106);
+check('56 entrées par défaut', s0.obs.length === 56, 'n=' + s0.obs.length);
+var eLegacy = ENV.create({ groups: ['temps', 'robot', 'paquets', 'faces', 'constructions', 'graal', 'boulets', 'adversaire'] });
+check('37 entrées avec groupes historiques', eLegacy.reset({}).obs.length === 37);
+check('130 sorties par défaut', s0.mask.length === 130);
 check('masque : prises possibles au départ', s0.mask.slice(0, 20).some(function (x) { return x; }));
 check('masque : mur impossible au départ', !s0.mask.slice(20, 40).some(function (x) { return x; }));
-check('masque : trône toujours possible', s0.mask[s0.mask.length - 1] === 1);
+check('masque : trône toujours possible (action 105)', s0.mask[105] === 1);
 
 console.log('\n4. Copie / restauration');
 var snap = e0.snapshot();
@@ -84,8 +86,8 @@ check('des paires collectées', im.n >= 10, 'n=' + im.n);
 check('première action = prendre', im.pairs[0] && ACTIONS.ALL[im.pairs[0].action].a === 'prendre');
 check('score d\'imitation = simulate', im.score === sc.total, im.score + ' vs ' + sc.total);
 
-console.log('\n7. Masque : 106 sorties');
-check('somme des familles', ACTIONS.FAMILLES.reduce(function (a, f) { return a + f.n; }, 0) === 106);
+console.log('\n7. Masque : 130 sorties');
+check('somme des familles', ACTIONS.FAMILLES.reduce(function (a, f) { return a + f.n; }, 0) === 130);
 
 console.log('\n8. Robot adverse');
 check('P1 miroir = P4', ENGINE.mirrorId('P1') === 'P4');
@@ -102,7 +104,7 @@ var q = ENV.qualify({ program: EXAMPLE });
 check('exemple qualifie (≥ 70 pts, 0 erreur)', q.ok && q.score >= 70, JSON.stringify(q));
 var envOpp = ENV.create({ skipContacts: true, adversaire: { intensite: 'realiste' } });
 var sOpp = envOpp.reset({ opponent: { program: EXAMPLE, name: 'Exemple' }, intensite: 'realiste' });
-check('lidar adverse non nul', sOpp.obs.length === 37 && (sOpp.obs[35] !== 0 || sOpp.obs[36] !== 0), sOpp.obs.slice(35).join(','));
+check('lidar adverse non nul', sOpp.obs.length === 56 && (sOpp.obs[35] !== 0 || sOpp.obs[36] !== 0), sOpp.obs.slice(35, 37).join(','));
 
 console.log('\n9. Jeu en direct (pas un programme figé)');
 function firstValid(obs, mask) {
@@ -231,6 +233,70 @@ var Rb = pmB.result.opponent, sB = SCORE.scoreAt(Rb, Rb.params, 100).total;
 check('même cerveau en jaune et en bleu : mêmes points', sY === sB && sY > 0, sY + ' / ' + sB);
 function noWait(l) { return JSON.stringify(l.filter(function (s) { return s.a !== 'attendreJusqua'; })); }
 check('même cerveau en jaune et en bleu : mêmes décisions (repère du cerveau)', noWait(brainY.program()) === noWait(pmB.opponentProgram), noWait(brainY.program()).slice(0, 200) + ' / ' + noWait(pmB.opponentProgram).slice(0, 200));
+
+console.log('\n11. Milestone 1 : Cinématique, Actions & Radar Proprioceptif (R1-R5)');
+// R1: packetStacked avec k === 'free' et prise partielle
+var envM1 = ENV.create({ skipContacts: true, adversaire: { intensite: 'aucun' } });
+var sM1 = envM1.reset({});
+var catM1 = envM1.catalogue;
+// Prise P1 face A
+var idxP1A = idxOf(catM1, function (a) { return a.a === 'prendre' && a.f === 'A' && a.p === 'P1'; });
+check('R1: action prendre P1 Face A disponible', idxP1A >= 0 && sM1.mask[idxP1A] === 1);
+var stP1A = envM1.step(idxP1A);
+check('R1: Face A a pris 3 pierres', envM1.sim.held().A.stack.length === 3);
+
+// R1: tournerPince A (action 126)
+var idxRotA = idxOf(catM1, function (a) { return a.a === 'tournerPince' && a.f === 'A'; });
+check('R1: action tournerPince A présente dans catalogue', idxRotA === 126);
+var stRot = envM1.step(idxRotA);
+check('R1: tournerPince A bascule rot à 90°', envM1.sim.pose().A.rot === 90);
+var stRotBack = envM1.step(idxRotA);
+check('R1: tournerPince A rebascule rot à 0°', envM1.sim.pose().A.rot === 0);
+
+// R1: deposerZone (action 128 / 129)
+// Déplacement vers tour T1 et pose tour (utilise 1 pierre, laisse 2 pierres sur Face A à 90°)
+var idxTourA = idxOf(catM1, function (a) { return a.a === 'tour' && a.f === 'A' && a.z === 'T1'; });
+envM1.step(idxTourA);
+check('R1: Face A a 2 pierres restantes après tour', envM1.sim.held().A && envM1.sim.held().A.stack.filter(function (x) { return x; }).length === 2);
+check('R1: Face A rot = 90° après tour', envM1.sim.pose().A.rot === 90);
+var idxDepA = idxOf(catM1, function (a) { return a.a === 'deposerZone' && a.f === 'A'; });
+check('R1: action deposerZone A présente dans catalogue', idxDepA === 128);
+var stDep = envM1.step(idxDepA);
+check('R1: deposerZone vide la pince Face A', !envM1.sim.held().A || envM1.sim.held().A.stack.length === 0);
+check('R1: deposerZone réinitialise rot à 0° et hc à 165', envM1.sim.pose().A.rot === 0 && envM1.sim.pose().A.hc === 165);
+var idxMurA = idxOf(catM1, function (a) { return a.a === 'mur'; });
+
+// R2: Dynamic multi-angle candidate approaches
+var actP1 = catM1[idxP1A];
+var targetsP1 = ACTIONS.getActionTargets(actP1, envM1.sim);
+check('R2: getActionTargets pour P1 renvoie 2 approches opposées', targetsP1 && targetsP1.length === 2);
+var idxT1 = idxOf(catM1, function (a) { return a.a === 'tour' && a.z === 'T1'; });
+var targetsT1 = ACTIONS.getActionTargets(catM1[idxT1], envM1.sim);
+check('R2: getActionTargets pour T1 renvoie 4 approches cardinales', targetsT1 && targetsT1.length === 4);
+
+// R3: 8 Repositioning Waypoints
+var wps = catM1.filter(function (a) { return a.a === 'traj'; });
+check('R3: 8 waypoints de trajectoire présents (actions 118..125)', wps.length === 8 && catM1[118].a === 'traj' && catM1[125].a === 'traj');
+var stepW1 = envM1.step(118);
+var pW1 = envM1.sim.pose();
+check('R3: déplacement réussi vers waypoint W1', Math.abs(pW1.x - 1050) < 5 && Math.abs(pW1.y - 450) < 5);
+
+// R4: Adaptive placement & carriage elevation in transit
+var pMur = ACTIONS.toProgramStep(catM1[idxMurA]);
+check('R4: toProgramStep inclut paramètre pm proche', pMur.pm === 'proche');
+var simR4 = ENGINE.makeSim(ENGINE.DEF);
+simR4.exec({ a: 'prendre', f: 'A', p: 'P1' });
+simR4.exec({ a: 'seDeplacer', x: 1500, y: 1000, h: 0 });
+var rR4 = simR4.finish();
+check('R4: élévation automatique du chariot hc >= 250 lors du transit avec pierres', rR4.K.some(function (k) { return k.A && k.A.hc >= 250; }));
+
+// R5: Proprioception & Radar observation 56 dimensions
+var obsM1 = s0.obs;
+check('R5: observation 56 dimensions', obsM1.length === 56);
+var proprio = obsM1.slice(37, 48);
+check('R5: 11 entrées proprioception présentes et bornées [0, 1]', proprio.length === 11 && proprio.every(function (v) { return !isNaN(v) && v >= 0 && v <= 1; }));
+var spatial = obsM1.slice(48, 56);
+check('R5: 8 rayons radar spatial présents et bornés [0, 1]', spatial.length === 8 && spatial.every(function (v) { return !isNaN(v) && v >= 0 && v <= 1; }));
 
 if (fail) { console.log('\n' + fail + ' échec(s).'); process.exit(1); }
 console.log('\nTous les tests passent.');

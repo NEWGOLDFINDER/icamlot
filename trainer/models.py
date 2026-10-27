@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import torch
 import torch.nn as nn
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 
 class EntityTokenizer(nn.Module):
@@ -180,6 +180,28 @@ class FactorizedEncoder(nn.Module):
                 nn.LayerNorm(hidden_dim),
                 nn.SiLU(),
             )
+        elif n_in == 56:
+            # 1. Géométrie continue : pose (4) + adversaire (2) + radar (8) = 14
+            self.geo_mlp_56 = nn.Sequential(
+                nn.Linear(14, 32),
+                nn.SiLU(),
+            )
+            # 2. Table / châteaux : 10 paquets (10) + 5 murs + 4 tours + 4 graal (13) = 23
+            self.table_mlp_56 = nn.Sequential(
+                nn.Linear(23, 64),
+                nn.SiLU(),
+            )
+            # 3. Mécanique & proprioception : temps restant (1) + pinces A/B (6) + boulets (1) + 11 proprio = 19
+            self.mech_mlp_56 = nn.Sequential(
+                nn.Linear(19, 32),
+                nn.SiLU(),
+            )
+            # 4. Fusion
+            self.fusion_56 = nn.Sequential(
+                nn.Linear(32 + 64 + 32, hidden_dim),
+                nn.LayerNorm(hidden_dim),
+                nn.SiLU(),
+            )
         else:
             # Fallback générique si dimension différente
             self.generic = nn.Sequential(
@@ -204,14 +226,76 @@ class FactorizedEncoder(nn.Module):
 
             concat_feat = torch.cat([g_feat, t_feat, m_feat], dim=1)
             return self.fusion(concat_feat)
+        elif self.n_in == 56:
+            # Geo: pose(1:5) + opp(35:37) + radar(48:56) = 4 + 2 + 8 = 14
+            geo = torch.cat([x[:, 1:5], x[:, 35:37], x[:, 48:56]], dim=1)
+            # Table: packs(5:15) + walls/towers/graal(21:34) = 10 + 13 = 23
+            table = torch.cat([x[:, 5:15], x[:, 21:34]], dim=1)
+            # Mech: time(0:1) + legacy(15:21) + balls(34:35) + proprio(37:48) = 1 + 6 + 1 + 11 = 19
+            mech = torch.cat([x[:, 0:1], x[:, 15:21], x[:, 34:35], x[:, 37:48]], dim=1)
+
+            g_feat = self.geo_mlp_56(geo)
+            t_feat = self.table_mlp_56(table)
+            m_feat = self.mech_mlp_56(mech)
+
+            concat_feat = torch.cat([g_feat, t_feat, m_feat], dim=1)
+            return self.fusion_56(concat_feat)
 
         return self.generic(x)
 
 
 class RecurrentActorCritic(nn.Module):
-    """Réseau Acteur-Critique récurrent (GRU 128) optimisé avec connexions résiduelles."""
+    """Réseau Acteur-Critique récurrent (GRU 128) multi-têtes avec connexions résiduelles."""
 
-    def __init__(self, n_in: int = 37, n_out: int = 106, hidden_dim: int = 128):
+    @property
+    def actor_approach(self) -> Optional[nn.Module]:
+        return self._modules.get("actor_approach")
+
+    @actor_approach.setter
+    def actor_approach(self, module: nn.Module) -> None:
+        self.register_module("actor_approach", module)
+
+    @property
+    def approach_head(self) -> Optional[nn.Module]:
+        return self._modules.get("actor_approach")
+
+    @approach_head.setter
+    def approach_head(self, module: nn.Module) -> None:
+        self.register_module("actor_approach", module)
+
+    @property
+    def head_approach(self) -> Optional[nn.Module]:
+        return self._modules.get("actor_approach")
+
+    @head_approach.setter
+    def head_approach(self, module: nn.Module) -> None:
+        self.register_module("actor_approach", module)
+
+    @property
+    def actor_folding(self) -> Optional[nn.Module]:
+        return self._modules.get("actor_folding")
+
+    @actor_folding.setter
+    def actor_folding(self, module: nn.Module) -> None:
+        self.register_module("actor_folding", module)
+
+    @property
+    def folding_head(self) -> Optional[nn.Module]:
+        return self._modules.get("actor_folding")
+
+    @folding_head.setter
+    def folding_head(self, module: nn.Module) -> None:
+        self.register_module("actor_folding", module)
+
+    @property
+    def head_folding(self) -> Optional[nn.Module]:
+        return self._modules.get("actor_folding")
+
+    @head_folding.setter
+    def head_folding(self, module: nn.Module) -> None:
+        self.register_module("actor_folding", module)
+
+    def __init__(self, n_in: int = 56, n_out: int = 130, hidden_dim: int = 128):
         super().__init__()
         self.n_in = n_in
         self.n_out = n_out
@@ -223,12 +307,14 @@ class RecurrentActorCritic(nn.Module):
         # 2. Mémoire récurrente temporelle (GRU 128)
         self.gru = nn.GRUCell(hidden_dim, hidden_dim)
 
-        # 3. Tête Acteur avec connexion résiduelle
+        # 3. Tête Acteur multi-têtes avec connexion résiduelle
         self.actor_dense = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim),
             nn.SiLU(),
         )
         self.actor_out = nn.Linear(hidden_dim, n_out)
+        self.actor_approach = nn.Linear(hidden_dim, 5)
+        self.actor_folding = nn.Linear(hidden_dim, 2)
 
         # 4. Tête Critique (valeur V(s)) avec connexion résiduelle
         self.critic_dense = nn.Sequential(
@@ -238,7 +324,7 @@ class RecurrentActorCritic(nn.Module):
         self.critic_out = nn.Linear(hidden_dim, 1)
 
         # 5. Tête World Model Auxiliaire (R3)
-        self.aux_head = WorldModelHead(hidden_dim=hidden_dim, action_dim=32, n_actions=max(n_out, 118))
+        self.aux_head = WorldModelHead(hidden_dim=hidden_dim, action_dim=32, n_actions=max(n_out, 130))
 
     def init_hidden(self, batch_size: int, device: Optional[torch.device] = None) -> torch.Tensor:
         """Initialise l'état caché récurrent (mémoire vide au début du match)."""
@@ -252,11 +338,11 @@ class RecurrentActorCritic(nn.Module):
         hidden: torch.Tensor,
         mask: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Passe avant : calcule les logits d'action, la valeur d'état et le nouvel état caché."""
+        """Passe avant : calcule les logits d'action primaire, la valeur d'état et le nouvel état caché."""
         feat = self.encoder(obs)
         next_hidden = self.gru(feat, hidden)
 
-        # Tête Acteur résiduelle
+        # Tête Acteur résiduelle (action primaire)
         h_act = next_hidden + self.actor_dense(next_hidden)
         logits = self.actor_out(h_act)
 
@@ -269,15 +355,26 @@ class RecurrentActorCritic(nn.Module):
 
         return logits, value, next_hidden
 
-    def forward_actor(self, obs: torch.Tensor, hidden: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Renvoie uniquement (action_logits, next_hidden)."""
-        logits, _, next_h = self.forward(obs, hidden)
-        return logits, next_h
+    def forward_actor(
+        self, obs: torch.Tensor, hidden: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Renvoie (primary_logits, approach_logits, folding_logits, next_hidden)."""
+        feat = self.encoder(obs)
+        next_hidden = self.gru(feat, hidden)
+        h_act = next_hidden + self.actor_dense(next_hidden)
+        p_logits = self.actor_out(h_act)
+        app_logits = self.actor_approach(h_act)
+        fold_logits = self.actor_folding(h_act)
+        return p_logits, app_logits, fold_logits, next_hidden
+
+    forward_actor_multihead = forward_actor
 
     def forward_critic(self, obs: torch.Tensor, hidden: torch.Tensor) -> torch.Tensor:
-        """Renvoie scalaire state value V(s)."""
-        _, val, _ = self.forward(obs, hidden)
-        return val
+        """Renvoie scalaire state value V(s) de dimension (B,)."""
+        feat = self.encoder(obs)
+        next_hidden = self.gru(feat, hidden)
+        h_crit = next_hidden + self.critic_dense(next_hidden)
+        return self.critic_out(h_crit).squeeze(-1)
 
     def forward_aux(self, hidden: torch.Tensor, actions: torch.Tensor) -> torch.Tensor:
         """Renvoie les 8 prédictions physiques futures [x, y, cos, sin, dt, env_L, env_W, p_contact]."""
@@ -288,28 +385,49 @@ class RecurrentActorCritic(nn.Module):
         obs: torch.Tensor,
         hidden: torch.Tensor,
         mask: Optional[torch.Tensor] = None,
-        action: Optional[torch.Tensor] = None,
+        action: Optional[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]] = None,
         deterministic: bool = False,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Échantillonne une action selon la distribution de probabilité et évalue sa log-probabilité."""
-        logits, value, next_hidden = self.forward(obs, hidden, mask)
-        dist = torch.distributions.Categorical(logits=logits)
+    ) -> Tuple[Tuple[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Échantillonne une action conjointe multi-têtes et évalue sa log-probabilité et son entropie."""
+        p_logits, app_logits, fold_logits, next_hidden = self.forward_actor(obs, hidden)
+        value = self.forward_critic(obs, hidden)
+
+        if mask is not None:
+            p_logits = torch.where(mask, p_logits, torch.full_like(p_logits, -1e8))
+
+        dist_p = torch.distributions.Categorical(logits=p_logits)
+        dist_app = torch.distributions.Categorical(logits=app_logits)
+        dist_fold = torch.distributions.Categorical(logits=fold_logits)
 
         if action is None:
             if deterministic:
-                action = torch.argmax(logits, dim=-1)
+                a_p = torch.argmax(p_logits, dim=-1)
+                a_app = torch.argmax(app_logits, dim=-1)
+                a_fold = torch.argmax(fold_logits, dim=-1)
             else:
-                action = dist.sample()
+                a_p = dist_p.sample()
+                a_app = dist_app.sample()
+                a_fold = dist_fold.sample()
+            chosen = (a_p, a_app, a_fold)
+        elif isinstance(action, (tuple, list)):
+            a_p, a_app, a_fold = action[0], action[1], action[2]
+            chosen = (a_p, a_app, a_fold)
+        else:
+            a_p = action
+            a_app = torch.argmax(app_logits, dim=-1) if deterministic else dist_app.sample()
+            a_fold = torch.argmax(fold_logits, dim=-1) if deterministic else dist_fold.sample()
+            chosen = (a_p, a_app, a_fold)
 
-        log_prob = dist.log_prob(action)
-        entropy = dist.entropy()
-        return action, log_prob, entropy, value, next_hidden
+        joint_lp = dist_p.log_prob(a_p) + dist_app.log_prob(a_app) + dist_fold.log_prob(a_fold)
+        joint_ent = dist_p.entropy() + dist_app.entropy() + dist_fold.entropy()
+
+        return chosen, joint_lp, joint_ent, value, next_hidden
 
 
 class Pi5ActorWrapper(nn.Module):
     """Wrapper d'inférence pure pour l'export ONNX vers Raspberry Pi 5.
 
-    Ne conserve que l'encodeur factorisé, le GRU 128 et l'Acteur résiduel.
+    Ne conserve que l'encodeur factorisé, le GRU 128 et l'Acteur multi-têtes.
     Inférence ultra-légère (~42 µs sur processeur Cortex-A76).
     """
 
@@ -319,11 +437,17 @@ class Pi5ActorWrapper(nn.Module):
         self.gru = model.gru
         self.actor_dense = model.actor_dense
         self.actor_out = model.actor_out
+        self.actor_approach = model.actor_approach
+        self.actor_folding = model.actor_folding
 
-    def forward(self, obs: torch.Tensor, hidden: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Renvoie (logits, next_hidden) pour entrée (obs, hidden)."""
+    def forward(
+        self, obs: torch.Tensor, hidden: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Renvoie (primary_logits, approach_logits, folding_logits, next_hidden)."""
         feat = self.encoder(obs)
         next_hidden = self.gru(feat, hidden)
         h_act = next_hidden + self.actor_dense(next_hidden)
-        logits = self.actor_out(h_act)
-        return logits, next_hidden
+        p_logits = self.actor_out(h_act)
+        app_logits = self.actor_approach(h_act)
+        fold_logits = self.actor_folding(h_act)
+        return p_logits, app_logits, fold_logits, next_hidden

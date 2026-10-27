@@ -160,8 +160,21 @@
   }
   function chooserFromRecurrent(model) {
     var hidden = new Float32Array(model.hidden_dim || 128);
+    var lastObs = null, lastRes = null;
     return function (obs, mask) {
+      var isSameObs = false;
+      if (lastObs && lastObs.length === obs.length) {
+        isSameObs = true;
+        for (var i = 0; i < obs.length; i++) {
+          if (obs[i] !== lastObs[i]) { isSameObs = false; break; }
+        }
+      }
+      if (isSameObs && lastRes) {
+        return choose(lastRes.logits, mask);
+      }
       var res = forwardFactorizedGRU(model, obs, hidden);
+      lastObs = obs.slice ? obs.slice() : new Float32Array(obs);
+      lastRes = res;
       hidden = res.hidden;
       return choose(res.logits, mask);
     };

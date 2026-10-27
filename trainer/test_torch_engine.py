@@ -16,9 +16,9 @@ def test_torch_env_reset():
     env = TorchEnv(batch_size=B, device=device)
     obs = env.reset()
 
-    assert obs.shape == (B, 37), f"Shape obs attendue (64, 37), obtenue: {obs.shape}"
+    assert obs.shape == (B, 56), f"Shape obs attendue (64, 56), obtenue: {obs.shape}"
     mask = env.get_mask()
-    assert mask.shape == (B, 106), f"Shape mask attendue (64, 106), obtenue: {mask.shape}"
+    assert mask.shape == (B, 130), f"Shape mask attendue (64, 130), obtenue: {mask.shape}"
 
     # Au départ:
     # - Les prises de paquets directement accessibles (P1, P2, P5, P6, P9, P10) doivent être autorisées
@@ -31,9 +31,23 @@ def test_torch_env_reset():
     assert not mask[:, 20:40].any(), "Poser des murs doit être interdit au départ"
     # - Trône (105) doit être autorisé dans le masque de base
     assert mask[:, 105].all(), "Le trône doit être autorisé dans le masque de base"
+    # - Waypoints dégagés au départ (W1..W3, W6..W8 autorisés ; W4..W5 bloqués par P9/P10 au départ)
+    accessible_wps = [118, 119, 120, 123, 124, 125]
+    blocked_wps = [121, 122]
+    assert mask[:, accessible_wps].all(), "Les waypoints dégagés au départ doivent être autorisés"
+    assert not mask[:, blocked_wps].any(), "Les waypoints W4/W5 proches de P9/P10 intacts doivent être masqués au départ"
+    # - Tourner pince (126..127) autorisés
+    assert mask[:, 126:128].all(), "Tourner pince doit être autorisé"
+    # - Déposer zone (128..129) masqués sans pierres en main
+    assert not mask[:, 128:130].any(), "Déposer zone doit être masqué avec 0 pierres en main"
 
-    print("  ok  obs shape (B, 37)")
-    print("  ok  mask shape (B, 106)")
+    # Test mode legacy 37 entrées
+    env_legacy = TorchEnv(batch_size=B, device=device, n_in=37)
+    obs_legacy = env_legacy.reset()
+    assert obs_legacy.shape == (B, 37), f"Shape obs legacy attendue (64, 37), obtenue: {obs_legacy.shape}"
+
+    print("  ok  obs shape (B, 56) et legacy (B, 37)")
+    print("  ok  mask shape (B, 130)")
     print("  ok  règles initiales validées")
 
 
@@ -261,7 +275,7 @@ def test_torch_curriculum_reset():
 
     # Curriculum stochastique (50/30/20)
     obs = env.reset(curriculum=True)
-    assert obs.shape == (32, 37)
+    assert obs.shape == (32, 56)
     print("  ok  Curriculum procédural (standard, trapped, adversarial) validé")
 
 
@@ -294,7 +308,7 @@ def test_torch_tree_search():
     from trainer.tree_search import tree_search_plan
 
     env = TorchEnv(batch_size=2, device=device)
-    model = RecurrentActorCritic(n_in=37, n_out=106, hidden_dim=128).to(device)
+    model = RecurrentActorCritic(n_in=env.n_in, n_out=env.n_out, hidden_dim=128).to(device)
     obs = env.reset()
     hidden = model.init_hidden(2, device=device)
 
@@ -313,6 +327,65 @@ def test_torch_tree_search():
     print("  ok  Planification arborescente GPU validée avec non-destructivité d'état stricte")
 
 
+def test_torch_m1_kinematics_and_radar():
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"\n--- 10. Tests M1 : Déblocage post-tour, rotation, waypoints & radar 56D ({device}) ---")
+    B = 2
+    env = TorchEnv(batch_size=B, device=device)
+    obs = env.reset()
+
+    # R5: Vérification de l'observation 56D (proprioception + spatial radar)
+    assert obs.shape == (B, 56), f"Shape obs attendue ({B}, 56), reçue {obs.shape}"
+    proprio = obs[:, 37:48]
+    assert (proprio >= 0.0).all() and (proprio <= 1.0).all(), "Proprioception doit être dans [0, 1]"
+    radar = obs[:, 48:56]
+    assert (radar >= 0.0).all() and (radar <= 1.0).all(), "Rayons radar doivent être dans [0, 1]"
+    assert not torch.isnan(obs).any(), "Aucun NaN toléré dans l'observation 56D"
+
+    # R1: Déblocage post-tour et rotation
+    # Prendre P1 sur Face A (action 0)
+    env.step(torch.full((B,), 0, dtype=torch.long, device=device))
+    assert (env.held_count[:, 0] == 3).all()
+    assert (env.held_rot[:, 0] == 0.0).all()
+
+    # Construire tour T1 rang 0 (action 40) : pose 1 pierre, laisse 2 pierres sur Face A avec rot=90°
+    env.step(torch.full((B,), 40, dtype=torch.long, device=device))
+    assert (env.held_count[:, 0] == 2).all(), "Après tour T1, 2 pierres doivent rester sur Face A"
+    assert (env.held_rot[:, 0] == 90.0).all(), "Après tour T1, la Face A doit être à 90°"
+
+    # Vérifier que deposerZone Face A (action 128) est autorisée
+    mask = env.get_mask()
+    assert mask[:, 128].all(), "deposerZone Face A doit être autorisée quand Face A tient des pierres restantes"
+
+    # Exécuter deposerZone Face A (action 128)
+    env.step(torch.full((B,), 128, dtype=torch.long, device=device))
+    assert (env.held_count[:, 0] == 0).all(), "Face A doit être vidée après dépose"
+    assert (env.held_rot[:, 0] == 0.0).all(), "rot de Face A doit être réinitialisé à 0°"
+    assert (env.held_hc[:, 0] == 165.0).all(), "hc de Face A doit être réinitialisé à 165"
+    assert (env.purged_stones == 2).all(), "2 pierres purgées doivent être comptabilisées"
+
+    # R1: Tourner pince Face A (action 126)
+    env.step(torch.full((B,), 126, dtype=torch.long, device=device))
+    assert (env.held_rot[:, 0] == 90.0).all(), "tournerPince bascule à 90°"
+    env.step(torch.full((B,), 126, dtype=torch.long, device=device))
+    assert (env.held_rot[:, 0] == 0.0).all(), "tournerPince rebascule à 0°"
+
+    # R2: Approches multi-angles (approches candidates)
+    assert env.action_approaches.shape == (130, 4, 3)
+    assert (env.action_n_approaches[0:20] == 2).all(), "P1..P10 ont 2 approches opposées"
+    assert (env.action_n_approaches[40:56] == 4).all(), "T1..T4 ont 4 approches cardinales"
+
+    # R3: 8 Crossroads Waypoints (actions 118..125)
+    env.step(torch.full((B,), 118, dtype=torch.long, device=device))
+    assert torch.allclose(env.robot_pose[:, 0], torch.tensor(1050.0, device=device), atol=1.0)
+    assert torch.allclose(env.robot_pose[:, 1], torch.tensor(450.0, device=device), atol=1.0)
+
+    print("  ok  R1 déblocage post-tour & rotation validés")
+    print("  ok  R2 approches multi-angles validées")
+    print("  ok  R3 navigation waypoints validée")
+    print("  ok  R5 observation 56D et radar proprioceptif validés")
+
+
 if __name__ == "__main__":
     test_torch_env_reset()
     test_torch_env_example_program()
@@ -322,4 +395,5 @@ if __name__ == "__main__":
     test_torch_curriculum_reset()
     test_torch_world_model_and_aux_loss()
     test_torch_tree_search()
+    test_torch_m1_kinematics_and_radar()
     test_torch_env_performance_benchmark()

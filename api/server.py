@@ -60,7 +60,21 @@ MAX_EPOCHS = 500
 MAX_DURATION = 1800
 ACTIVATIONS = {"relu", "tanh", "sigmoid"}
 METHODES = {"evolution", "imitation", "ppo"}
-FAMILLES = ["prendre", "mur", "tour", "porte", "boulets", "prendreGraal", "poserGraal", "trone"]
+FAMILLES = [
+    "prendre",
+    "mur",
+    "tour",
+    "porte",
+    "boulets",
+    "prendreGraal",
+    "poserGraal",
+    "trone",
+    "staging",
+    "repickup",
+    "traj",
+    "tournerPince",
+    "deposerZone",
+]
 ENTREES = ["temps", "robot", "paquets", "faces", "constructions", "graal", "boulets", "adversaire", "proprioception", "spatial"]
 ENTREE_N = {
     "temps": 1,
@@ -74,7 +88,21 @@ ENTREE_N = {
     "proprioception": 11,
     "spatial": 8,
 }
-FAMILLE_N = {"prendre": 20, "mur": 20, "tour": 24, "porte": 20, "boulets": 1, "prendreGraal": 2, "poserGraal": 18, "trone": 1}
+FAMILLE_N = {
+    "prendre": 20,
+    "mur": 20,
+    "tour": 24,
+    "porte": 20,
+    "boulets": 1,
+    "prendreGraal": 2,
+    "poserGraal": 18,
+    "trone": 1,
+    "staging": 6,
+    "repickup": 6,
+    "traj": 8,
+    "tournerPince": 2,
+    "deposerZone": 2,
+}
 
 _job_lock = threading.Lock()
 _job_proc = None
@@ -183,7 +211,7 @@ def validate_cerveau(j, slug):
     if methode not in METHODES:
         return None, "Méthode inconnue (evolution, imitation ou ppo)."
     architecture = str((j.get("reseau") or {}).get("architecture") or j.get("architecture") or "mlp")
-    if architecture not in ("mlp", "transformer"):
+    if architecture not in ("mlp", "transformer", "recurrent", "gru"):
         architecture = "mlp"
     regl = j.get("reglages") or {}
     if not isinstance(regl, dict):

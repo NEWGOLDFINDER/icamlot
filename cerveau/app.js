@@ -10,7 +10,7 @@
   function defaultCfg() {
     return {
       format: 'camelot-cerveau', version: 1, name: '',
-      entrees: (ENV.DEFAULT_GROUPS || ['temps', 'robot', 'paquets', 'faces', 'constructions', 'graal', 'boulets', 'adversaire']).slice(),
+      entrees: (ENV.DEFAULT_GROUPS || ['temps', 'robot', 'paquets', 'faces', 'constructions', 'graal', 'boulets', 'adversaire', 'proprioception', 'spatial']).slice(),
       actions: { familles: ACTIONS.FAMILLES.map(function (f) { return f.id; }), cotes: ['ext', 'int'] },
       architecture: 'mlp',
       reseau: { couches: [{ neurones: 64, activation: 'relu' }, { neurones: 64, activation: 'relu' }], sortie: 'softmax', architecture: 'mlp' },
@@ -177,9 +177,9 @@
 
   function applyBestNetConfig() {
     cfg.name = cfg.name || 'Cerveau-V2-Champion';
-    // 1. Activer toutes les 37 entrées
-    cfg.entrees = (ENV.DEFAULT_GROUPS || ['temps', 'robot', 'paquets', 'faces', 'constructions', 'graal', 'boulets', 'adversaire']).slice();
-    // 2. Activer toutes les 106 actions
+    // 1. Activer toutes les 56 entrées
+    cfg.entrees = (ENV.DEFAULT_GROUPS || ['temps', 'robot', 'paquets', 'faces', 'constructions', 'graal', 'boulets', 'adversaire', 'proprioception', 'spatial']).slice();
+    // 2. Activer toutes les 130 actions
     cfg.actions = {
       familles: ACTIONS.FAMILLES.map(function (f) { return f.id; }),
       cotes: ['ext', 'int']

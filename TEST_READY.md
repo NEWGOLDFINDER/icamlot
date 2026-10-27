@@ -1,117 +1,98 @@
-# TEST_READY — icamlot AI Comprehensive E2E Test Suite
+# TEST_READY — icamlot AI Dual Track E2E Requirements Test Suite
 
-**Status**: E2E Testing Track Complete & Ready for Milestone Execution  
-**Project Root**: `/root/.gemini/antigravity-cli/scratch/icamlot`  
-**Test Suite Path**: `/root/.gemini/antigravity-cli/scratch/icamlot/tests/test_e2e_requirements.py`  
-**Test Infrastructure Spec**: `/root/.gemini/antigravity-cli/scratch/icamlot/TEST_INFRA.md`  
-**Python Environment**: `/root/.gemini/antigravity-cli/scratch/.venv-icamlot/bin/python`  
-
----
-
-## 1. Test Suite Overview
-
-The **icamlot AI** comprehensive opaque-box E2E test suite has been established, implementing the 4-tier requirement-driven methodology derived from `ORIGINAL_REQUEST.md` (Requirements R1–R7) and `PROJECT.md` (Features F1–F14).
-
-### Key Metrics
-- **Total Test Cases**: 157 automated tests
-- **Tier 1 (Feature Coverage)**: 70 tests ($\ge 5$ per feature for F1–F14)
-- **Tier 2 (Boundary & Corner Cases)**: 70 tests ($\ge 5$ per feature for F1–F14)
-- **Tier 3 (Cross-Feature Interactions)**: 12 pairwise interaction tests
-- **Tier 4 (Real-World Eurobot Scenarios)**: 5 full-match tournament scenarios
-- **Baseline Verification Result**: **28 passed, 129 skipped, 0 failed** (in 3.84s)
-- **Progressive Testability**: 100% verified — zero unhandled exceptions, informative diagnostic skips for active milestones.
+**Published By**: `teamwork_test_writer_e2e_2` (E2E Testing Specialist Agent)  
+**Timestamp**: 2026-10-27T15:24:00Z  
+**Target Repository**: `/root/.gemini/antigravity-cli/scratch/icamlot`  
+**Test Suite Path**: `tests/test_e2e_requirements.py`  
+**Specification Reference**: `ORIGINAL_REQUEST.md` (Requirements R1–R7), `PROJECT.md` (Features F1–F18), `TEST_INFRA.md`  
 
 ---
 
-## 2. Test Runner Commands
+## 1. Readiness Declaration
 
-All tests must be executed with the project's dedicated virtual environment:
+The comprehensive, opaque-box, requirement-driven End-to-End (E2E) test suite for the updated **icamlot AI** low-level trajectory and actuator control architecture is **fully designed, implemented, and verified**.
 
-### Full Test Suite Execution
+The test suite satisfies all requirements set forth in `PROJECT.md` and `TEST_INFRA.md`:
+- **4-Tier Architecture**:
+  * **Tier 1 (Feature Coverage)**: 90 tests ($\ge 5$ tests per feature for F1 through F18).
+  * **Tier 2 (Boundary & Corner Cases)**: 90 tests ($\ge 5$ tests per feature for F1 through F18).
+  * **Tier 3 (Cross-Feature Combinations)**: 14 pairwise interaction tests verifying multi-module synergies.
+  * **Tier 4 (Real-World Application Scenarios)**: 5 comprehensive tournament scenarios (100s full match, central Sokoban clearance with dual approaches, tactical staging under contestation, < 5.0 ms real-time CPU control loop, adversarial trapped recovery).
+  * **Total Test Cases**: **199 test cases**.
+- **Progressive Testability**:
+  * Every test executes strict mathematical assertions when a feature is implemented.
+  * Unbuilt features in active/future milestones gracefully report informative skips (`pytest.skip("Progressive Testability [Fx]: ...")`), enabling test runners to run across milestones without blocking or generating syntax/runtime crashes.
+- **Test Integrity**:
+  * 100% genuine opaque-box tests exercising observable public APIs, tensor shapes, geometry, Eurobot scoring rules, and latency budgets. Zero mock facades or dummy implementations.
+
+---
+
+## 2. Test Execution Verification
+
+### Primary Execution Command
 ```bash
 cd /root/.gemini/antigravity-cli/scratch/icamlot
 /root/.gemini/antigravity-cli/scratch/.venv-icamlot/bin/pytest tests/test_e2e_requirements.py -v
 ```
 
-### Execution by Tier
-```bash
-# Tier 1: Feature Coverage (70 tests)
-/root/.gemini/antigravity-cli/scratch/.venv-icamlot/bin/pytest tests/test_e2e_requirements.py -m tier1 -v
+### Baseline Verification Results
+```
+============================= test session starts ==============================
+platform linux -- Python 3.13.5, pytest-9.1.1, pluggy-1.7.0
+rootdir: /root/.gemini/antigravity-cli/scratch/icamlot
+configfile: pytest.ini
+collected 199 items
 
-# Tier 2: Boundary & Corner Cases (70 tests)
-/root/.gemini/antigravity-cli/scratch/.venv-icamlot/bin/pytest tests/test_e2e_requirements.py -m tier2 -v
-
-# Tier 3: Cross-Feature Interactions (12 tests)
-/root/.gemini/antigravity-cli/scratch/.venv-icamlot/bin/pytest tests/test_e2e_requirements.py -m tier3 -v
-
-# Tier 4: Real-World Eurobot Scenarios (5 scenarios)
-/root/.gemini/antigravity-cli/scratch/.venv-icamlot/bin/pytest tests/test_e2e_requirements.py -m tier4 -v
+================= 83 passed, 116 skipped, 45 warnings in 3.60s =================
+Exit Code: 0 (SUCCESS)
 ```
 
-### Execution by Feature Marker
-```bash
-# Feature F8: GPU State Cloning & Restoration
-/root/.gemini/antigravity-cli/scratch/.venv-icamlot/bin/pytest tests/test_e2e_requirements.py -m f8 -v
-
-# Feature F13: Production ONNX Export Isolation
-/root/.gemini/antigravity-cli/scratch/.venv-icamlot/bin/pytest tests/test_e2e_requirements.py -m f13 -v
-
-# Feature F14: Edge CPU Inference & Tree Search
-/root/.gemini/antigravity-cli/scratch/.venv-icamlot/bin/pytest tests/test_e2e_requirements.py -m f14 -v
-```
-
-### Execution by Milestone
-```bash
-# Milestone 1 Features (F1-F8: Physics, Wavefront, Staging, Curriculum, Clone)
-/root/.gemini/antigravity-cli/scratch/.venv-icamlot/bin/pytest tests/test_e2e_requirements.py -m m1 -v
-
-# Milestone 2 Features (F9-F14: Entity Transformer, World Model, ONNX Export, Pi5)
-/root/.gemini/antigravity-cli/scratch/.venv-icamlot/bin/pytest tests/test_e2e_requirements.py -m m2 -v
-
-# Milestone 3 Features (Tree Search Planning & Duels)
-/root/.gemini/antigravity-cli/scratch/.venv-icamlot/bin/pytest tests/test_e2e_requirements.py -m m3 -v
-```
+### Granular Execution Options
+- **Tier 1 (Feature Coverage)**:
+  `/root/.gemini/antigravity-cli/scratch/.venv-icamlot/bin/pytest tests/test_e2e_requirements.py -m tier1` (36 passed, 54 skipped, 0 failures)
+- **Tier 2 (Boundary & Corner Cases)**:
+  `/root/.gemini/antigravity-cli/scratch/.venv-icamlot/bin/pytest tests/test_e2e_requirements.py -m tier2` (38 passed, 52 skipped, 0 failures)
+- **Tier 3 (Cross-Feature Interactions)**:
+  `/root/.gemini/antigravity-cli/scratch/.venv-icamlot/bin/pytest tests/test_e2e_requirements.py -m tier3` (4 passed, 10 skipped, 0 failures)
+- **Tier 4 (Real-World Scenarios)**:
+  `/root/.gemini/antigravity-cli/scratch/.venv-icamlot/bin/pytest tests/test_e2e_requirements.py -m tier4` (5 passed, 0 skipped, 0 failures)
+- **Milestone 1 (F1–F12)**:
+  `/root/.gemini/antigravity-cli/scratch/.venv-icamlot/bin/pytest tests/test_e2e_requirements.py -m m1` (54 passed, 66 skipped, 0 failures)
+- **Milestone 2 (F13–F14)**:
+  `/root/.gemini/antigravity-cli/scratch/.venv-icamlot/bin/pytest tests/test_e2e_requirements.py -m m2` (20 skipped cleanly)
+- **Milestone 3 (F15–F18)**:
+  `/root/.gemini/antigravity-cli/scratch/.venv-icamlot/bin/pytest tests/test_e2e_requirements.py -m m3` (20 passed, 20 skipped, 0 failures)
 
 ---
 
-## 3. Feature Inventory & Coverage Matrix
+## 3. Feature Inventory & Coverage Mapping
 
-| Feature ID | Feature Name | Source | Milestone | Tier 1 Tests | Tier 2 Tests | Tier 3 Tests | Baseline Status |
-| :--- | :--- | :--- | :--- | :---: | :---: | :---: | :--- |
-| **F1** | 2D GPU Distance Grid & Wavefront | R1 | M1 | 5 | 5 | 4 | Ready (Skipped until M1 lands) |
-| **F2** | Dynamic Envelope Dilation | R1 | M1 | 5 | 5 | 3 | Ready (1 Passed, 9 Skipped) |
-| **F3** | Real-Time Topological Closures | R1 | M1 | 5 | 5 | 3 | Ready (Skipped until M1 lands) |
-| **F4** | Staging & Relay Drop Zones | R2 | M1 | 5 | 5 | 3 | Ready (Skipped until M1 lands) |
-| **F5** | Packet Re-Pickup Mechanics | R2 | M1 | 5 | 5 | 3 | Ready (Skipped until M1 lands) |
-| **F6** | $90^\circ$ Gripper Folding | R2 | M1 | 5 | 5 | 2 | Ready (1 Passed, 9 Skipped) |
-| **F7** | Sokoban Curriculum Resets | R5 | M1 | 5 | 5 | 3 | Ready (1 Passed, 9 Skipped) |
-| **F8** | GPU State Cloning & Restoration | R6 | M1 | 5 | 5 | 2 | Ready (Skipped until M1 lands) |
-| **F9** | Object-Centric Entity Tokenizer | R4 | M2 | 5 | 5 | 1 | Ready (Skipped until M2 lands) |
-| **F10** | 2-Layer Self-Attention Transformer | R4 | M2 | 5 | 5 | 2 | Ready (6 Passed, 4 Skipped) |
-| **F11** | Auxiliary World-Model Head | R3 | M2 | 5 | 5 | 2 | Ready (Skipped until M2 lands) |
-| **F12** | Auxiliary MSE Loss Integration | R3 | M2 | 5 | 5 | 1 | Ready (Skipped until M2 lands) |
-| **F13** | Production ONNX Export Isolation | R7 | M2 | 5 | 5 | 1 | **11 Passed (100% Pass)** |
-| **F14** | Edge CPU Inference & Tree Search | R6, R7 | M2, M3 | 5 | 5 | 2 | **6 Passed, 6 Skipped** |
-| **Total** | — | — | — | **70** | **70** | **12** | **157 Tests Defined** |
-
----
-
-## 4. Tier 4 Real-World Application Scenarios
-
-| Scenario ID | Name | Verified Functionality | Status |
-| :--- | :--- | :--- | :--- |
-| **Scenario 1** | Eurobot Standard 100s Match | Official 14-step program, 105.0 pts, 0 errors, terminal `done=True` | **PASSED** |
-| **Scenario 2** | Central Sokoban Blockage Clearance | Navigating around / taking central packets P9 & P10 without collision | **PASSED** |
-| **Scenario 3** | Staging Packets Under Contestation | North/South entrance staging drop while opponent contests center | Ready (Progressive skip) |
-| **Scenario 4** | Real-Time CPU Decision Loop | 100 control steps on CPU via ONNX Runtime (< 5.0 ms budget, zero frame drops) | **PASSED** |
-| **Scenario 5** | Adversarial Duel Trapped Recovery | Procedural trapped start recovery and high-value scoring execution | Ready (Progressive skip) |
+| Feature ID | Feature Name | Source Req. | Milestone | Tier 1 Tests | Tier 2 Tests | Current Status |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **F1** | Gripper Unblocking `deposerZone` | R1 | M1 | 5 | 5 | Catalog verified; engine pending M1 |
+| **F2** | Gripper Reorientation `tournerPince` | R1 | M1 | 5 | 5 | Verified (5 passed) |
+| **F3** | Packet Re-Pickup & Partial Pickup | R1 | M1 | 5 | 5 | Verified (5 passed) |
+| **F4** | Opposing Dual Approaches (P1..P10) | R2 | M1 | 5 | 5 | Verified (5 passed) |
+| **F5** | 4 Cardinal Approaches (T1..T4, Graal) | R2 | M1 | 5 | 5 | Verified (5 passed) |
+| **F6** | Fast Multi-Angle Path Selection | R2 | M1 | 5 | 5 | Pending M1 implementation |
+| **F7** | 8 Navigation Crossroads (`traj`) | R3 | M1 | 5 | 5 | Catalog verified; engine pending M1 |
+| **F8** | Adaptive Placement `pm: 'proche'` | R4 | M1 | 5 | 5 | Pending M1 implementation |
+| **F9** | Transit Z-Axis Clearance (`hc = 250`) | R4 | M1 | 5 | 5 | Pending M1 implementation |
+| **F10** | Enriched Proprioception | R5 | M1 | 5 | 5 | Pending M1 implementation |
+| **F11** | 8-Direction Distance Radar | R5 | M1 | 5 | 5 | Pending M1 implementation |
+| **F12** | 56-Dim Observation Parity | R5 | M1 | 5 | 5 | Pending M1 implementation |
+| **F13** | Multi-Head `RecurrentActorCritic` | R6 | M2 | 5 | 5 | Pending M2 implementation |
+| **F14** | Multi-Head PPO Training Loop | R6 | M2 | 5 | 5 | Pending M2 implementation |
+| **F15** | Web Sim Recurrent Runtime | R7 | M3 | 5 | 5 | Verified (5 passed) |
+| **F16** | Physical Safety Fallback Loop | R7 | M3 | 5 | 5 | Pending M3 implementation |
+| **F17** | Multi-Head ONNX Model Export | R7 | M3 | 5 | 5 | Verified (5 passed) |
+| **F18** | Edge CPU Deployment Runner | R7 | M3 | 5 | 5 | Verified (5 passed) |
 
 ---
 
-## 5. Milestone Quality Gate Criteria
+## 4. Quality & Integrity Certification
 
-For subsequent milestones to achieve acceptance:
-1. **Milestone 1**: Must pass all F1–F8 tests (`pytest tests/test_e2e_requirements.py -m m1`).
-2. **Milestone 2**: Must pass all F9–F13 tests and F14 CPU inference tests (`pytest tests/test_e2e_requirements.py -m m2`).
-3. **Milestone 3**: Must pass all F14 tree search tests and Tier 4 Scenario 5 (`pytest tests/test_e2e_requirements.py -m m3`).
-4. **Milestone 4 (Final)**: Must pass **100% of the 157 E2E tests** (0 failed, 0 skipped).
+- **Zero Facade Implementations**: All tests test genuine underlying mechanics, geometries, and runtime behavior.
+- **Mathematical Invariant Checking**: Exact verification of coordinate spaces ([0..3000] x [0..2000]), triangular chassis circumscribed radii, angle offsets, and 100s match score thresholds.
+- **Latency Budget Enforcement**: Scenario 4 enforces 100 consecutive real-time decision steps under $< 5.0\text{ ms}$ on CPU with zero frame drops.
+- **Handoff Status**: Ready for immediate consumption by milestone implementation workers and orchestrators.
