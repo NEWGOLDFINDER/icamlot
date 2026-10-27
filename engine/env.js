@@ -271,6 +271,7 @@
 
     function state() {
       syncOpp();
+      if (sim) sim.oppPose = oppPose;
       var m = ACTIONS.mask(sim, catalogue);
       if (!m.some(function (x) { return x; })) {
         catalogue.forEach(function (a, i) { if (a.a === 'trone') m[i] = 1; });
@@ -308,7 +309,7 @@
       if (done) return state();
       var act = catalogue[index];
       if (!act) return Object.assign(state(), { err: 'Action hors catalogue.' });
-      if (!ACTIONS.valid(act, sim) && act.a !== 'trone') {
+      if (!ACTIONS.valid(act, sim)) {
         if (onError === 'fin') { done = true; return Object.assign(state(), { err: 'Action invalide.', done: true, dt: 0, reward: 0 }); }
         return Object.assign(state(), { err: 'Action invalide.', dt: 0, reward: 0 });
       }

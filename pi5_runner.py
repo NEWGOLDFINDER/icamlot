@@ -340,7 +340,11 @@ class Pi5EurobotAgent:
                 ac_x = cx - rx
                 ac_y = cy - ry
                 u = max(0.0, min(1.0, (ac_x * ab_x + ac_y * ab_y) / l2))
-                if 0.13 < u < 0.87:
+                d_start = math.hypot(cx - rx, cy - ry)
+                d_end = math.hypot(cx - tx, cy - ty)
+                u_min = 0.13 if d_start < 290.0 else 0.02
+                u_max = 0.87 if d_end < 290.0 else 0.98
+                if u_min < u < u_max:
                     px = rx + u * ab_x
                     py = ry + u * ab_y
                     if math.hypot(cx - px, cy - py) < 210.0:
@@ -365,7 +369,11 @@ class Pi5EurobotAgent:
                 ac_x = cx - rx
                 ac_y = cy - ry
                 u = max(0.0, min(1.0, (ac_x * ab_x + ac_y * ab_y) / l2))
-                if 0.13 < u < 0.87:
+                d_start = math.hypot(cx - rx, cy - ry)
+                d_end = math.hypot(cx - tx, cy - ty)
+                u_min = 0.13 if d_start < 260.0 else 0.02
+                u_max = 0.87 if d_end < 260.0 else 0.98
+                if u_min < u < u_max:
                     px = rx + u * ab_x
                     py = ry + u * ab_y
                     if math.hypot(cx - px, cy - py) < 180.0:
@@ -373,6 +381,20 @@ class Pi5EurobotAgent:
                         break
             if col_tower:
                 mask[act_idx] = False
+                continue
+
+            # Test collision adversaire si présent
+            opp_pose = state.get("opp_pose")
+            if opp_pose and (opp_pose[0] > 0 or opp_pose[1] > 0):
+                ox, oy = opp_pose[0], opp_pose[1]
+                ac_x = ox - rx
+                ac_y = oy - ry
+                u_opp = max(0.0, min(1.0, (ac_x * ab_x + ac_y * ab_y) / l2))
+                if 0.05 < u_opp < 0.95:
+                    px = rx + u_opp * ab_x
+                    py = ry + u_opp * ab_y
+                    if math.hypot(ox - px, oy - py) < 350.0:
+                        mask[act_idx] = False
 
         # 11. Anticipation temporelle : Budget temps pour rentrer au trône et tirer les boulets
         dt_tir = 6.1 if not balls_fired else 0.0

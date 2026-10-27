@@ -128,7 +128,15 @@
       return { foot: rectPoly(fo), fo: fo, top: zc + hz, bottom: zc - hz, zc: zc, vertical: Math.abs(Math.sin(th)) > 0.7, ul: zl, th: th, phi: p.h + 120 * fk(f), O: [p.x, p.y] };
     }
     function sat2(A, B) { return overlap(A, B, 1); }
-    function obstacles(excl) { return freeStones(excl).map(function (st) { var g = stoneFoot(st); g.id = st.id; return g; }).concat(foreign()); }
+    function obstacles(excl) {
+      var obs = freeStones(excl).map(function (st) { var g = stoneFoot(st); g.id = st.id; return g; }).concat(foreign());
+      var isExcl = (excl || []).some(function (x) { return x === 'graal' || (x && x.id === 'graal'); });
+      if (!isExcl && graal && graal.cur && graal.cur.k === 'home') {
+        var gg = graalGeo();
+        if (gg) { gg.id = 'graal'; obs.push(gg); }
+      }
+      return obs;
+    }
     function heldVsFree(hg, fg, tol) {
       tol = tol == null ? 1 : tol;
       if (!overlap(hg.foot, fg.foot, tol)) return false;
@@ -462,10 +470,20 @@
       travel(O, h, label, excl);
       if (!before) runSeq(f, seq);
     }
-    function lin(O, h, v, label) {
+    var lastExcl = null;
+    function lin(O, h, v, label, excl) {
       flushPend();
+      var useExcl = excl !== undefined ? excl : lastExcl;
       var d = Math.max(dist([s.x, s.y], O) / v, Math.abs(angd(s.h, h)) / WR, 0.15);
-      s.x = O[0]; s.y = O[1]; s.h = s.h + angd(s.h, h); adv(d, label);
+      var steps = Math.max(2, Math.ceil(dist([s.x, s.y], O) / 25));
+      var sx0 = s.x, sy0 = s.y, sh0 = s.h, dh = angd(sh0, h);
+      for (var k = 1; k <= steps; k++) {
+        var u = k / steps;
+        var pk = { x: sx0 + (O[0] - sx0) * u, y: sy0 + (O[1] - sy0) * u, h: sh0 + dh * u, A: cp(s.A), B: cp(s.B) };
+        var col = collides(pk, useExcl);
+        if (col) { err(label + ' : contact avec ' + col + ' pendant lin().'); break; }
+      }
+      s.x = O[0]; s.y = O[1]; s.h = s.h + dh; adv(d, label);
     }
     /* mouvement de pince sur place : contrôle des contacts pendant le mouvement */
     function gripCheck(f, hc, rot, label) {
@@ -487,6 +505,7 @@
         sc[i] = (c0.pen || 0) + dist([s.x, s.y], c0.O) * 0.2 + Math.abs(angd(s.h, c0.h)) * 0.5;
         ord[i] = i;
       }
+      lastExcl = excl;
       ord.sort(function (x, y) { return sc[x] - sc[y] || x - y; });
       function colOf(c) {
         var p = { x: c.O[0], y: c.O[1], h: c.h, A: cp(s.A), B: cp(s.B) };
@@ -971,9 +990,10 @@
         var gn = graalNow(); if (!gn) return err('Le Graal est déjà tenu.');
         var G = gn.c, gz = gn.z, cands = [];
         for (var phi = 0; phi < 360; phi += 15) { var n = nv2(phi); cands.push({ O: [G[0] - (rin + GS / 2) * n[0], G[1] - (rin + GS / 2) * n[1]], h: phi - 120 * fk(f), phi: phi }); }
-        var b = choose(cands, null, 80, true); if (b.col) err('Prise du Graal : contact possible avec ' + b.col + '.');
+        var exclGraal = [{ id: 'graal' }];
+        var b = choose(cands, exclGraal, 80, true); if (b.col) err('Prise du Graal : contact possible avec ' + b.col + '.');
         var n2 = nv2(b.c.phi), Ob = [b.c.O[0] - 80 * n2[0], b.c.O[1] - 80 * n2[1]];
-        moveTo(Ob, b.c.h, 'Face ' + f + ' vers le Graal', null, f, [{ rot: 0, label: 'Pince à plat' }, { hc: gz + 110, label: 'Ventouse du Graal à sa hauteur' }], st.tm, false);
+        moveTo(Ob, b.c.h, 'Face ' + f + ' vers le Graal', exclGraal, f, [{ rot: 0, label: 'Pince à plat' }, { hc: gz + 110, label: 'Ventouse du Graal à sa hauteur' }], st.tm, false);
         lin(b.c.O, b.c.h, VA, 'Contact avec le Graal');
         graal.cur = { k: 'held', f: f }; graal.tl.push({ t: s.t, k: 'held', f: f }); held[f] = { graal: true };
         var v = s[f].vac.slice(); v[0] = 1; vac(f, v, 'Vide sur le Graal', TV);

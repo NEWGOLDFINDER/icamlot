@@ -387,27 +387,46 @@ class TorchEnv:
         u_walls = ((AC_walls * AB_vec).sum(dim=-1, keepdim=True) / L2_dist).clamp(0.0, 1.0)
         P_walls = A_pos + u_walls * AB_vec
         dist_to_walls = torch.hypot(C_walls[..., 0] - P_walls[..., 0], C_walls[..., 1] - P_walls[..., 1])
-        u_w_squeezed = u_walls.squeeze(-1)
-        in_mid_wall = (u_w_squeezed > 0.13) & (u_w_squeezed < 0.87)
+        u_w_sq = u_walls.squeeze(-1)
+        dist_start_w = torch.hypot(C_walls[..., 0] - A_pos[..., 0], C_walls[..., 1] - A_pos[..., 1])
+        dist_end_w = torch.hypot(C_walls[..., 0] - B_tgt[..., 0], C_walls[..., 1] - B_tgt[..., 1])
+        u_min_w = torch.where(dist_start_w < 290.0, 0.13, 0.02)
+        u_max_w = torch.where(dist_end_w < 290.0, 0.87, 0.98)
+        in_mid_wall = (u_w_sq > u_min_w) & (u_w_sq < u_max_w)
         target_wall = torch.where((fam_t == 1) | (fam_t == 3) | ((fam_t == 6) & (item_t < 5)), item_t, torch.full_like(item_t, -1))
         active_walls = (self.walls > 0.0).unsqueeze(1)                                  # (B, 1, 5)
         wall_idx = self.wall_indices.unsqueeze(1)                                       # (1, 1, 5)
         is_wall_obs = active_walls & (wall_idx != target_wall)
-        hits_wall = ((dist_to_walls < 220.0) & in_mid_wall & is_wall_obs).any(dim=-1)   # (B, 106)
+        hits_wall = ((dist_to_walls < 210.0) & in_mid_wall & is_wall_obs).any(dim=-1)   # (B, 106)
 
-        # --- 9c. Collision avec les 4 tours (T1..T4) DÉJ\xc3\x80 construites ---
+        # --- 9c. Collision avec les 4 tours (T1..T4) (r = 180mm) ---
         C_towers = self.tower_centers.unsqueeze(0).unsqueeze(0)                         # (1, 1, 4, 2)
         AC_towers = C_towers - A_pos
         u_towers = ((AC_towers * AB_vec).sum(dim=-1, keepdim=True) / L2_dist).clamp(0.0, 1.0)
         P_towers = A_pos + u_towers * AB_vec
         dist_to_towers = torch.hypot(C_towers[..., 0] - P_towers[..., 0], C_towers[..., 1] - P_towers[..., 1])
-        u_t_squeezed = u_towers.squeeze(-1)
-        in_mid_tower = (u_t_squeezed > 0.13) & (u_t_squeezed < 0.87)
+        u_t_sq = u_towers.squeeze(-1)
+        dist_start_t = torch.hypot(C_towers[..., 0] - A_pos[..., 0], C_towers[..., 1] - A_pos[..., 1])
+        dist_end_t = torch.hypot(C_towers[..., 0] - B_tgt[..., 0], C_towers[..., 1] - B_tgt[..., 1])
+        u_min_t = torch.where(dist_start_t < 260.0, 0.13, 0.02)
+        u_max_t = torch.where(dist_end_t < 260.0, 0.87, 0.98)
+        in_mid_tower = (u_t_sq > u_min_t) & (u_t_sq < u_max_t)
         target_tower = torch.where(fam_t == 2, item_t, torch.where((fam_t == 6) & (item_t >= 5), item_t - 5, torch.full_like(item_t, -1)))
         active_towers = (self.towers > 0).unsqueeze(1)                                  # (B, 1, 4)
         tower_idx = self.tower_indices.unsqueeze(1)                                     # (1, 1, 4)
         is_tower_obs = active_towers & (tower_idx != target_tower)
-        hits_tower = ((dist_to_towers < 190.0) & in_mid_tower & is_tower_obs).any(dim=-1) # (B, 106)
+        hits_tower = ((dist_to_towers < 180.0) & in_mid_tower & is_tower_obs).any(dim=-1) # (B, 106)
+
+        # --- 9d. Collision avec adversaire dans le masque (r = 350mm) ---
+        has_opp = (self.opp_pose[:, 0] > 0.0) & (self.opp_pose[:, 1] > 0.0)
+        C_opp = self.opp_pose.unsqueeze(1).unsqueeze(2)                                 # (B, 1, 1, 2)
+        AC_opp = C_opp - A_pos
+        u_opp = ((AC_opp * AB_vec).sum(dim=-1, keepdim=True) / L2_dist).clamp(0.0, 1.0)
+        P_opp = A_pos + u_opp * AB_vec
+        dist_to_opp = torch.hypot(C_opp[..., 0] - P_opp[..., 0], C_opp[..., 1] - P_opp[..., 1]).squeeze(-1) # (B, 106)
+        u_opp_sq = u_opp.squeeze(-1).squeeze(-1)                                       # (B, 106)
+        mid_opp = (u_opp_sq >= 0.05) & (u_opp_sq <= 0.95)
+        hits_opp = has_opp.unsqueeze(1) & mid_opp & (dist_to_opp < 350.0) # (B, 106)
 
         # --- 9d. Topologie du château : interdiction de traverser une enceinte fermée ---
         rx = self.robot_pose[:, 0]
@@ -419,7 +438,7 @@ class TorchEnv:
         front_walls_built = (self.walls[:, 1:4] > 0.0).sum(dim=1, keepdim=True)         # (B, 1)
         castle_sealed = (front_walls_built >= 3)
 
-        hits_obstacle = hits_pack | hits_wall | hits_tower | (crosses_castle_border & castle_sealed)
+        hits_obstacle = hits_pack | hits_wall | hits_tower | hits_opp | (crosses_castle_border & castle_sealed)
         mask = mask & (~hits_obstacle)
 
         # 10. ANTICIPATION DU RETOUR AU TRÔNE : Ne pas fermer la DERNIÈRE porte de façade depuis l'EXTÉRIEUR !
@@ -466,6 +485,11 @@ class TorchEnv:
             mask_dual = apply_dual & has_pack
             mask[mask_dual, 20:84] = False
 
+        has_tasks = (mask[:, 0:84].any(dim=1) | mask[:, 85:105].any(dim=1))
+        # Avant 80s, interdiction de tirer les boulets tant qu'il reste des constructions à faire
+        early_shooting = has_tasks & (self.t < 80.0)
+        mask[early_shooting, 84] = False
+
         useful = mask[:, :105].any(dim=1)
         early_useful = useful & (self.t < 88.0)
         early_balls = (~self.balls_fired) & (~useful) & (self.t < 80.0)
@@ -508,11 +532,16 @@ class TorchEnv:
         valid_graal = g_in & has_build
         sc_graal = torch.where(valid_graal, BAREME["graalPresent"] + self.graal_level * BAREME["graalNiveau"], 0.0)
 
-        # 6. Retour dans la salle du trône (x in [0, 500], y in [750, 1250])
+        # 6. Retour dans la salle du trône (complet 10 pts, partiel 5 pts)
         rx = self.robot_pose[:, 0]
         ry = self.robot_pose[:, 1]
-        in_throne = (rx >= 0.0) & (rx <= 500.0) & (ry >= 750.0) & (ry <= 1250.0)
-        sc_trone = torch.where(in_throne, BAREME["retourComplet"], 0.0)
+        in_throne_full = (rx >= 0.0) & (rx <= 500.0) & (ry >= 750.0) & (ry <= 1250.0)
+        in_throne_partial = (rx >= 0.0) & (rx <= 550.0) & (ry >= 700.0) & (ry <= 1300.0) & (~in_throne_full)
+        sc_trone = torch.where(
+            in_throne_full,
+            BAREME["retourComplet"],
+            torch.where(in_throne_partial, BAREME["retourPartiel"], 0.0)
+        )
 
         # 7. Boulets arrêtés dans la cour adverse (5 pts si >= 1, +15 si >= 3)
         b_cnt = self.balls_in_cour
@@ -600,9 +629,13 @@ class TorchEnv:
         P_proj_w = A.unsqueeze(1) + u_w * AB
         dist_w = torch.hypot(C_w[..., 0] - P_proj_w[..., 0], C_w[..., 1] - P_proj_w[..., 1])
         u_w_sq = u_w.squeeze(-1)
+        dist_start_w = torch.hypot(C_w[..., 0] - A.unsqueeze(1)[..., 0], C_w[..., 1] - A.unsqueeze(1)[..., 1])
+        dist_end_w = torch.hypot(C_w[..., 0] - B_target.unsqueeze(1)[..., 0], C_w[..., 1] - B_target.unsqueeze(1)[..., 1])
+        u_min_w = torch.where(dist_start_w < 290.0, 0.13, 0.02)
+        u_max_w = torch.where(dist_end_w < 290.0, 0.87, 0.98)
         target_w = torch.where((fam == 1) | (fam == 3) | ((fam == 6) & (item < 5)), item, -1).unsqueeze(1)
-        wall_is_obs = (self.walls > 0.0) & (self.wall_indices != target_w) & (u_w_sq > 0.13) & (u_w_sq < 0.87)
-        hit_wall = active & is_valid & ((dist_w < 220.0) & wall_is_obs).any(dim=1)
+        wall_is_obs = (self.walls > 0.0) & (self.wall_indices != target_w) & (u_w_sq > u_min_w) & (u_w_sq < u_max_w)
+        hit_wall = active & is_valid & ((dist_w < 210.0) & wall_is_obs).any(dim=1)
 
         C_tw = self.tower_centers.unsqueeze(0)
         AC_tw = C_tw - A.unsqueeze(1)
@@ -610,18 +643,24 @@ class TorchEnv:
         P_proj_tw = A.unsqueeze(1) + u_tw * AB
         dist_tw = torch.hypot(C_tw[..., 0] - P_proj_tw[..., 0], C_tw[..., 1] - P_proj_tw[..., 1])
         u_tw_sq = u_tw.squeeze(-1)
+        dist_start_tw = torch.hypot(C_tw[..., 0] - A.unsqueeze(1)[..., 0], C_tw[..., 1] - A.unsqueeze(1)[..., 1])
+        dist_end_tw = torch.hypot(C_tw[..., 0] - B_target.unsqueeze(1)[..., 0], C_tw[..., 1] - B_target.unsqueeze(1)[..., 1])
+        u_min_tw = torch.where(dist_start_tw < 260.0, 0.13, 0.02)
+        u_max_tw = torch.where(dist_end_tw < 260.0, 0.87, 0.98)
         target_tw = torch.where(fam == 2, item, torch.where((fam == 6) & (item >= 5), item - 5, -1)).unsqueeze(1)
-        tower_is_obs = (self.towers > 0) & (self.tower_indices != target_tw) & (u_tw_sq > 0.13) & (u_tw_sq < 0.87)
-        hit_tower = active & is_valid & ((dist_tw < 190.0) & tower_is_obs).any(dim=1)
+        tower_is_obs = (self.towers > 0) & (self.tower_indices != target_tw) & (u_tw_sq > u_min_tw) & (u_tw_sq < u_max_tw)
+        hit_tower = active & is_valid & ((dist_tw < 180.0) & tower_is_obs).any(dim=1)
 
-        # 2. Collision avec adversaire (seuil 350 mm)
+        # 2. Collision avec adversaire (seuil 350 mm, corridor u in [0.05, 0.95])
         has_opp = (self.opp_pose[:, 0] > 0) & (self.opp_pose[:, 1] > 0)
         C_opp = self.opp_pose.unsqueeze(1)
         AC_opp = C_opp - A.unsqueeze(1)
         u_opp = ((AC_opp * AB).sum(dim=-1, keepdim=True) / L2).clamp(0.0, 1.0)
         P_proj_opp = A.unsqueeze(1) + u_opp * AB
         dist_opp = torch.hypot(C_opp[..., 0] - P_proj_opp[..., 0], C_opp[..., 1] - P_proj_opp[..., 1]).squeeze(1)
-        hit_opp = active & is_valid & has_opp & (dist_opp < 350.0)
+        u_opp_sq = u_opp.reshape(-1)
+        dist_opp_flat = dist_opp.reshape(-1)
+        hit_opp = active & is_valid & has_opp & (u_opp_sq >= 0.05) & (u_opp_sq <= 0.95) & (dist_opp_flat < 350.0)
 
         has_col = hit_pack | hit_wall | hit_tower | hit_opp
         self.errors += has_col.long()
@@ -682,7 +721,10 @@ class TorchEnv:
             idx_b = torch.where(mask_pose_g)[0]
             self.graal_state[idx_b] = 3
             self.graal_zone[idx_b] = item[idx_b]
-            self.graal_level[idx_b] = 3.0
+            t_idx = torch.clamp(item[idx_b] - 5, 0, 3)
+            tw_h = self.towers[idx_b, t_idx].float()
+            lvl = torch.where(item[idx_b] < 5, torch.tensor(3.0, device=D), tw_h)
+            self.graal_level[idx_b] = lvl
 
         # 8. TRÔNE (fam == 7)
         mask_trone = success & (fam == 7)

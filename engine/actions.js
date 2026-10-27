@@ -220,7 +220,11 @@
     var l2 = abx * abx + aby * aby;
     if (l2 < 1e-4) return false;
     var u = Math.max(0, Math.min(1, ((cx - ax) * abx + (cy - ay) * aby) / l2));
-    if (u <= 0.13 || u >= 0.87) return false;
+    var isDepartingFromThis = Math.hypot(ax - cx, ay - cy) < (r + 80);
+    var isArrivingAtThis = Math.hypot(bx - cx, by - cy) < (r + 80);
+    var uMin = isDepartingFromThis ? 0.13 : 0.02;
+    var uMax = isArrivingAtThis ? 0.87 : 0.98;
+    if (u <= uMin || u >= uMax) return false;
     var px = ax + u * abx, py = ay + u * aby;
     return Math.hypot(cx - px, cy - py) < r;
   }
@@ -291,6 +295,12 @@
       return true;
     }
 
+    // 5. Collision avec le robot adverse si détecté
+    var opp = (typeof sim.oppPose === 'function' ? sim.oppPose() : (sim.opp ? sim.opp : null));
+    if (opp && opp.x > 0 && opp.y > 0) {
+      if (segmentHitsCircle(ax, ay, tx, ty, opp.x, opp.y, 350)) return true;
+    }
+
     return false;
   }
 
@@ -305,7 +315,9 @@
         var isBlue = (sim.params && sim.params().team === 'blue');
         var tx = isBlue ? 3000 - rawTgt[0] : rawTgt[0], ty = rawTgt[1];
         var thX = isBlue ? 2750 : 250, thY = 1000;
-        var dt_act = Math.hypot(tx - s.x, ty - s.y) / 500.0 + 1.0;
+        var MECH_DURATIONS = { 'prendre': 1.8, 'mur': 1.6, 'tour': 2.2, 'porte': 4.8, 'boulets': 5.0, 'prendreGraal': 2.5, 'poserGraal': 2.9, 'trone': 2.0 };
+        var mech = act.mech || MECH_DURATIONS[act.famille] || 1.0;
+        var dt_act = Math.hypot(tx - s.x, ty - s.y) / 500.0 + mech;
         var dt_throne = Math.hypot(thX - tx, thY - ty) / 500.0 + 0.5;
         var ballsFired = sim.balls && sim.balls().shots;
         var dt_tir = ballsFired ? 0.0 : 6.1;
