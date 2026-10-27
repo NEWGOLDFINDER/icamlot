@@ -89,7 +89,7 @@ class PPOTrainer:
     def pretrain_imitation(self, epochs: int = 150, lr: float = 1e-3) -> None:
         """Pré-entraîne le réseau récurrent par imitation du programme champion Eurobot."""
         print(f"--- Pré-entraînement par imitation (initialisation stratégique GRU) ---")
-        example_actions = [0, 18, 20, 32, 4, 19, 28, 36, 3, 69, 86, 98, 84, 105]
+        example_actions = [0, 18, 20, 32, 4, 19, 28, 36, 3, 86, 69, 98, 84, 105]
 
         # Simuler un épisode pour enregistrer la trajectoire de référence
         B = 64
@@ -503,7 +503,7 @@ def main():
     parser.add_argument("--batch-size", type=int, default=256, help="Taille du batch d'environnements parallèles")
     parser.add_argument("--rollout-len", type=int, default=32, help="Longueur d'un rollout par env")
     parser.add_argument("--lr", type=float, default=3e-4, help="Taux d'apprentissage")
-    parser.add_argument("--hidden-dim", type=int, default=128, help="Dimension de la mémoire GRU (défaut: 128)"))
+    parser.add_argument("--hidden-dim", type=int, default=128, help="Dimension de la mémoire GRU (défaut: 128)")
     parser.add_argument("--eval-every", type=int, default=5, help="Fréquence d'évaluation (en rollouts)")
     parser.add_argument("--pretrain-imitation", action="store_true", default=True, help="Pré-entraîner par imitation avant PPO")
     parser.add_argument("--out-pt", type=str, default=".data/weights/ppo_best.pt", help="Fichier de sortie .pt")

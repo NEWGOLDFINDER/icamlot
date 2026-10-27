@@ -54,8 +54,8 @@ def test_torch_env_example_program():
         28,  # mur A M5 ext
         36,  # mur B M4 ext
         3,   # prendre A P4
-        69,  # porte A M3 int
         86,  # prendreGraal B
+        69,  # porte A M3 int
         98,  # poserGraal B M3
         84,  # boulets
         105, # trone
