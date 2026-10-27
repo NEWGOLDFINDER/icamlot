@@ -409,11 +409,11 @@
         var inten = opp ? oppChoice.intensity : 'aucun', oppSpec = oppData(opp), ours, theirs;
         if (pilot.mode === 'cerveau') {
           var bs = brainSpec(pilot.name, pilot.layers, pilot.cfg);
-          var env = window.ENV.create({ entrees: bs.brain.entrees, familles: bs.brain.familles, params: params, adversaire: { intensite: inten }, skipContacts: true, onError: 'penalite' });
-          env.play(window.ENV.chooserFromLayers(bs.brain.layers, bs.brain.acts), { params: params, intensite: inten, opponent: oppSpec });
+          var env = window.ENV.create({ entrees: bs.brain.entrees, familles: bs.brain.familles, params: params, adversaire: { intensite: inten }, skipContacts: false, onError: 'penalite', filterSafety: true });
+          env.play(window.ENV.chooserFromLayers(bs.brain.layers, bs.brain.acts), { params: params, intensite: inten, opponent: oppSpec, filterSafety: true });
           ours = env.program(); theirs = env.opponentProgram();
         } else {
-          var pm = window.ENV.playProgram(prog, params, oppSpec, inten, true);
+          var pm = window.ENV.playProgram(prog, params, oppSpec, inten, false);
           ours = pm.program; theirs = pm.opponentProgram;
         }
         if (pilot.mode === 'cerveau') { prog = ours; sel = -1; lastSnap = snap(); renderSteps(); }

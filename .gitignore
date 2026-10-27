@@ -2,7 +2,13 @@
 .data/session.key
 .data/trainings/
 
+# Subagents & venvs
+.agents/
+.venv/
+.venv*/
+
 # Python bytecode
 __pycache__/
 *.pyc
 trainer/__pycache__/
+

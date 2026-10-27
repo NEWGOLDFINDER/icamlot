@@ -81,6 +81,7 @@
     if (act.p) st.p = act.p;
     if (act.z) st.z = act.z;
     if (act.side) st.side = act.side;
+    if (act.pm) st.pm = act.pm;
     if (act.a === 'tour') {
       var held = sim.held()[act.f];
       var stack = held && held.stack ? held.stack : [];
@@ -104,7 +105,10 @@
     if (idx < 0) return false;
     var sts = sim.stones().filter(function (st) { return st.pk === idx; });
     if (sts.length !== 3) return false;
-    if (!sts.every(function (x) { return x.cur.k === 'home'; })) return false;
+    var tag = sts[0].tag;
+    if (!sts.every(function (x) { return x.tag === tag; })) return false;
+    if (tag !== 'home' && (!tag || !tag.startsWith('d') || sts[0].cur.k !== 'free' || (sts[0].cur.geo && sts[0].cur.geo.vertical))) return false;
+    if (sim.covered && sim.covered(sts[2], sts)) return false;
     if (sim.claimed && sts.some(function (x) { return sim.claimed(x.id); })) return false;
     return true;
   }
@@ -209,10 +213,19 @@
     { id: 'M3', x: 850, y: 1000, r: 210 },
     { id: 'M4', x: 679.3, y: 1429.5, r: 210 },
     { id: 'M5', x: 250, y: 1600, r: 210 },
+    { id: 'M6', x: 2750, y: 400, r: 210 },
+    { id: 'M7', x: 2320.7, y: 570.8, r: 210 },
+    { id: 'M8', x: 2150, y: 1000, r: 210 },
+    { id: 'M9', x: 2320.7, y: 1429.5, r: 210 },
+    { id: 'M10', x: 2750, y: 1600, r: 210 },
     { id: 'T1', x: 500, y: 400, r: 180 },
     { id: 'T2', x: 850, y: 750, r: 180 },
     { id: 'T3', x: 850, y: 1250, r: 180 },
-    { id: 'T4', x: 500, y: 1600, r: 180 }
+    { id: 'T4', x: 500, y: 1600, r: 180 },
+    { id: 'T5', x: 2500, y: 400, r: 180 },
+    { id: 'T6', x: 2150, y: 750, r: 180 },
+    { id: 'T7', x: 2150, y: 1250, r: 180 },
+    { id: 'T8', x: 2500, y: 1600, r: 180 }
   ];
 
   function segmentHitsCircle(ax, ay, bx, by, cx, cy, r) {
@@ -245,8 +258,14 @@
     var isBlue = (sim.params && sim.params().team === 'blue');
     var targetPk = act && act.famille === 'prendre' ? (isBlue && typeof ENGINE !== 'undefined' ? ENGINE.mirrorId(act.p) : act.p) : null;
     var stones = typeof sim.stones === 'function' ? sim.stones() : [];
+    var held = typeof sim.held === 'function' ? sim.held() : (sim.held || {});
+    var nA = (held.A && held.A.stack) ? held.A.stack.filter(function (x) { return x; }).length : 0;
+    var nB = (held.B && held.B.stack) ? held.B.stack.filter(function (x) { return x; }).length : 0;
+    var rRob = 235;
+    if (nA > 0 && nB > 0) rRob = 350;
+    else if (nA > 0 || nB > 0) rRob = 310;
 
-    // 1. Collision avec les paquets P1..P10 encore au sol
+    // 1. Collision avec les paquets P1..P10 encore au sol (boîte rectangulaire dilatée)
     for (var k = 0; k < 10; k++) {
       var pkId = 'P' + (k + 1);
       if (pkId === targetPk) continue;
@@ -260,11 +279,15 @@
       var acx = cx - ax, acy = cy - ay;
       var u = Math.max(0, Math.min(1, (acx * abx + acy * aby) / l2));
       var px = ax + u * abx, py = ay + u * aby;
-      var dist = Math.hypot(cx - px, cy - py);
-      if (dist < 235 && u > 0.05 && u < 0.95) return true;
+      var hx = (k === 8 || k === 9) ? 55 : 160;
+      var hy = (k === 8 || k === 9) ? 160 : 55;
+      var dx = Math.max(0, Math.abs(px - cx) - hx);
+      var dy = Math.max(0, Math.abs(py - cy) - hy);
+      var distToBox = Math.hypot(dx, dy);
+      if (distToBox < rRob && u > 0.05 && u < 0.95) return true;
     }
 
-    // 2. Collision avec les constructions (M1..M5, T1..T4) déjà posées
+    // 2. Collision avec les constructions (M1..M10, T1..T8) déjà posées
     var targetZone = act && act.z ? (isBlue && typeof ENGINE !== 'undefined' ? ENGINE.mirrorId(act.z) : act.z) : null;
     for (var b = 0; b < BUILD_OBSTACLES.length; b++) {
       var obs = BUILD_OBSTACLES[b];
@@ -273,6 +296,16 @@
       if (!zoneHasBuild(sim, zId)) continue;
       var ox = isBlue ? 3000 - obs.x : obs.x, oy = obs.y;
       if (segmentHitsCircle(ax, ay, bx, by, ox, oy, obs.r)) return true;
+    }
+
+    // 2b. Collision avec toute pierre libre sur la table (déposée)
+    for (var sIdx = 0; sIdx < stones.length; sIdx++) {
+      var stItem = stones[sIdx];
+      if (stItem.cur && stItem.cur.k === 'free' && stItem.cur.geo && stItem.cur.geo.fo) {
+        var fo = stItem.cur.geo.fo;
+        if (targetPk && stItem.pk === parseInt(targetPk.slice(1), 10) - 1) continue;
+        if (segmentHitsCircle(ax, ay, bx, by, fo.cx, fo.cy, rRob + 55)) return true;
+      }
     }
 
     // 3. Empêcher de traverser l'enceinte du château si elle est fermée

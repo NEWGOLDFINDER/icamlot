@@ -200,6 +200,12 @@ class DualESP32Orchestrator:
         # --- ÉTAPE 3 : Action finale au contact ---
         resp_act_exec = self.act.send_command(act_exec_cmd)
 
+        # Vérification du capteur de dépression pneumatique (ventouses sous vide)
+        vacuum_ack = True
+        if fam == "prendre":
+            # Sur l'ESP32 Actionneurs, la commande renvoie "OK EXECUTE A VACUUM_SEAL [P1 P2 P3]"
+            vacuum_ack = ("VACUUM_SEAL" in resp_act_exec or "OK" in resp_act_exec) and not ("ERR" in resp_act_exec)
+
         time_saved = (dt_move + mech) - dt_total
 
         return {
@@ -213,6 +219,7 @@ class DualESP32Orchestrator:
             "time_saved": round(time_saved, 2),
             "resp_nav": resp_nav,
             "resp_act": resp_act_exec,
+            "vacuum_ack": vacuum_ack,
         }
 
     def close(self):

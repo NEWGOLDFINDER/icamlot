@@ -174,6 +174,10 @@ class Pi5EurobotAgent:
         walls = state.get("walls", [0.0] * 5)
         towers = state.get("towers", [0] * 4)
 
+        hA = state.get("held_A", 0)
+        hB = state.get("held_B", 0)
+        r_rob = 350.0 if (hA > 0 and hB > 0) else (310.0 if (hA > 0 or hB > 0) else 235.0)
+
         # 1. Paquets P1..P10
         pack_centers = [
             (750.0, 55.0), (1250.0, 55.0), (1750.0, 55.0), (2250.0, 55.0),
@@ -195,7 +199,11 @@ class Pi5EurobotAgent:
             u = max(0.0, min(1.0, (ac_x * ab_x + ac_y * ab_y) / l2))
             px = ax + u * ab_x
             py = ay + u * ab_y
-            if math.hypot(cx - px, cy - py) < 235.0 and 0.05 < u < 0.95:
+            hx = 55.0 if pk_idx in (8, 9) else 160.0
+            hy = 160.0 if pk_idx in (8, 9) else 55.0
+            dx = max(0.0, abs(px - cx) - hx)
+            dy = max(0.0, abs(py - cy) - hy)
+            if math.hypot(dx, dy) < r_rob and 0.05 < u < 0.95:
                 return True
 
         # 2. Murs construits M1..M5
@@ -678,9 +686,13 @@ class Pi5EurobotAgent:
             f = act_info.get("f", "A")
             if fam == "prendre":
                 p_idx = int(act_info.get("p", "P1")[1:]) - 1
-                state["packs"][p_idx] = 0
-                state[f"held_{f}"] = 3
-                state[f"flat_{f}"] = True
+                vacuum_ok = res.get("vacuum_ack", True)
+                if vacuum_ok:
+                    state["packs"][p_idx] = 0
+                    state[f"held_{f}"] = 3
+                    state[f"flat_{f}"] = True
+                else:
+                    print(f"ALERTE PNEUMATIQUE : Dépression non confirmée sur face {f} pour {act_info.get('p')}")
             elif fam == "mur":
                 z_idx = ["M1", "M2", "M3", "M4", "M5"].index(act_info.get("z", "M1"))
                 state["walls"][z_idx] = 0.5
@@ -711,6 +723,19 @@ class Pi5EurobotAgent:
                     t_match = 80.0
                 else:
                     t_match = 100.0
+
+            # Mise à jour des croyances de paquets volés par l'adversaire via lidar
+            opp_x = float(state.get("opp_x", 0.0))
+            opp_y = float(state.get("opp_y", 0.0))
+            if opp_x > 0.0 and opp_y > 0.0:
+                pack_centers_fixed = [
+                    (750.0, 55.0), (1250.0, 55.0), (1750.0, 55.0), (2250.0, 55.0),
+                    (750.0, 1945.0), (1250.0, 1945.0), (1750.0, 1945.0), (2250.0, 1945.0),
+                    (1500.0, 500.0), (1500.0, 1500.0)
+                ]
+                for pk_k, (cx, cy) in enumerate(pack_centers_fixed):
+                    if math.hypot(opp_x - cx, opp_y - cy) < 300.0:
+                        state["packs"][pk_k] = 0
 
             act_label = f"{act_info.get('a')} {act_info.get('p') or act_info.get('z') or ''}"
             print(

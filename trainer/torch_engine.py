@@ -80,6 +80,9 @@ class TorchEnv:
         self.on_error = (self.config.get("recompense") or {}).get("sur_erreur") or self.config.get("onError") or "penalite"
         # Support du pipelining matériel en temps masqué (Dual ESP32 Navigation + Actionneurs)
         self.pipelined_mech = bool(self.config.get("pipelined_mech", False))
+        # Pénalité de détour cinématique et adversaire dynamique
+        self.detour_penalty = float(self.config.get("detour_penalty", 1.0))
+        self.dynamic_opp = bool(self.config.get("dynamic_opponent", False))
 
         # Charger la table des métadonnées des 106 actions
         self._init_actions_tensors()
@@ -339,16 +342,23 @@ class TorchEnv:
         AB_exp = AB_vec.unsqueeze(2)                                        # (B, N, 1, 2)
         L2_exp = L2_dist.unsqueeze(2)                                       # (B, N, 1, 1)
 
-        # 1. Paquets P1..P10
+        # 1. Paquets P1..P10 (boîte orientée Minkowski + rayon dynamique)
         C_packs = self.pack_centers.unsqueeze(0).unsqueeze(0)               # (1, 1, 10, 2)
         AC_packs = C_packs - A_exp
         u_p = ((AC_packs * AB_exp).sum(dim=-1, keepdim=True) / L2_exp).clamp(0.0, 1.0)
         P_p = A_exp + u_p * AB_exp
-        dist_p = torch.hypot(C_packs[..., 0] - P_p[..., 0], C_packs[..., 1] - P_p[..., 1])
         u_p_sq = u_p.squeeze(-1)
         target_pk = torch.where(fam_t == 0, item_t, torch.full_like(item_t, -1))
         is_p_obs = (self.pack_stones > 0).unsqueeze(1) & (self.pack_indices.unsqueeze(1) != target_pk.unsqueeze(-1))
-        hit_p = ((dist_p < 235.0) & (u_p_sq > 0.05) & (u_p_sq < 0.95) & is_p_obs).any(dim=-1)
+        hA_blk = (self.held_count[:, 0] > 0).unsqueeze(1)
+        hB_blk = (self.held_count[:, 1] > 0).unsqueeze(1)
+        r_rob_blk = torch.where(hA_blk & hB_blk, 350.0, torch.where(hA_blk | hB_blk, 310.0, 235.0)).unsqueeze(-1)
+        hx_blk = torch.tensor([160.0] * 8 + [55.0] * 2, device=self.device).view(1, 1, 10)
+        hy_blk = torch.tensor([55.0] * 8 + [160.0] * 2, device=self.device).view(1, 1, 10)
+        dx_p = (torch.abs(P_p[..., 0] - C_packs[..., 0]) - hx_blk).clamp(min=0.0)
+        dy_p = (torch.abs(P_p[..., 1] - C_packs[..., 1]) - hy_blk).clamp(min=0.0)
+        dist_p = torch.hypot(dx_p, dy_p)
+        hit_p = ((dist_p < r_rob_blk) & (u_p_sq > 0.05) & (u_p_sq < 0.95) & is_p_obs).any(dim=-1)
 
         # 2. Murs construits M1..M5
         C_walls = self.wall_centers.unsqueeze(0).unsqueeze(0)               # (1, 1, 5, 2)
@@ -642,7 +652,7 @@ class TorchEnv:
                    torch.hypot(tx - W[:, 0, 0], ty - W[:, 0, 1]))
             min_detour = torch.where(w_ok, torch.minimum(min_detour, d_w), min_detour)
 
-        dist = torch.where(~dir_blk, d_dir, torch.where(min_detour < 1e8, min_detour, d_dir))
+        dist = torch.where(~dir_blk, d_dir, torch.where(min_detour < 1e8, min_detour * self.detour_penalty, d_dir))
 
         dh = torch.abs((th - self.robot_pose[:, 2] + 180.0) % 360.0 - 180.0)
 
@@ -666,16 +676,24 @@ class TorchEnv:
         AB = (B_target - A).unsqueeze(1)
         L2 = (AB ** 2).sum(dim=-1, keepdim=True).clamp(min=1e-6)
 
-        # 1. Collision avec paquets / caisses non pris (seuil 235 mm)
+        # 1. Collision avec paquets / caisses non pris (boîte orientée Minkowski + rayon dynamique)
         C_pk = self.pack_centers.unsqueeze(0)
         AC_pk = C_pk - A.unsqueeze(1)
         u_pk = ((AC_pk * AB).sum(dim=-1, keepdim=True) / L2).clamp(0.0, 1.0)
         P_proj_pk = A.unsqueeze(1) + u_pk * AB
-        dist_pk = torch.hypot(C_pk[..., 0] - P_proj_pk[..., 0], C_pk[..., 1] - P_proj_pk[..., 1])
+        u_pk_sq = u_pk.squeeze(-1)
 
         target_pack = torch.where(fam == 0, item, -1).unsqueeze(1)
         pack_is_obstacle = (self.pack_stones > 0) & (self.pack_indices != target_pack)
-        hit_pack = active & is_valid & ((dist_pk < 235.0) & pack_is_obstacle).any(dim=1)
+        hA_st = (self.held_count[:, 0] > 0)
+        hB_st = (self.held_count[:, 1] > 0)
+        r_rob_st = torch.where(hA_st & hB_st, 350.0, torch.where(hA_st | hB_st, 310.0, 235.0)).unsqueeze(1)
+        hx_st = torch.tensor([160.0] * 8 + [55.0] * 2, device=self.device).view(1, 10)
+        hy_st = torch.tensor([55.0] * 8 + [160.0] * 2, device=self.device).view(1, 10)
+        dx_pk = (torch.abs(P_proj_pk[..., 0] - C_pk[..., 0]) - hx_st).clamp(min=0.0)
+        dy_pk = (torch.abs(P_proj_pk[..., 1] - C_pk[..., 1]) - hy_st).clamp(min=0.0)
+        dist_pk = torch.hypot(dx_pk, dy_pk)
+        hit_pack = active & is_valid & ((dist_pk < r_rob_st) & (u_pk_sq > 0.05) & (u_pk_sq < 0.95) & pack_is_obstacle).any(dim=1)
 
         # 1b. Collision avec murs déjà construits (M1..M5) et tours (T1..T4)
         C_w = self.wall_centers.unsqueeze(0)
@@ -803,6 +821,20 @@ class TorchEnv:
         # Avancement du temps (sauf pour boulets et trône déjà traités)
         not_special = active & (fam != 4) & (fam != 7)
         self.t[not_special] += dt_total[not_special]
+
+        if self.dynamic_opp and self.has_opp:
+            # L'adversaire avance au cours du match et prend les paquets miroirs P4 (idx 3) et P8 (idx 7)
+            t_cur = self.t
+            opp_p4 = (t_cur > 20.0)
+            opp_p8 = (t_cur > 45.0)
+            self.pack_stones[opp_p4, 3] = 0
+            self.pack_stones[opp_p8, 7] = 0
+            self.opp_pose[~opp_p4, 0] = 2750.0
+            self.opp_pose[~opp_p4, 1] = 1000.0
+            self.opp_pose[opp_p4 & (~opp_p8), 0] = 2250.0
+            self.opp_pose[opp_p4 & (~opp_p8), 1] = 305.5
+            self.opp_pose[opp_p8, 0] = 2250.0
+            self.opp_pose[opp_p8, 1] = 1694.5
 
         # Fin d'épisode si t >= 100 s
         self.done = self.done | (self.t >= MATCH_DURATION)

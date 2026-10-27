@@ -1,6 +1,7 @@
 /* Environnement d'apprentissage : reset / step, observations, masque, adversaire en mode rapide. */
 (function (root) {
   var MATCH = 100;
+  var DEFAULT_GROUPS = ['temps', 'robot', 'paquets', 'faces', 'constructions', 'graal', 'boulets', 'adversaire'];
   var GROUPS = [
     { id: 'temps', label: 'Temps', vars: [{ id: 'temps', nom: 'Temps restant', desc: 'Secondes restantes / 100 s', n: 1 }] },
     { id: 'robot', label: 'Robot', vars: [{ id: 'robot', nom: 'Pose du robot', desc: 'x / 3000, y / 2000, cos(cap), sin(cap)', n: 4 }] },
@@ -9,12 +10,14 @@
     { id: 'constructions', label: 'Constructions', vars: [{ id: 'constructions', nom: 'Murs et tours jaunes', desc: 'M1–M5 (vide / mur / porte) et T1–T4 (vide / tour)', n: 9 }] },
     { id: 'graal', label: 'Graal', vars: [{ id: 'graal', nom: 'État du Graal', desc: 'au départ / tenu / posé, niveau / 4', n: 4 }] },
     { id: 'boulets', label: 'Boulets', vars: [{ id: 'boulets', nom: 'Boulets lâchés', desc: '0 ou 1', n: 1 }] },
-    { id: 'adversaire', label: 'Adversaire (lidar)', vars: [{ id: 'adversaire', nom: 'Position adverse', desc: 'x / 3000, y / 2000 vus par le lidar', n: 2 }] }
+    { id: 'adversaire', label: 'Adversaire (lidar)', vars: [{ id: 'adversaire', nom: 'Position adverse', desc: 'x / 3000, y / 2000 vus par le lidar', n: 2 }] },
+    { id: 'proprioception', label: 'Proprioception', vars: [{ id: 'proprioception', nom: 'État fin des pinces', desc: 'Vide [A0..2, B0..2], rot/90, hc/300, rayon enveloppe', n: 11 }] },
+    { id: 'spatial', label: 'Spatial', vars: [{ id: 'spatial', nom: 'Dégagement corridors (raycasting 8 directions)', desc: 'Distances libres dans 8 directions relatives', n: 8 }] }
   ];
   var GROUP_N = {}; GROUPS.forEach(function (g) { GROUP_N[g.id] = g.vars[0].n; });
 
   function nInputs(groups) {
-    var n = 0; (groups || GROUPS.map(function (g) { return g.id; })).forEach(function (id) { n += GROUP_N[id] || 0; });
+    var n = 0; (groups || DEFAULT_GROUPS).forEach(function (id) { n += GROUP_N[id] || 0; });
     return n;
   }
 
@@ -69,7 +72,7 @@
 
   /* oppPose : position de l'adversaire en vrai repère de la table ; elle est présentée dans le repère du cerveau */
   function observe(sim, groups, belief, oppPose) {
-    groups = groups || GROUPS.map(function (g) { return g.id; });
+    groups = groups || DEFAULT_GROUPS.slice();
     var p = ownPose(sim), t = sim.time(), held = sim.held(), graal = sim.graal().cur, balls = sim.balls();
     var blue = teamOf(sim) === 'blue';
     var out = [];
@@ -109,6 +112,30 @@
       if (id === 'adversaire') {
         var o = oppPose || { x: 0, y: 0 };
         push(((blue ? 3000 - (o.x || 0) : (o.x || 0))) / 3000, (o.y || 0) / 2000);
+      }
+      if (id === 'proprioception') {
+        var pNow = sim.pose();
+        var vA = (pNow.A && pNow.A.vac) || [0, 0, 0];
+        var vB = (pNow.B && pNow.B.vac) || [0, 0, 0];
+        push(vA[0], vA[1], vA[2], ((pNow.A && pNow.A.rot) || 0) / 90.0, ((pNow.A && pNow.A.hc) || 165) / 300.0);
+        push(vB[0], vB[1], vB[2], ((pNow.B && pNow.B.rot) || 0) / 90.0, ((pNow.B && pNow.B.hc) || 165) / 300.0);
+        var rHull = (sim.hullRadius ? sim.hullRadius() : 235) / 350.0;
+        push(rHull);
+      }
+      if (id === 'spatial') {
+        var pPos = sim.pose();
+        var rx = pPos.x, ry = pPos.y, rcap = pPos.h;
+        for (var ray = 0; ray < 8; ray++) {
+          var ang = (rcap + ray * 45) * Math.PI / 180.0;
+          var dx = Math.cos(ang), dy = Math.sin(ang);
+          var maxD = 1000.0, stepD = 50.0, freeD = maxD;
+          for (var distVal = 50.0; distVal <= maxD; distVal += stepD) {
+            var qx = rx + distVal * dx, qy = ry + distVal * dy;
+            if (qx < 70 || qx > 2930 || qy < 70 || qy > 1930) { freeD = distVal; break; }
+            if (ACTIONS.hitsCrates(sim, rx, ry, qx, qy, null)) { freeD = distVal; break; }
+          }
+          push(freeD / maxD);
+        }
       }
     });
     return out;
@@ -199,7 +226,7 @@
      next(sim, otherSim) renvoie la brique à jouer dans le vrai repère du robot (miroir déjà appliqué) ;
      program() renvoie ce que le cerveau a décidé, dans son propre repère (rejouable comme une stratégie). */
   function brainAgent(brain, scenarioSeed) {
-    var groups = brain.entrees || GROUPS.map(function (g) { return g.id; });
+    var groups = brain.entrees || DEFAULT_GROUPS.slice();
     var catalogue = ACTIONS.filterByFamilles(brain.familles || ACTIONS.FAMILLES.map(function (f) { return f.id; }));
     var choose = brain.choose || chooserFromLayers(brain.layers, brain.acts);
     var belief = makeBelief(), last = -1, same = 0, n = 0, rec = [];
@@ -220,6 +247,15 @@
         var opp = other ? other.poseAtT(t) : null;
         var idx = choose(observe(sim, groups, belief, opp), m);
         if (idx == null || idx < 0 || !m[idx]) return null;
+        if (brain.filterSafety) {
+          while (idx != null && idx >= 0 && m[idx]) {
+            if (testSimActionSafety(sim, catalogue[idx])) break;
+            m[idx] = 0;
+            if (!m.some(function (x) { return x; })) { idx = -1; break; }
+            idx = choose(observe(sim, groups, belief, opp), m);
+          }
+          if (idx == null || idx < 0 || !m[idx]) return null;
+        }
         if (idx === last) same++; else { same = 1; last = idx; }
         n++;
         var brick = ACTIONS.toProgramStep(catalogue[idx], sim);
@@ -256,7 +292,7 @@
 
   function create(opts) {
     opts = opts || {};
-    var groups = opts.entrees || GROUPS.map(function (g) { return g.id; });
+    var groups = opts.entrees || DEFAULT_GROUPS.slice();
     var familles = opts.familles || ACTIONS.FAMILLES.map(function (f) { return f.id; });
     var catalogue = ACTIONS.filterByFamilles(familles);
     var params = Object.assign({}, ENGINE.DEF, opts.params || {});
@@ -355,11 +391,36 @@
       lastScore = SCORE.scoreAt(sim.result(false), sim.params(), t1).total;
       if (t1 >= MATCH) done = true;
     }
+    /* Vérification de sécurité physique en amont : teste l'action dans une copie du monde et vérifie l'absence de collision et d'erreur */
+    function testActionSafety(act) {
+      if (!sim || typeof sim.snapshot !== 'function') return true;
+      var snap = snapshot();
+      try {
+        var brick = ACTIONS.toProgramStep(act, sim);
+        var prevErrCount = (snap.sim.errors || []).length;
+        var info = exec(brick);
+        var curSnap = sim.snapshot();
+        var hasErr = (curSnap.errors || []).length > prevErrCount || (info && info.err);
+        var hasCol = false;
+        if (!skipContacts) {
+          var res = sim.result(true);
+          hasCol = !!(res.collisions && res.collisions.length > 0);
+        }
+        restore(snap);
+        return !hasErr && !hasCol;
+      } catch (e) {
+        restore(snap);
+        return false;
+      }
+    }
+
     /* le match se termine : l'adversaire joue ce qui lui reste jusqu'à 100 s (pour que le rejeu soit complet) */
     function endMatch() { syncOpp(MATCH); }
+
     /* Le réseau décide après chaque brique, jusqu'à 100 s. Ce n'est pas un programme figé. */
     function play(chooseFn, scenario) {
       var st = reset(scenario || {}), n = 0, last = -1, same = 0, max = 80;
+      var doFilterSafety = opts.filterSafety || (scenario && scenario.filterSafety);
       while (!st.done && n < max && sim.time() < MATCH) {
         var m = liveMask(catalogue, st.mask, st.t, sim);
         if (same >= 2 && last >= 0 && m.some(function (x, i) { return x && i !== last; })) m[last] = 0;
@@ -369,6 +430,15 @@
         }
         var idx = chooseFn(st.obs, m);
         if (idx == null || idx < 0) break;
+        if (doFilterSafety) {
+          while (idx != null && idx >= 0 && m[idx]) {
+            if (testActionSafety(catalogue[idx])) break;
+            m[idx] = 0;
+            if (!m.some(function (x) { return x; })) { idx = -1; break; }
+            idx = chooseFn(st.obs, m);
+          }
+          if (idx == null || idx < 0 || !m[idx]) break;
+        }
         if (idx === last) same++; else { same = 1; last = idx; }
         st = step(idx);
         n++;
@@ -432,7 +502,26 @@
       belief = snap.belief; lastScore = snap.lastScore; done = snap.done; history = snap.history;
     }
 
-    return { reset: reset, step: step, play: play, imitate: imitate, program: program, opponentProgram: opponentProgram, result: result, snapshot: snapshot, restore: restore, catalogue: catalogue, groups: groups, nInputs: nInputs(groups), nOutputs: catalogue.length };
+    return { reset: reset, step: step, play: play, testActionSafety: testActionSafety, imitate: imitate, program: program, opponentProgram: opponentProgram, result: result, snapshot: snapshot, restore: restore, catalogue: catalogue, groups: groups, nInputs: nInputs(groups), nOutputs: catalogue.length };
+  }
+
+  function testSimActionSafety(sim, act) {
+    if (!sim || typeof sim.snapshot !== 'function') return true;
+    var snap = sim.snapshot();
+    try {
+      var brick = ACTIONS.toProgramStep(act, sim);
+      var prevErrCount = (snap.errors || []).length;
+      var info = sim.exec(brick);
+      var curSnap = sim.snapshot();
+      var hasErr = (curSnap.errors || []).length > prevErrCount || (info && info.err);
+      var res = sim.result(true);
+      var hasCol = !!(res.collisions && res.collisions.length > 0);
+      sim.restore(snap);
+      return !hasErr && !hasCol;
+    } catch (e) {
+      sim.restore(snap);
+      return false;
+    }
   }
 
   var EXAMPLE = [
@@ -448,11 +537,12 @@
   ];
 
   var api = {
-    MATCH: MATCH, GROUPS: GROUPS, nInputs: nInputs, create: create, mirrorId: mirrorId,
+    MATCH: MATCH, GROUPS: GROUPS, DEFAULT_GROUPS: DEFAULT_GROUPS, nInputs: nInputs, create: create, mirrorId: mirrorId,
     mirrorStep: mirrorStep, blueParams: blueParams, pickOpponent: pickOpponent,
     chooserFromLayers: chooserFromLayers, brainAgent: brainAgent, opponentSetup: opponentSetup,
     playProgram: playProgram, qualify: qualify, EXAMPLE: EXAMPLE,
-    observe: observe, makeBelief: makeBelief, updateBelief: updateBelief, liveMask: liveMask
+    observe: observe, makeBelief: makeBelief, updateBelief: updateBelief, liveMask: liveMask,
+    testActionSafety: testSimActionSafety
   };
   root.ENV = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
