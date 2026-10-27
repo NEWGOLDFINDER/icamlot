@@ -1,0 +1,90 @@
+{
+  "format": "camelot-cerveau",
+  "version": 1,
+  "name": "Cerveau-V2-Champion",
+  "entrees": [
+    "temps",
+    "robot",
+    "paquets",
+    "faces",
+    "constructions",
+    "graal",
+    "boulets",
+    "adversaire"
+  ],
+  "actions": {
+    "familles": [
+      "prendre",
+      "mur",
+      "tour",
+      "porte",
+      "boulets",
+      "prendreGraal",
+      "poserGraal",
+      "trone"
+    ],
+    "cotes": [
+      "ext",
+      "int"
+    ]
+  },
+  "reseau": {
+    "couches": [
+      {
+        "neurones": 256,
+        "activation": "relu"
+      },
+      {
+        "neurones": 128,
+        "activation": "relu"
+      },
+      {
+        "neurones": 64,
+        "activation": "relu"
+      },
+      {
+        "neurones": 64,
+        "activation": "relu"
+      },
+      {
+        "neurones": 64,
+        "activation": "relu"
+      }
+    ],
+    "sortie": "softmax"
+  },
+  "adversaire": {
+    "actif": true,
+    "intensite": "realiste"
+  },
+  "methode": "evolution",
+  "reglages": {
+    "population": 40,
+    "generations": 50,
+    "mutation": 0.08,
+    "scenarios_par_evaluation": 3,
+    "graine": 42,
+    "duree_max": 600,
+    "epoques": 100,
+    "taux_apprentissage": 0.003,
+    "lot": 64,
+    "mode": "rapide"
+  },
+  "recompense": {
+    "base": "score",
+    "penalite_erreur": 20.0,
+    "penalite_contact": 20.0,
+    "sur_erreur": "penalite"
+  },
+  "graine": 42,
+  "n_entrees": 37,
+  "n_sorties": 106,
+  "n_parametres": 66090,
+  "metadonnees": {
+    "moteur": "1.3.0",
+    "bareme": "2027-1.0"
+  },
+  "updated": 1793087169,
+  "best_score": 105.0,
+  "last_training": 1793087169
+}

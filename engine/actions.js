@@ -233,7 +233,8 @@
     [1050, 320],   // Nord-Ouest
     [1050, 1680],  // Sud-Ouest
     [1750, 820],   // Nord-Est
-    [1750, 1180]   // Sud-Est
+    [1750, 1180],  // Sud-Est
+    [1050, 1000]   // Entrée Centre Château (Est)
   ];
 
   function isSegmentBlocked(ax, ay, bx, by, act, sim) {
@@ -279,7 +280,10 @@
     var inCastleAfter = (isBlue ? (3000 - bx) : bx) < 760 && by > 300 && by < 1700;
     var exitsOpen = ['M2', 'M3', 'M4'].filter(function (z) {
       var zid = isBlue && typeof ENGINE !== 'undefined' ? ENGINE.mirrorId(z) : z;
-      if (zid === targetZone && act && (act.famille === 'mur' || act.famille === 'porte')) return false;
+      if (zid === targetZone && act && (act.famille === 'mur' || act.famille === 'porte')) {
+        if (inCastleAfter) return true;
+        return false;
+      }
       return !zoneHasBuild(sim, zid);
     }).length;
 
@@ -290,7 +294,7 @@
     // 4. Ne pas fermer la DERNIÈRE porte de façade depuis l'EXTÉRIEUR
     if (act) {
       var isFrontWall = (act.famille === 'mur' || act.famille === 'porte') && (act.z === 'M2' || act.z === 'M3' || act.z === 'M4');
-      if (isFrontWall && !inCastleAfter && exitsOpen === 1 && !zoneHasBuild(sim, targetZone)) {
+      if (isFrontWall && !inCastleAfter && exitsOpen === 0 && !zoneHasBuild(sim, targetZone)) {
         return true;
       }
     }
@@ -377,7 +381,12 @@
     return (catalogue || ALL).map(function (act) { return valid(act, sim) ? 1 : 0; });
   }
 
-  var api = { FACES: FACES, PACKS: PACKS, MURS: MURS, TOURS: TOURS, COTES: COTES, FAMILLES: FAMILLES, ALL: ALL, filterByFamilles: filterByFamilles, toProgramStep: toProgramStep, indexOfStep: indexOfStep, valid: valid, mask: mask };
+  var api = {
+    FACES: FACES, PACKS: PACKS, MURS: MURS, TOURS: TOURS, COTES: COTES, FAMILLES: FAMILLES, ALL: ALL,
+    filterByFamilles: filterByFamilles, toProgramStep: toProgramStep, indexOfStep: indexOfStep,
+    valid: valid, mask: mask, hitsCrates: hitsCrates, isSegmentBlocked: isSegmentBlocked,
+    getEffectiveActionDistance: getEffectiveActionDistance
+  };
   root.ACTIONS = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

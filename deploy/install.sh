@@ -46,6 +46,14 @@ rm -rf /var/www/point-counter
 # API (connexion, stratégies, cerveaux, entraînements)
 id icamlot >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin icamlot
 install -d -o icamlot -g icamlot -m 750 /var/lib/icamlot /var/lib/icamlot/strategies /var/lib/icamlot/brains /var/lib/icamlot/trainings /var/lib/icamlot/weights
+if [ -d "$SRC/.data/brains" ]; then
+  cp -f "$SRC"/.data/brains/*.json /var/lib/icamlot/brains/ 2>/dev/null || true
+  chown -R icamlot:icamlot /var/lib/icamlot/brains 2>/dev/null || true
+fi
+if [ -d "$SRC/.data/weights" ]; then
+  cp -f "$SRC"/.data/weights/* /var/lib/icamlot/weights/ 2>/dev/null || true
+  chown -R icamlot:icamlot /var/lib/icamlot/weights 2>/dev/null || true
+fi
 if [ -n "${ICAMLOT_PASSWORD:-}" ]; then
   install -d -m 750 /etc/icamlot
   (umask 077; printf 'ICAMLOT_PASSWORD=%s\n' "$ICAMLOT_PASSWORD" > /etc/icamlot/api.env)
