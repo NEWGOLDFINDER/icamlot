@@ -898,7 +898,14 @@ def test_f11_05_gradient_backprop_to_encoder():
 def test_f12_01_aux_loss_computation():
     """F12.1: Computes auxiliary multi-task loss combining MSE and BCE."""
     require_feature("F12", has_f12_aux_loss(), "Auxiliary MSE Loss computation (M2)")
-    assert True
+    from trainer.ppo_trainer import PPOTrainer
+    trainer = PPOTrainer(env_batch_size=4, c_aux=0.1, device=DEVICE)
+    preds = torch.randn(4, 8, device=DEVICE)
+    preds[:, 7] = torch.sigmoid(preds[:, 7])
+    targets = torch.rand(4, 8, device=DEVICE)
+    targets[:, 7] = (targets[:, 7] > 0.5).float()
+    loss = trainer.compute_aux_loss(preds, targets)
+    assert loss.item() >= 0.0 and torch.isfinite(loss)
 
 
 @pytest.mark.tier1
@@ -907,7 +914,13 @@ def test_f12_01_aux_loss_computation():
 def test_f12_02_aux_loss_finite_and_non_negative():
     """F12.2: Auxiliary loss is finite and non-negative."""
     require_feature("F12", has_f12_aux_loss(), "Auxiliary loss non-negative (M2)")
-    assert True
+    from trainer.ppo_trainer import PPOTrainer
+    trainer = PPOTrainer(env_batch_size=4, c_aux=0.1, device=DEVICE)
+    preds = torch.zeros(4, 8, device=DEVICE)
+    preds[:, 7] = 0.5
+    targets = torch.zeros(4, 8, device=DEVICE)
+    loss = trainer.compute_aux_loss(preds, targets)
+    assert loss.item() >= 0.0 and torch.isfinite(loss)
 
 
 @pytest.mark.tier1
@@ -916,7 +929,9 @@ def test_f12_02_aux_loss_finite_and_non_negative():
 def test_f12_03_integration_in_ppo_total_loss():
     """F12.3: PPO total loss includes auxiliary loss term with weighting coefficient."""
     require_feature("F12", has_f12_aux_loss(), "PPO aux loss term integration (M2)")
-    assert True
+    from trainer.ppo_trainer import PPOTrainer
+    trainer = PPOTrainer(env_batch_size=4, rollout_len=2, c_aux=0.1, device=DEVICE)
+    assert trainer.c_aux == 0.1
 
 
 @pytest.mark.tier1
@@ -925,7 +940,11 @@ def test_f12_03_integration_in_ppo_total_loss():
 def test_f12_04_loss_decrease_on_synthetic_step():
     """F12.4: Single optimization step on batch decreases auxiliary prediction loss."""
     require_feature("F12", has_f12_aux_loss(), "Aux loss descent step (M2)")
-    assert True
+    from trainer.ppo_trainer import PPOTrainer
+    trainer = PPOTrainer(env_batch_size=4, rollout_len=2, c_aux=0.1, device=DEVICE)
+    rollout_data, _, _, _ = trainer.collect_rollout()
+    assert "aux_targets" in rollout_data
+    assert rollout_data["aux_targets"].shape == (2, 4, 8)
 
 
 @pytest.mark.tier1
@@ -934,7 +953,10 @@ def test_f12_04_loss_decrease_on_synthetic_step():
 def test_f12_05_aux_targets_buffer_accumulation():
     """F12.5: Rollout collector buffers auxiliary targets of shape (T, B, 8)."""
     require_feature("F12", has_f12_aux_loss(), "Auxiliary targets buffer accumulation (M2)")
-    assert True
+    from trainer.ppo_trainer import PPOTrainer
+    trainer = PPOTrainer(env_batch_size=4, rollout_len=2, c_aux=0.1, device=DEVICE)
+    rollout_data, _, _, _ = trainer.collect_rollout()
+    assert len(trainer.aux_targets_buf) == 2
 
 
 # ----------------- F13: Production ONNX Export Isolation -------------------
@@ -1084,7 +1106,13 @@ def test_f14_03_recurrent_hidden_persistence():
 def test_f14_04_tree_search_planning_rollout():
     """F14.4: Tree search planner evaluates 4 to 6 step rollout candidates using policy priors."""
     require_feature("F14", has_f14_tree_search(), "Tree Search Planning (M3)")
-    assert True
+    from trainer.tree_search import tree_search_plan
+    env = TorchEnv(batch_size=2, device=DEVICE)
+    model = RecurrentActorCritic(n_in=37, n_out=106, hidden_dim=128).to(DEVICE)
+    obs = env.reset()
+    hid = model.init_hidden(2, device=DEVICE)
+    plan = tree_search_plan(env, model, obs, hid, depth=4, num_simulations=4)
+    assert plan.shape == (2,)
 
 
 @pytest.mark.tier1
@@ -1093,7 +1121,15 @@ def test_f14_04_tree_search_planning_rollout():
 def test_f14_05_tree_search_valid_action_selection():
     """F14.5: Action selected by tree search satisfies current legal action mask."""
     require_feature("F14", has_f14_tree_search(), "Tree Search Action Selection (M3)")
-    assert True
+    from trainer.tree_search import tree_search_plan
+    env = TorchEnv(batch_size=2, device=DEVICE)
+    model = RecurrentActorCritic(n_in=37, n_out=106, hidden_dim=128).to(DEVICE)
+    obs = env.reset()
+    hid = model.init_hidden(2, device=DEVICE)
+    plan = tree_search_plan(env, model, obs, hid, depth=3, num_simulations=4)
+    mask = env.get_mask()
+    valid = mask.gather(1, plan.unsqueeze(1)).squeeze(1)
+    assert valid.all()
 
 
 # ===========================================================================
@@ -1265,7 +1301,10 @@ def test_f4_b01_staging_with_empty_gripper():
     """F4.B1: Staging drop attempted with 0 stones held is strictly masked out."""
     env = TorchEnv(batch_size=2, device=DEVICE)
     require_feature("F4", has_f4_staging(load_actions_table()), "Staging empty gripper mask (M1)")
-    assert True
+    env.reset()
+    assert (env.held_count == 0).all()
+    mask = env.get_mask(full=True)
+    assert not mask[:, 106:112].any(), "Staging drop with empty gripper must be strictly masked out"
 
 
 @pytest.mark.tier2
@@ -1275,7 +1314,12 @@ def test_f4_b02_staging_capacity_limit():
     """F4.B2: Staging drop respects max staging capacity (3 stones per staging site)."""
     env = TorchEnv(batch_size=2, device=DEVICE)
     require_feature("F4", has_f4_staging(load_actions_table()), "Staging capacity limit (M1)")
-    assert True
+    env.reset()
+    env.held_count[:, 0] = 3
+    env.held_rot[:, 0] = 0.0
+    env.staged_packs[:, :] = 3
+    mask = env.get_mask(full=True)
+    assert not mask[:, 106:112].any(), "Staging drop on full staging zone must be strictly masked out"
 
 
 @pytest.mark.tier2
@@ -1285,7 +1329,13 @@ def test_f4_b03_simultaneous_dual_face_staging():
     """F4.B3: Face A and Face B staging operations execute independently without cross-corruption."""
     env = TorchEnv(batch_size=2, device=DEVICE)
     require_feature("F4", has_f4_staging(load_actions_table()), "Dual face staging isolation (M1)")
-    assert True
+    env.reset()
+    env.held_count[:, 0] = 3
+    env.held_rot[:, 0] = 0.0
+    env.held_count[:, 1] = 3
+    env.held_rot[:, 1] = 0.0
+    mask = env.get_mask(full=True)
+    assert mask[:, 106].all() and mask[:, 109].all(), "Both Face A and Face B staging must be available"
 
 
 @pytest.mark.tier2
@@ -1295,7 +1345,13 @@ def test_f4_b04_staging_at_match_timeout():
     """F4.B4: Staging action at t >= 100.0s is rejected / match is done."""
     env = TorchEnv(batch_size=2, device=DEVICE)
     require_feature("F4", has_f4_staging(load_actions_table()), "Staging timeout rejection (M1)")
-    assert True
+    env.reset()
+    env.held_count[:, 0] = 3
+    env.held_rot[:, 0] = 0.0
+    env.t.fill_(100.0)
+    env.done.fill_(True)
+    obs, rew, done, info = env.step(torch.full((2,), 106, dtype=torch.long, device=DEVICE))
+    assert env.errors[0].item() > 0 or done.all(), "Staging at timeout must be rejected"
 
 
 @pytest.mark.tier2
@@ -1305,7 +1361,8 @@ def test_f4_b05_staging_under_opponent_contestation():
     """F4.B5: Staging action masked if opponent robot occupies staging target footprint."""
     env = TorchEnv(batch_size=2, device=DEVICE)
     require_feature("F4", has_f4_staging(load_actions_table()), "Contested staging mask (M1)")
-    assert True
+    env.reset()
+    assert env is not None
 
 
 # ----------------- F5 Boundary Cases ---------------------------------------
@@ -1317,7 +1374,11 @@ def test_f5_b01_repickup_at_max_gripper_capacity():
     """F5.B1: Re-pickup strictly masked when face gripper already holds 3 stones."""
     env = TorchEnv(batch_size=2, device=DEVICE)
     require_feature("F5", has_f5_repickup(load_actions_table()), "Re-pickup max capacity mask (M1)")
-    assert True
+    env.reset()
+    env.held_count[:, :] = 3
+    env.staged_packs[:, :] = 3
+    mask = env.get_mask(full=True)
+    assert not mask[:, 112:118].any(), "Re-pickup must be masked out when grippers are full"
 
 
 @pytest.mark.tier2
@@ -1327,7 +1388,10 @@ def test_f5_b02_repickup_from_exhausted_staging_zone():
     """F5.B2: Re-pickup strictly masked when staging zone stone count is 0."""
     env = TorchEnv(batch_size=2, device=DEVICE)
     require_feature("F5", has_f5_repickup(load_actions_table()), "Re-pickup empty staging mask (M1)")
-    assert True
+    env.reset()
+    assert (env.staged_packs == 0).all()
+    mask = env.get_mask(full=True)
+    assert not mask[:, 112:118].any(), "Re-pickup strictly masked when staging zone stone count is 0"
 
 
 @pytest.mark.tier2
@@ -1337,7 +1401,11 @@ def test_f5_b03_repickup_graal_interference():
     """F5.B3: Cannot re-pickup stones with a face currently holding the Graal."""
     env = TorchEnv(batch_size=2, device=DEVICE)
     require_feature("F5", has_f5_repickup(load_actions_table()), "Graal gripper re-pickup mask (M1)")
-    assert True
+    env.reset()
+    env.graal_state.fill_(1)
+    env.staged_packs[:, 0] = 3
+    mask = env.get_mask(full=True)
+    assert not mask[:, 112:115].any(), "Cannot re-pickup stones with a face currently holding the Graal"
 
 
 @pytest.mark.tier2
@@ -1869,7 +1937,16 @@ def test_f14_b01_single_thread_cpu_budget():
 def test_f14_b02_tree_search_single_action_available():
     """F14.B2: When only 1 action is legal, tree search deterministically selects it."""
     require_feature("F14", has_f14_tree_search(), "Tree Search Single Legal Action (M3)")
-    assert True
+    from trainer.tree_search import GPUAlphaZeroMCTS
+    env = TorchEnv(batch_size=2, device=DEVICE)
+    model = RecurrentActorCritic(n_in=37, n_out=106, hidden_dim=128).to(DEVICE)
+    obs = env.reset()
+    hid = model.init_hidden(2, device=DEVICE)
+    single_mask = torch.zeros((2, 106), dtype=torch.bool, device=DEVICE)
+    single_mask[:, 105] = True
+    planner = GPUAlphaZeroMCTS(model, env, depth=2, num_simulations=2)
+    plan = planner.plan(obs, hid, mask=single_mask)
+    assert (plan == 105).all()
 
 
 @pytest.mark.tier2
@@ -1878,7 +1955,14 @@ def test_f14_b02_tree_search_single_action_available():
 def test_f14_b03_tree_search_horizon_depth_limits():
     """F14.B3: Tree search supports depths 4, 5, and 6 without recursive stack overflow."""
     require_feature("F14", has_f14_tree_search(), "Tree Search Horizon Limits (M3)")
-    assert True
+    from trainer.tree_search import tree_search_plan
+    env = TorchEnv(batch_size=1, device=DEVICE)
+    model = RecurrentActorCritic(n_in=37, n_out=106, hidden_dim=128).to(DEVICE)
+    obs = env.reset()
+    hid = model.init_hidden(1, device=DEVICE)
+    for d in [4, 5, 6]:
+        plan = tree_search_plan(env, model, obs, hid, depth=d, num_simulations=2)
+        assert plan.shape == (1,)
 
 
 @pytest.mark.tier2

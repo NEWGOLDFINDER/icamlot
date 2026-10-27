@@ -101,15 +101,51 @@
   }
   function faceHoldsGraal(sim, f) { var h = sim.held()[f]; return !!(h && h.graal); }
   function packetStacked(sim, p) {
-    var idx = -1; ENGINE.PK.forEach(function (pk, i) { if (pk.id === p) idx = i; });
+    var idx = -1;
+    if (typeof ENGINE !== 'undefined' && ENGINE.PK) {
+      ENGINE.PK.forEach(function (pk, i) { if (pk.id === p) idx = i; });
+    } else {
+      idx = parseInt(p.replace(/\D/g, ''), 10) - 1;
+    }
     if (idx < 0) return false;
-    var sts = sim.stones().filter(function (st) { return st.pk === idx; });
+    var stones = typeof sim.stones === 'function' ? sim.stones() : (sim.stones || []);
+    var sts = stones.filter(function (st) { return st.pk === idx; });
     if (sts.length !== 3) return false;
-    var tag = sts[0].tag;
-    if (!sts.every(function (x) { return x.tag === tag; })) return false;
-    if (tag !== 'home' && (!tag || !tag.startsWith('d') || sts[0].cur.k !== 'free' || (sts[0].cur.geo && sts[0].cur.geo.vertical))) return false;
-    if (sim.covered && sim.covered(sts[2], sts)) return false;
+
+    // 1. Paquet intact au point de départ (home)
+    var allHome = sts.every(function (x) { return x.cur && x.cur.k === 'home'; });
+    if (allHome) {
+      if (sim.claimed && sts.some(function (x) { return sim.claimed(x.id); })) return false;
+      return true;
+    }
+
+    // 2. Paquet déposé / relayé sur la table (cur.k === 'free')
+    var allFree = sts.every(function (x) { return x.cur && x.cur.k === 'free'; });
+    if (!allFree) return false;
+
+    // Vérifier qu'aucune pierre n'est debout (doit être empilée à plat)
+    if (sts.some(function (x) { return x.cur.geo && x.cur.geo.vertical; })) return false;
+
+    // Vérifier la co-localisation horizontale des 3 pierres (tolérance 25 mm)
+    var p0 = sts[0].cur.geo && sts[0].cur.geo.fo;
+    if (!p0) return false;
+    for (var i = 1; i < sts.length; i++) {
+      var pi = sts[i].cur.geo && sts[i].cur.geo.fo;
+      if (!pi) return false;
+      if (Math.hypot(pi.cx - p0.cx, pi.cy - p0.cy) > 25.0) return false;
+    }
+
+    // Vérifier qu'aucun objet n'est posé par-dessus la pierre supérieure
+    var sorted = sts.slice().sort(function (a, b) {
+      var za = (a.cur.geo && a.cur.geo.zc) || 0;
+      var zb = (b.cur.geo && b.cur.geo.zc) || 0;
+      return za - zb;
+    });
+    if (sim.covered && sim.covered(sorted[2], sts)) return false;
+
+    // Vérifier qu'aucune pierre n'est réservée / prise par l'adversaire
     if (sim.claimed && sts.some(function (x) { return sim.claimed(x.id); })) return false;
+
     return true;
   }
   function stoneHeldRank(sim, f, rank) {
@@ -186,11 +222,33 @@
     'M5_ext': [250, 1770.5], 'M5_int': [250, 1429.5],
     'T1': [329.5, 400], 'T2': [679.5, 750], 'T3': [679.5, 1250], 'T4': [329.5, 1600],
     'PG_M1': [150, 320], 'PG_M2': [579.3, 490.8], 'PG_M3': [750, 920], 'PG_M4': [579.3, 1349.5], 'PG_M5': [150, 1520],
-    'PG_T1': [400, 320], 'PG_T2': [750, 670], 'PG_T3': [750, 1170], 'PG_T4': [400, 1520]
+    'PG_T1': [400, 320], 'PG_T2': [750, 670], 'PG_T3': [750, 1170], 'PG_T4': [400, 1520],
+    'SN': [1120.5, 450.0], 'SS': [1120.5, 1550.0], 'SC': [1279.5, 800.0]
+  };
+  var STAGING_ZONES = ['SN', 'SS', 'SC'];
+  var STAGING_TARGETS = {
+    'SN': [1120.5, 450.0],
+    'SS': [1120.5, 1550.0],
+    'SC': [1279.5, 800.0]
   };
 
-  function getActionTarget(act) {
-    if (act.p && ACTION_TARGETS[act.p]) return ACTION_TARGETS[act.p];
+  function getActionTarget(act, sim) {
+    if (act.p) {
+      if (sim && typeof sim.stones === 'function') {
+        var pkIdx = parseInt(act.p.replace(/\D/g, ''), 10) - 1;
+        var sts = sim.stones().filter(function (st) { return st.pk === pkIdx; });
+        if (sts.length === 3 && sts.every(function (x) { return x.cur && x.cur.k === 'free'; })) {
+          var fo = sts[0].cur.geo && sts[0].cur.geo.fo;
+          if (fo) {
+            var rin = 400.0 / (2.0 * Math.sqrt(3.0));
+            var phi = (fo.ang != null ? fo.ang - 90 : 0);
+            var rad = phi * Math.PI / 180.0;
+            return [fo.cx - (rin + 55.0) * Math.cos(rad), fo.cy - (rin + 55.0) * Math.sin(rad)];
+          }
+        }
+      }
+      if (ACTION_TARGETS[act.p]) return ACTION_TARGETS[act.p];
+    }
     if (act.z) {
       if (act.famille === 'mur' || act.famille === 'porte') {
         var key = act.z + '_' + (act.side || 'ext');
@@ -200,6 +258,9 @@
       if (act.famille === 'poserGraal') {
         var pgKey = 'PG_' + act.z;
         if (ACTION_TARGETS[pgKey]) return ACTION_TARGETS[pgKey];
+      }
+      if ((act.famille === 'staging' || act.famille === 'repickup') && ACTION_TARGETS[act.z]) {
+        return ACTION_TARGETS[act.z];
       }
     }
     if (act.famille === 'boulets' || act.famille === 'trone') return [250, 1000];
@@ -418,7 +479,8 @@
     FACES: FACES, PACKS: PACKS, MURS: MURS, TOURS: TOURS, COTES: COTES, FAMILLES: FAMILLES, ALL: ALL,
     filterByFamilles: filterByFamilles, toProgramStep: toProgramStep, indexOfStep: indexOfStep,
     valid: valid, mask: mask, hitsCrates: hitsCrates, isSegmentBlocked: isSegmentBlocked,
-    getEffectiveActionDistance: getEffectiveActionDistance
+    getEffectiveActionDistance: getEffectiveActionDistance, packetStacked: packetStacked,
+    getActionTarget: getActionTarget, STAGING_ZONES: STAGING_ZONES, STAGING_TARGETS: STAGING_TARGETS
   };
   root.ACTIONS = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

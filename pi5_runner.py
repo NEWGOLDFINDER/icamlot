@@ -438,8 +438,8 @@ class Pi5EurobotAgent:
             is_blue = (state.get("team") == "blue")
             in_field = (rx < 2500.0) if is_blue else (rx > 500.0)
             if in_field:
-                nA = held.get("A", 0)
-                nB = held.get("B", 0)
+                nA = held_A
+                nB = held_B
                 one_full_one_empty = (nA == 3 and nB == 0 and not g_held_B) or (nB == 3 and nA == 0 and not g_held_A)
                 if one_full_one_empty:
                     empty_face = "A" if (nA == 0 and not g_held_A) else "B"

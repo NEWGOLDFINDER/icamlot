@@ -1,21 +1,148 @@
 """Architectures de réseaux de neurones V2 haute performance pour ICAM LOT Eurobot 2027.
 
 Comprend :
-- FactorizedEncoder : Encodeur multi-branches spécialisé séparant :
-    1. Branche Géométrique continue (pose robot + lidar adverse : 6 entrées)
-    2. Branche Terrain & Scoring (paquets + murs + tours + graal : 23 entrées)
-    3. Branche Actionneurs & Temps (temps restant + pinces A/B + boulets : 8 entrées)
-    4. Fusion par normalisation LayerNorm et activation SiLU (Swish).
-- RecurrentActorCritic : Réseau récurrent (GRU 128) avec connexions résiduelles (ResNet)
-    sur l'Acteur (politique 106 actions) et le Critique (valeur V(s)).
-- Pi5ActorWrapper : Wrapper d'inférence pure exportable en ONNX (~620 Ko),
-    exécutable en ~42 µs sur processeur Cortex-A76 (Raspberry Pi 5).
+- EntityTokenizer : Tokeniseur d'entités objet-centré (22 entités Eurobot).
+- TransformerEncoder : Encodeur self-attention à 2 couches (d_model=64, nhead=4, GELU).
+- FactorizedEncoder : Encodeur multi-branches spécialisé séparant géométrie, table et mécanique.
+- WorldModelHead : Tête auxiliaire de dynamique physique (8 prédictions : pose, dt, enveloppe, contact).
+- RecurrentActorCritic : Réseau récurrent (GRU 128) avec têtes Acteur, Critique et World Model auxiliaire.
+- Pi5ActorWrapper : Wrapper d'inférence pure exportable en ONNX (~600 Ko, opset 18).
 """
 from __future__ import annotations
 
 import torch
 import torch.nn as nn
 from typing import Optional, Tuple
+
+
+class EntityTokenizer(nn.Module):
+    """Tokeniseur d'entités objet-centré (22 entités pour Eurobot 2027).
+
+    Convertit le vecteur d'observation standard (B, 37) en 22 jetons d'entités de dimension d_model=64.
+    Entités :
+    - 0 : Robot allié (pose, dt, pinces A/B, boulets -> 10 features)
+    - 1 : Robot adverse (lidar x, y -> 2 features)
+    - 2..11 : 10 Paquets P1..P10 (1 feature chacun)
+    - 12..16 : 5 Murs M1..M5 (1 feature chacun)
+    - 17..20 : 4 Tours T1..T4 (1 feature chacun)
+    - 21 : Graal (4 features)
+    """
+
+    def __init__(self, d_model: int = 64):
+        super().__init__()
+        self.d_model = d_model
+        self.num_entities = 22
+
+        self.proj_robot = nn.Linear(10, d_model)
+        self.proj_opp = nn.Linear(2, d_model)
+        self.proj_pack = nn.Linear(1, d_model)
+        self.proj_wall = nn.Linear(1, d_model)
+        self.proj_tower = nn.Linear(1, d_model)
+        self.proj_graal = nn.Linear(4, d_model)
+
+        self.type_embed = nn.Embedding(self.num_entities, d_model)
+        self.norm = nn.LayerNorm(d_model)
+
+    def forward(self, obs: torch.Tensor) -> torch.Tensor:
+        B = obs.shape[0]
+        device = obs.device
+
+        # 0. Robot : [rx, ry, rcos, rsin, t_rem, hA_n, hA_flat, hB_n, hB_flat, balls]
+        rob_feat = torch.cat([
+            obs[:, 1:5],   # rx, ry, rcos, rsin (4)
+            obs[:, 0:1],   # t_rem (1)
+            obs[:, 15:17], # hA_n, hA_flat (2)
+            obs[:, 18:20], # hB_n, hB_flat (2)
+            obs[:, 34:35], # balls (1)
+        ], dim=-1)
+        tok_rob = self.proj_robot(rob_feat).unsqueeze(1)  # (B, 1, d_model)
+
+        # 1. Adversaire : [opp_x, opp_y]
+        opp_feat = obs[:, 35:37]
+        tok_opp = self.proj_opp(opp_feat).unsqueeze(1)    # (B, 1, d_model)
+
+        # 2..11. 10 Paquets
+        pack_feat = obs[:, 5:15].unsqueeze(-1)           # (B, 10, 1)
+        tok_pack = self.proj_pack(pack_feat)             # (B, 10, d_model)
+
+        # 12..16. 5 Murs
+        wall_feat = obs[:, 21:26].unsqueeze(-1)          # (B, 5, 1)
+        tok_wall = self.proj_wall(wall_feat)             # (B, 5, d_model)
+
+        # 17..20. 4 Tours
+        tower_feat = obs[:, 26:30].unsqueeze(-1)         # (B, 4, 1)
+        tok_tower = self.proj_tower(tower_feat)          # (B, 4, d_model)
+
+        # 21. Graal : [g_home, g_held, g_posed, g_lvl]
+        graal_feat = obs[:, 30:34]
+        tok_graal = self.proj_graal(graal_feat).unsqueeze(1) # (B, 1, d_model)
+
+        tokens = torch.cat([tok_rob, tok_opp, tok_pack, tok_wall, tok_tower, tok_graal], dim=1)  # (B, 22, d_model)
+        type_ids = torch.arange(self.num_entities, device=device).unsqueeze(0).expand(B, -1)
+        tokens = tokens + self.type_embed(type_ids)
+        return self.norm(tokens)
+
+
+class TransformerEncoder(nn.Module):
+    """Encodeur Transformer auto-attention à 2 couches (d_model=64, nhead=4, GELU)."""
+
+    def __init__(self, d_model: int = 64, nhead: int = 4, num_layers: int = 2, dim_feedforward: int = 128):
+        super().__init__()
+        self.d_model = d_model
+        self.nhead = nhead
+        self.num_layers = num_layers
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=d_model,
+            nhead=nhead,
+            dim_feedforward=dim_feedforward,
+            activation="gelu",
+            batch_first=True,
+            norm_first=True,
+        )
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers, enable_nested_tensor=False)
+        self.norm = nn.LayerNorm(d_model)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.norm(self.transformer(x))
+
+
+class WorldModelHead(nn.Module):
+    """Tête auxiliaire de World Model prédisant les dynamiques physiques futures (8 variables).
+
+    Variables prédites :
+    - 0..1 : [x, y] coordonnées futures
+    - 2..3 : [cos, sin] orientation future
+    - 4 : delta_t durée mécanique (>= 0)
+    - 5..6 : [env_L, env_W] dimensions de l'enveloppe robot (>= 0)
+    - 7 : p_contact probabilité de collision / scellement dans [0, 1]
+    """
+
+    def __init__(self, hidden_dim: int = 128, action_dim: int = 32, n_actions: int = 106):
+        super().__init__()
+        self.hidden_dim = hidden_dim
+        self.action_dim = action_dim
+        self.action_embed = nn.Embedding(n_actions, action_dim)
+        self.net = nn.Sequential(
+            nn.Linear(hidden_dim + action_dim, hidden_dim),
+            nn.SiLU(),
+            nn.Linear(hidden_dim, 8),
+        )
+
+    def forward(self, hidden: torch.Tensor, actions: torch.Tensor) -> torch.Tensor:
+        if actions.dim() == 2:
+            actions = actions.squeeze(1)
+        safe_actions = torch.clamp(actions, 0, self.action_embed.num_embeddings - 1)
+        act_emb = self.action_embed(safe_actions)
+        h_act = torch.cat([hidden, act_emb], dim=-1)
+        raw = self.net(h_act)
+
+        xy = raw[:, 0:2]
+        cos_sin = torch.tanh(raw[:, 2:4])
+        dt = nn.functional.softplus(raw[:, 4:5])
+        env = nn.functional.softplus(raw[:, 5:7])
+        p_contact = torch.sigmoid(raw[:, 7:8])
+
+        return torch.cat([xy, cos_sin, dt, env, p_contact], dim=-1)
 
 
 class FactorizedEncoder(nn.Module):
@@ -25,6 +152,11 @@ class FactorizedEncoder(nn.Module):
         super().__init__()
         self.n_in = n_in
         self.hidden_dim = hidden_dim
+
+        # Blocs objet-centré & transformer
+        self.tokenizer = EntityTokenizer(d_model=64)
+        self.transformer = TransformerEncoder(d_model=64, nhead=4, num_layers=2)
+        self.self_attn = self.transformer
 
         if n_in == 37:
             # 1. Branche géométrie continue : pose robot (4) + Lidar adverse (2)
@@ -105,6 +237,9 @@ class RecurrentActorCritic(nn.Module):
         )
         self.critic_out = nn.Linear(hidden_dim, 1)
 
+        # 5. Tête World Model Auxiliaire (R3)
+        self.aux_head = WorldModelHead(hidden_dim=hidden_dim, action_dim=32, n_actions=max(n_out, 118))
+
     def init_hidden(self, batch_size: int, device: Optional[torch.device] = None) -> torch.Tensor:
         """Initialise l'état caché récurrent (mémoire vide au début du match)."""
         if device is None:
@@ -126,7 +261,6 @@ class RecurrentActorCritic(nn.Module):
         logits = self.actor_out(h_act)
 
         if mask is not None:
-            # Masquer strictement les actions interdites
             logits = torch.where(mask, logits, torch.full_like(logits, -1e8))
 
         # Tête Critique résiduelle
@@ -134,6 +268,20 @@ class RecurrentActorCritic(nn.Module):
         value = self.critic_out(h_crit).squeeze(-1)
 
         return logits, value, next_hidden
+
+    def forward_actor(self, obs: torch.Tensor, hidden: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Renvoie uniquement (action_logits, next_hidden)."""
+        logits, _, next_h = self.forward(obs, hidden)
+        return logits, next_h
+
+    def forward_critic(self, obs: torch.Tensor, hidden: torch.Tensor) -> torch.Tensor:
+        """Renvoie scalaire state value V(s)."""
+        _, val, _ = self.forward(obs, hidden)
+        return val
+
+    def forward_aux(self, hidden: torch.Tensor, actions: torch.Tensor) -> torch.Tensor:
+        """Renvoie les 8 prédictions physiques futures [x, y, cos, sin, dt, env_L, env_W, p_contact]."""
+        return self.aux_head(hidden, actions)
 
     def get_action_and_value(
         self,

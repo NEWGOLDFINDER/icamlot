@@ -54,6 +54,8 @@ class PPOTrainer:
         max_grad_norm: float = 0.5,
         ppo_epochs: int = 4,
         num_minibatches: int = 4,
+        c_aux: float = 0.1,
+        curriculum: bool = False,
         device: Optional[torch.device] = None,
     ):
         self.device = device or DEVICE
@@ -69,6 +71,9 @@ class PPOTrainer:
         self.max_grad_norm = max_grad_norm
         self.ppo_epochs = ppo_epochs
         self.num_minibatches = num_minibatches
+        self.c_aux = c_aux
+        self.use_curriculum = curriculum
+        self.aux_targets_buf = []
 
         # Environnement d'entraînement sur GPU
         self.env = TorchEnv(batch_size=self.batch_size, device=self.device)
@@ -85,6 +90,15 @@ class PPOTrainer:
         # Suivi des scores réels des matchs terminés
         self.finished_scores: List[float] = []
         self.finished_errors: List[int] = []
+
+    def compute_aux_loss(self, aux_preds: torch.Tensor, aux_targets: torch.Tensor) -> torch.Tensor:
+        """Calcule la perte auxiliaire multi-tâche (MSE sur cinématique/enveloppe + BCE sur contact)."""
+        mse_loss = nn.functional.mse_loss(aux_preds[:, 0:7], aux_targets[:, 0:7])
+        bce_loss = nn.functional.binary_cross_entropy(
+            torch.clamp(aux_preds[:, 7], min=1e-6, max=1.0 - 1e-6),
+            aux_targets[:, 7]
+        )
+        return mse_loss + bce_loss
 
     def pretrain_imitation(self, epochs: int = 150, lr: float = 1e-3) -> None:
         """Pré-entraîne le réseau récurrent par imitation du programme champion Eurobot."""
@@ -140,14 +154,21 @@ class PPOTrainer:
 
     def collect_rollouts(
         self,
-        current_obs: torch.Tensor,
-        current_hidden: torch.Tensor,
-        current_done: torch.Tensor,
+        current_obs: Optional[torch.Tensor] = None,
+        current_hidden: Optional[torch.Tensor] = None,
+        current_done: Optional[torch.Tensor] = None,
     ) -> Tuple[dict, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Collecte un buffer de transitions (T, B) en faisant progresser le batch sur GPU."""
         T = self.rollout_len
         B = self.batch_size
         D = self.device
+
+        if current_obs is None:
+            current_obs = self.env.get_obs()
+        if current_hidden is None:
+            current_hidden = self.model.init_hidden(B, device=D)
+        if current_done is None:
+            current_done = torch.zeros(B, dtype=torch.bool, device=D)
 
         # Buffers de stockage
         obs_buf = torch.zeros((T, B, self.env.n_in), dtype=torch.float32, device=D)
@@ -158,6 +179,7 @@ class PPOTrainer:
         dones_buf = torch.zeros((T, B), dtype=torch.bool, device=D)
         values_buf = torch.zeros((T, B), dtype=torch.float32, device=D)
         hiddens_buf = torch.zeros((T, B, self.hidden_dim), dtype=torch.float32, device=D)
+        aux_targets_buf = torch.zeros((T, B, 8), dtype=torch.float32, device=D)
 
         obs = current_obs
         hidden = current_hidden
@@ -179,26 +201,10 @@ class PPOTrainer:
                 self.finished_scores.extend(final_sc)
                 self.finished_errors.extend(final_err)
 
-                # Reset partiel pour ces environnements
-                self.env.t[done_idx] = 0.0
-                self.env.robot_pose[done_idx, 0] = 250.0
-                self.env.robot_pose[done_idx, 1] = 1000.0
-                self.env.robot_pose[done_idx, 2] = 0.0
-                self.env.pack_stones[done_idx] = 3
-                self.env.held_count[done_idx] = 0
-                self.env.held_rot[done_idx] = 0.0
-                self.env.graal_state[done_idx] = 0
-                self.env.graal_zone[done_idx] = -1
-                self.env.graal_level[done_idx] = 0.0
-                self.env.walls[done_idx] = 0.0
-                self.env.towers[done_idx] = 0
-                self.env.balls_fired[done_idx] = False
-                self.env.balls_in_cour[done_idx] = 0
-                self.env.done[done_idx] = False
-                self.env.errors[done_idx] = 0
-                self.env.score[done_idx] = 0.0
-                prev_scores[done_idx] = 0.0
-                prev_errors[done_idx] = 0
+                # Reset des environnements terminés avec support curriculum
+                self.env.reset(curriculum=self.use_curriculum, indices=done_idx)
+                prev_scores[done_idx] = self.env.score[done_idx]
+                prev_errors[done_idx] = self.env.errors[done_idx]
 
                 obs = self.env.get_obs()
 
@@ -219,7 +225,19 @@ class PPOTrainer:
             values_buf[step] = value
 
             # Transition dans l'environnement GPU
-            next_obs, _, next_done, _ = self.env.step(action)
+            next_obs, _, next_done, info = self.env.step(action)
+
+            # Enregistrer les cibles d'entraînement du World Model auxiliaire (8 variables)
+            rx_norm = self.env.robot_pose[:, 0] / 3000.0
+            ry_norm = self.env.robot_pose[:, 1] / 2000.0
+            rad = self.env.robot_pose[:, 2] * (math.pi / 180.0)
+            rcos = torch.cos(rad)
+            rsin = torch.sin(rad)
+            dt_step = info["dt"] / 10.0
+            env_L = info["envelope"][:, 0] / 300.0
+            env_W = info["envelope"][:, 1] / 300.0
+            contact = info["contact"]
+            aux_targets_buf[step] = torch.stack([rx_norm, ry_norm, rcos, rsin, dt_step, env_L, env_W, contact], dim=-1)
 
             # Calcul de la récompense mise en forme :
             # 1. Delta score Eurobot
@@ -278,9 +296,13 @@ class PPOTrainer:
             "advantages": advantages,
             "returns": returns,
             "initial_hiddens": hiddens_buf[0],  # État caché au début du rollout pour chaque env
+            "aux_targets": aux_targets_buf,
         }
+        self.aux_targets_buf = aux_targets_buf
 
         return rollout_data, obs, hidden, done
+
+    collect_rollout = collect_rollouts
 
     def train_step(self, rollout_data: dict) -> dict:
         """Effectue les époques d'optimisation PPO récurrentes sur les données du rollout."""
@@ -306,6 +328,7 @@ class PPOTrainer:
         total_pg_loss = 0.0
         total_v_loss = 0.0
         total_ent_loss = 0.0
+        total_aux_loss = 0.0
         n_updates = 0
 
         for epoch in range(self.ppo_epochs):
@@ -321,6 +344,7 @@ class PPOTrainer:
                 mb_new_logprobs = []
                 mb_entropies = []
                 mb_new_values = []
+                mb_aux_preds = []
 
                 for t in range(T):
                     t_done = dones_buf[t, mb_env_idx]
@@ -330,10 +354,16 @@ class PPOTrainer:
                     t_mask = mask_buf[t, mb_env_idx]
                     t_act = actions_buf[t, mb_env_idx]
 
-                    _, new_lp, ent, val, mb_hidden = self.model.get_action_and_value(
+                    _, new_lp, ent, val, next_mb_hidden = self.model.get_action_and_value(
                         t_obs, mb_hidden, mask=t_mask, action=t_act
                     )
 
+                    # Prédiction auxiliaire conditionnée par l'état caché et l'action choisie
+                    if self.c_aux > 0.0 and "aux_targets" in rollout_data:
+                        pred_aux = self.model.forward_aux(mb_hidden, t_act)
+                        mb_aux_preds.append(pred_aux)
+
+                    mb_hidden = next_mb_hidden
                     mb_new_logprobs.append(new_lp)
                     mb_entropies.append(ent)
                     mb_new_values.append(val)
@@ -360,8 +390,16 @@ class PPOTrainer:
                 # 3. Perte d'entropie (exploration)
                 ent_loss = entropy.mean()
 
+                # 4. Perte auxiliaire World-Model (MSE + BCE)
+                if self.c_aux > 0.0 and len(mb_aux_preds) > 0:
+                    all_aux_preds = torch.stack(mb_aux_preds, dim=0).view(-1, 8)
+                    all_aux_targets = rollout_data["aux_targets"][:, mb_env_idx].reshape(-1, 8)
+                    aux_loss = self.compute_aux_loss(all_aux_preds, all_aux_targets)
+                else:
+                    aux_loss = torch.tensor(0.0, device=self.device)
+
                 # Perte globale
-                loss = pg_loss + self.vf_coef * v_loss - self.ent_coef * ent_loss
+                loss = pg_loss + self.vf_coef * v_loss - self.ent_coef * ent_loss + self.c_aux * aux_loss
 
                 self.optimizer.zero_grad()
                 loss.backward()
@@ -371,12 +409,14 @@ class PPOTrainer:
                 total_pg_loss += pg_loss.item()
                 total_v_loss += v_loss.item()
                 total_ent_loss += ent_loss.item()
+                total_aux_loss += aux_loss.item()
                 n_updates += 1
 
         return {
             "pg_loss": total_pg_loss / max(n_updates, 1),
             "v_loss": total_v_loss / max(n_updates, 1),
             "entropy": total_ent_loss / max(n_updates, 1),
+            "aux_loss": total_aux_loss / max(n_updates, 1),
         }
 
     def evaluate_greedy(self, num_episodes: int = 128) -> dict:
@@ -428,7 +468,7 @@ class PPOTrainer:
         Path(save_path_pt).parent.mkdir(parents=True, exist_ok=True)
         Path(save_path_onnx).parent.mkdir(parents=True, exist_ok=True)
 
-        current_obs = self.env.reset()
+        current_obs = self.env.reset(curriculum=self.use_curriculum)
         current_hidden = self.model.init_hidden(self.batch_size, device=self.device)
         current_done = torch.zeros(self.batch_size, dtype=torch.bool, device=self.device)
 

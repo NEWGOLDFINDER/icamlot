@@ -173,8 +173,153 @@ def test_torch_rules_reinforcement():
     print("  ok  Anticipation du trône : place et budget temps garantis pour tirer les boulets (<= 100s)")
 
 
+def test_torch_staging_and_repickup():
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"\n--- 5. Tests de l'espace tactique : Staging & Reprise ({device}) ---")
+    import math
+    env = TorchEnv(batch_size=1, device=device)
+    env.reset()
+
+    # 1. Vérifier que le staging avec pince vide est strictement masqué
+    mask = env.get_mask(full=True)
+    assert not mask[0, 106].item(), "Staging avec 0 pierres doit être masqué"
+
+    # 2. Charger 3 pierres à plat sur Face A
+    env.held_count[0, 0] = 3
+    env.held_rot[0, 0] = 0.0
+    mask_loaded = env.get_mask(full=True)
+    assert mask_loaded[0, 106].item(), "Staging SN Face A doit être autorisé avec 3 pierres à plat"
+
+    # 3. Exécuter l'action de staging (106)
+    obs, rew, done, info = env.step([106])
+    assert env.errors[0].item() == 0, "Le staging légal ne doit produire AUCUNE erreur"
+    assert env.held_count[0, 0].item() == 0, "Pince Face A doit être vidée après staging"
+    assert env.staged_packs[0, 0].item() == 3, "Zone SN doit contenir 3 pierres après staging"
+    assert math.isclose(env.robot_pose[0, 0].item(), 1120.5, abs_tol=1.0)
+    assert math.isclose(env.robot_pose[0, 1].item(), 450.0, abs_tol=1.0)
+    assert env.score[0].item() == 0.0, "Le staging ne doit pas attribuer de points de mur/tour"
+
+    # 4. Vérifier que la reprise (112) devient légale
+    mask_staged = env.get_mask(full=True)
+    assert mask_staged[0, 112].item(), "Reprise SN Face A doit être autorisée après dépôt"
+    # Vérifier que le re-staging sur la même zone occupée est masqué
+    env.held_count[0, 0] = 3
+    env.held_rot[0, 0] = 0.0
+    mask_re_stage = env.get_mask(full=True)
+    assert not mask_re_stage[0, 106].item(), "Re-staging sur zone déjà pleine doit être masqué"
+
+    # 5. Exécuter la reprise (112)
+    env.held_count[0, 0] = 0
+    obs, rew, done, info = env.step([112])
+    assert env.errors[0].item() == 0, "La reprise ne doit produire AUCUNE erreur"
+    assert env.held_count[0, 0].item() == 3, "Pince Face A doit avoir rechargé 3 pierres"
+    assert env.staged_packs[0, 0].item() == 0, "Zone SN doit être vide après reprise"
+    print("  ok  Staging (106) et Reprise (112) validés sans erreur et avec mise à jour d'état exacte")
+
+
+def test_torch_wavefront_and_envelope():
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"\n--- 6. Tests de la grille wavefront 2D et de l'enveloppe dynamique ({device}) ---")
+    env = TorchEnv(batch_size=2, device=device)
+    env.reset()
+
+    # Wavefront distance grid
+    grid = env.compute_wavefront_distance()
+    assert grid.shape == (2, 1, 50, 75), f"Dimensions grille attendues (2, 1, 50, 75), obtenu {grid.shape}"
+    assert (grid >= 0.0).all(), "Toutes les distances doivent être positives"
+
+    # Vérifier l'enveloppe dynamique et le repli de pince à 90°
+    assert env.held_rot[0, 0].item() == 0.0
+    env.fold_gripper(face=0)
+    assert env.held_rot[0, 0].item() == 90.0
+    env.toggle_gripper_folding(face=0)
+    assert env.held_rot[0, 0].item() == 0.0
+
+    # Dilation obstacles
+    occ = env.dilate_obstacles()
+    assert occ.shape == (2, 1, 50, 75)
+    print("  ok  Propagation wavefront 2D (50x75) et repli 90° validés")
+
+
+def test_torch_curriculum_reset():
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"\n--- 7. Tests du curriculum procédural Eurobot ({device}) ---")
+    env = TorchEnv(batch_size=32, device=device)
+
+    # Standard
+    env.reset(scenario={"mode": "standard"})
+    assert (env.t == 0.0).all()
+    assert (env.robot_pose[:, 0] == 250.0).all()
+
+    # Trapped
+    env.reset(scenario={"mode": "trapped"})
+    assert (env.t >= 20.0).all() and (env.t <= 75.0).all()
+
+    # Adversarial
+    env.reset(scenario={"mode": "adversarial"})
+    assert (env.opp_pose[:, 0] > 0.0).all()
+
+    # Curriculum stochastique (50/30/20)
+    obs = env.reset(curriculum=True)
+    assert obs.shape == (32, 37)
+    print("  ok  Curriculum procédural (standard, trapped, adversarial) validé")
+
+
+def test_torch_world_model_and_aux_loss():
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"\n--- 8. Tests du World Model auxiliaire et de la perte PPO ({device}) ---")
+    from trainer.models import RecurrentActorCritic
+    from trainer.ppo_trainer import PPOTrainer
+
+    model = RecurrentActorCritic(n_in=37, n_out=106, hidden_dim=128).to(device)
+    hid = model.init_hidden(4, device=device)
+    acts = torch.tensor([0, 20, 84, 105], dtype=torch.long, device=device)
+
+    preds = model.forward_aux(hid, acts)
+    assert preds.shape == (4, 8), f"Shape attendue (4, 8), obtenu {preds.shape}"
+    assert (preds[:, 4] >= 0.0).all(), "dt doit être >= 0"
+    assert (preds[:, 7] >= 0.0).all() and (preds[:, 7] <= 1.0).all(), "p_contact dans [0, 1]"
+
+    trainer = PPOTrainer(env_batch_size=8, rollout_len=4, c_aux=0.1, curriculum=True, device=device)
+    targets = torch.rand((4, 8), device=device)
+    loss = trainer.compute_aux_loss(preds, targets)
+    assert loss.item() >= 0.0 and torch.isfinite(loss), "Perte auxiliaire finie"
+    print("  ok  WorldModelHead (8 prédictions physiques) et perte auxiliaire validés")
+
+
+def test_torch_tree_search():
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"\n--- 9. Tests de la recherche arborescente GPU (AlphaZero/MCTS) ({device}) ---")
+    from trainer.models import RecurrentActorCritic
+    from trainer.tree_search import tree_search_plan
+
+    env = TorchEnv(batch_size=2, device=device)
+    model = RecurrentActorCritic(n_in=37, n_out=106, hidden_dim=128).to(device)
+    obs = env.reset()
+    hidden = model.init_hidden(2, device=device)
+
+    # Sauvegarde pour vérifier la non-régression d'état
+    t_start = env.t.clone()
+    p_start = env.robot_pose.clone()
+
+    actions = tree_search_plan(env, model, obs, hidden, depth=3, num_simulations=4)
+    assert actions.shape == (2,)
+    mask = env.get_mask()
+    valid = mask.gather(1, actions.unsqueeze(1)).squeeze(1)
+    assert valid.all(), "Toutes les actions sélectionnées par tree_search doivent être valides"
+
+    assert (env.t == t_start).all(), "L'état de l'environnement doit être parfaitement restauré"
+    assert (env.robot_pose == p_start).all(), "La pose du robot doit être restaurée"
+    print("  ok  Planification arborescente GPU validée avec non-destructivité d'état stricte")
+
+
 if __name__ == "__main__":
     test_torch_env_reset()
     test_torch_env_example_program()
     test_torch_rules_reinforcement()
+    test_torch_staging_and_repickup()
+    test_torch_wavefront_and_envelope()
+    test_torch_curriculum_reset()
+    test_torch_world_model_and_aux_loss()
+    test_torch_tree_search()
     test_torch_env_performance_benchmark()
