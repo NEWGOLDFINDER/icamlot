@@ -449,7 +449,10 @@
       toast('Entraînement terminé' + (j.best_score ? ' · meilleur score ' + Math.round(j.best_score) : ''), 'ok');
       api('GET', API + '/cerveaux/' + slugify(j.slug || current) + '/poids').then(function (w) { weights = w.layers || w; }, function () {});
     }
-    if (j.status === 'error') toast(j.error || 'Erreur d\'entraînement', 'bad');
+    if (j.status === 'error' || j.status === 'interrupted') {
+      toast(j.error || 'Erreur ou interruption de l\'entraînement', 'bad');
+      if (j.error) $('tDiag').innerHTML = '<span style="color:#ff6b6b">⚠️ ' + esc(j.error) + '</span>';
+    }
   }
   function poll() {
     if (!jobId) return;

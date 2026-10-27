@@ -279,6 +279,38 @@ def list_jobs():
     return jobs
 
 
+def find_python():
+    """Détecte l'interpréteur Python disposant de PyTorch et CUDA pour l'entraînement GPU."""
+    try:
+        import torch
+        if torch.cuda.is_available():
+            return sys.executable
+    except Exception:
+        pass
+    candidates = [
+        os.path.join(REPO, ".venv", "bin", "python"),
+        os.path.join(REPO, "..", ".venv-icamlot", "bin", "python"),
+        "/root/.gemini/antigravity-cli/scratch/.venv-icamlot/bin/python",
+        os.path.join(REPO, "venv", "bin", "python"),
+    ]
+    for cand in candidates:
+        cand = os.path.abspath(cand)
+        if os.path.isfile(cand) and os.access(cand, os.X_OK):
+            try:
+                res = subprocess.run(
+                    [cand, "-c", "import torch; print(torch.cuda.is_available())"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    timeout=5,
+                )
+                if res.returncode == 0:
+                    return cand
+            except Exception:
+                pass
+    return sys.executable
+
+
 def spawn_job(jid):
     global _job_proc, _job_id
     path = job_path(jid)
@@ -290,23 +322,38 @@ def spawn_job(jid):
     weights_out = job.get("weights") or weights_path(job.get("slug") or jid)
     log = job.get("log") or os.path.join(jobs_dir(), jid + ".log")
     env = os.environ.copy()
+    env["PYTHONPATH"] = REPO + ((":" + env["PYTHONPATH"]) if "PYTHONPATH" in env else "")
+    py_bin = find_python()
+
+    try:
+        log_fh = open(log, "a", encoding="utf-8")
+    except OSError:
+        log_fh = None
+
     proc = subprocess.Popen(
-        [sys.executable, TRAINER_PY, "--job", path, "--strategies", DATA, "--weights-out", weights_out],
+        [py_bin, TRAINER_PY, "--job", path, "--strategies", DATA, "--weights-out", weights_out],
         cwd=REPO,
         env=env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=log_fh if log_fh else subprocess.DEVNULL,
+        stderr=log_fh if log_fh else subprocess.DEVNULL,
     )
     _job_proc = proc
     _job_id = jid
     job["pid"] = proc.pid
     job["log"] = log
     job["weights"] = weights_out
+    job["python"] = py_bin
     atomic_json(path, job)
 
     def watch():
         global _job_proc, _job_id
         proc.wait()
+        if log_fh:
+            try:
+                log_fh.flush()
+                log_fh.close()
+            except Exception:
+                pass
         with _job_lock:
             if _job_id == jid:
                 _job_proc = None
@@ -315,7 +362,21 @@ def spawn_job(jid):
             if cur.get("status") == "running":
                 cur["status"] = "interrupted" if proc.returncode else "done"
                 if proc.returncode:
-                    cur["error"] = f"L'entraîneur s'est arrêté (code {proc.returncode})."
+                    err_msg = f"L'entraîneur s'est arrêté (code {proc.returncode})."
+                    if os.path.exists(log):
+                        try:
+                            with open(log, "r", encoding="utf-8") as f:
+                                lines = [l.strip() for l in f.readlines() if l.strip()]
+                                if lines:
+                                    for l in reversed(lines):
+                                        if any(k in l for k in ("Error", "Exception", "Erreur", "Traceback")):
+                                            err_msg = l
+                                            break
+                                    else:
+                                        err_msg = lines[-1]
+                        except Exception:
+                            pass
+                    cur["error"] = err_msg
                 atomic_json(path, cur)
             kick_queue()
 

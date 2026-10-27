@@ -847,25 +847,27 @@ def main():
     ap.add_argument("--weights-out", help="où écrire les poids du meilleur modèle")
     args = ap.parse_args()
     job = Job(Path(args.job))
-    cfg = job.data.get("config") or {}
-    job.data["status"] = "running"
-    job.data["progress"] = {"message": "Démarrage…", **device_info()}
-    job.save()
-    job.logline("Entraîneur démarré (" + device_info()["name"] + ").")
-    env_cfg = {
-        "entrees": cfg.get("entrees"),
-        "familles": (cfg.get("actions") or {}).get("familles"),
-        "params": cfg.get("params") or {},
-        "adversaire": cfg.get("adversaire") or {"intensite": "aucun"},
-        "mode": (cfg.get("reglages") or {}).get("mode") or "rapide",
-        "skipContacts": True,
-        "onError": (cfg.get("recompense") or {}).get("sur_erreur") or "penalite",
-    }
-    if HAS_TORCH:
-        env = TorchEnvWorker(env_cfg)
-    else:
-        env = EnvWorker(env_cfg)
+    env = None
     try:
+        cfg = job.data.get("config") or {}
+        job.data["status"] = "running"
+        job.data["progress"] = {"message": "Démarrage…", **device_info()}
+        job.save()
+        job.logline("Entraîneur démarré (" + device_info()["name"] + ").")
+        env_cfg = {
+            "entrees": cfg.get("entrees"),
+            "familles": (cfg.get("actions") or {}).get("familles"),
+            "params": cfg.get("params") or {},
+            "adversaire": cfg.get("adversaire") or {"intensite": "aucun"},
+            "mode": (cfg.get("reglages") or {}).get("mode") or "rapide",
+            "skipContacts": True,
+            "onError": (cfg.get("recompense") or {}).get("sur_erreur") or "penalite",
+        }
+        if HAS_TORCH:
+            env = TorchEnvWorker(env_cfg)
+        else:
+            env = EnvWorker(env_cfg)
+
         folder = Path(args.strategies) if args.strategies else None
         strats = load_strategies(folder) if folder else []
         methode = cfg.get("methode") or "evolution"
@@ -896,13 +898,16 @@ def main():
         job.save()
         job.logline("Terminé. Poids enregistrés.")
     except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
+        print(tb, file=sys.stderr)
         job.data["status"] = "error"
         job.data["error"] = str(e)
         job.save()
-        job.logline("Erreur : " + str(e))
+        job.logline(f"Erreur fatale : {e}")
         raise
     finally:
-        if hasattr(env, 'close'):
+        if env is not None and hasattr(env, 'close'):
             env.close()
 
 
