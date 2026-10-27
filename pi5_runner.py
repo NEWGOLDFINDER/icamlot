@@ -156,6 +156,139 @@ class Pi5EurobotAgent:
 
         return obs
 
+    WAYPOINTS = [
+        (1050.0, 320.0),   # Nord-Ouest
+        (1050.0, 1680.0),  # Sud-Ouest
+        (1750.0, 820.0),   # Nord-Est
+        (1750.0, 1180.0),  # Sud-Est
+    ]
+
+    def _is_segment_blocked(self, ax: float, ay: float, bx: float, by: float, act: dict, state: dict, is_blue: bool) -> bool:
+        ab_x = bx - ax
+        ab_y = by - ay
+        l2 = ab_x * ab_x + ab_y * ab_y
+        if l2 < 1e-4:
+            return False
+
+        packs = state.get("pack_stones", [3] * 10)
+        walls = state.get("walls", [0.0] * 5)
+        towers = state.get("towers", [0] * 4)
+
+        # 1. Paquets P1..P10
+        pack_centers = [
+            (750.0, 55.0), (1250.0, 55.0), (1750.0, 55.0), (2250.0, 55.0),
+            (750.0, 1945.0), (1250.0, 1945.0), (1750.0, 1945.0), (2250.0, 1945.0),
+            (1500.0, 500.0), (1500.0, 1500.0)
+        ]
+        target_pk = -1
+        if act and act.get("a") == "prendre":
+            p_str = act.get("p", "")
+            if p_str.startswith("P"):
+                target_pk = int(p_str[1:]) - 1
+
+        for pk_idx in range(10):
+            if pk_idx == target_pk or packs[pk_idx] <= 0:
+                continue
+            cx, cy = pack_centers[pk_idx]
+            ac_x = cx - ax
+            ac_y = cy - ay
+            u = max(0.0, min(1.0, (ac_x * ab_x + ac_y * ab_y) / l2))
+            px = ax + u * ab_x
+            py = ay + u * ab_y
+            if math.hypot(cx - px, cy - py) < 235.0 and 0.05 < u < 0.95:
+                return True
+
+        # 2. Murs construits M1..M5
+        wall_centers = [
+            (250.0, 400.0), (679.3, 570.8), (850.0, 1000.0), (679.3, 1429.5), (250.0, 1600.0)
+        ]
+        target_w = -1
+        if act:
+            a_fam = act.get("a", "")
+            z_id = act.get("z", "")
+            if a_fam in ("mur", "porte", "poserGraal") and z_id.startswith("M"):
+                target_w = int(z_id[1:]) - 1
+
+        for w_idx in range(5):
+            if walls[w_idx] <= 0 or w_idx == target_w:
+                continue
+            cx, cy = wall_centers[w_idx]
+            ac_x = cx - ax
+            ac_y = cy - ay
+            u = max(0.0, min(1.0, (ac_x * ab_x + ac_y * ab_y) / l2))
+            d_start = math.hypot(cx - ax, cy - ay)
+            d_end = math.hypot(cx - bx, cy - by)
+            u_min = 0.13 if d_start < 290.0 else 0.02
+            u_max = 0.87 if d_end < 290.0 else 0.98
+            if u_min < u < u_max:
+                px = ax + u * ab_x
+                py = ay + u * ab_y
+                if math.hypot(cx - px, cy - py) < 210.0:
+                    return True
+
+        # 3. Tours construites T1..T4
+        tower_centers = [
+            (500.0, 400.0), (850.0, 750.0), (850.0, 1250.0), (500.0, 1600.0)
+        ]
+        target_tw = -1
+        if act:
+            a_fam = act.get("a", "")
+            z_id = act.get("z", "")
+            if a_fam in ("tour", "poserGraal") and z_id.startswith("T"):
+                target_tw = int(z_id[1:]) - 1
+
+        for tw_idx in range(4):
+            if towers[tw_idx] <= 0 or tw_idx == target_tw:
+                continue
+            cx, cy = tower_centers[tw_idx]
+            ac_x = cx - ax
+            ac_y = cy - ay
+            u = max(0.0, min(1.0, (ac_x * ab_x + ac_y * ab_y) / l2))
+            d_start = math.hypot(cx - ax, cy - ay)
+            d_end = math.hypot(cx - bx, cy - by)
+            u_min = 0.13 if d_start < 260.0 else 0.02
+            u_max = 0.87 if d_end < 260.0 else 0.98
+            if u_min < u < u_max:
+                px = ax + u * ab_x
+                py = ay + u * ab_y
+                if math.hypot(cx - px, cy - py) < 180.0:
+                    return True
+
+        # 4. Adversaire (350 mm)
+        opp_pose = state.get("opp_pose")
+        if opp_pose and (opp_pose[0] > 0 or opp_pose[1] > 0):
+            ox, oy = opp_pose[0], opp_pose[1]
+            ac_x = ox - ax
+            ac_y = oy - ay
+            u_opp = max(0.0, min(1.0, (ac_x * ab_x + ac_y * ab_y) / l2))
+            if 0.05 < u_opp < 0.95:
+                px = ax + u_opp * ab_x
+                py = ay + u_opp * ab_y
+                if math.hypot(ox - px, oy - py) < 350.0:
+                    return True
+
+        # 5. Topologie château
+        in_castle_start = ((3000.0 - ax if is_blue else ax) < 760.0) and (300.0 < ay < 1700.0)
+        in_castle_end = ((3000.0 - bx if is_blue else bx) < 760.0) and (300.0 < by < 1700.0)
+        front_walls_built = sum(1 for w_idx in [1, 2, 3] if walls[w_idx] > 0)
+        if front_walls_built >= 3 and (in_castle_start != in_castle_end):
+            return True
+
+        return False
+
+    def _get_effective_action_dist(self, rx: float, ry: float, tx: float, ty: float, act: dict, state: dict, is_blue: bool):
+        if not self._is_segment_blocked(rx, ry, tx, ty, act, state, is_blue):
+            return math.hypot(tx - rx, ty - ry)
+        best_d = float('inf')
+        for wx, wy in self.WAYPOINTS:
+            w_x = (3000.0 - wx) if is_blue else wx
+            w_y = wy
+            if not self._is_segment_blocked(rx, ry, w_x, w_y, None, state, is_blue) and                not self._is_segment_blocked(w_x, w_y, tx, ty, act, state, is_blue):
+                d = math.hypot(w_x - rx, w_y - ry) + math.hypot(tx - w_x, ty - w_y)
+                if d < best_d:
+                    best_d = d
+        return best_d if best_d < float('inf') else None
+
     def compute_mask(self, state: dict) -> np.ndarray:
         """Calcule le masque légal Eurobot 2027 (1 = valide, 0 = interdit)."""
         mask = np.zeros(106, dtype=bool)
@@ -244,160 +377,18 @@ class Pi5EurobotAgent:
         else:
             mask[105] = False
 
-        # 9. Filtrage géométrique strict : Interdiction absolue de traverser des caisses
+        # 9. FILTRAGE GÉOMÉTRIQUE STRICT : Paquets + Murs + Tours + Waypoint Bypass (Chantier 2)
         rx = float(state.get("x", 250.0))
         ry = float(state.get("y", 1000.0))
-        pack_centers = np.array([
-            [750.0, 55.0], [1250.0, 55.0], [1750.0, 55.0], [2250.0, 55.0],
-            [750.0, 1945.0], [1250.0, 1945.0], [1750.0, 1945.0], [2250.0, 1945.0],
-            [1500.0, 500.0], [1500.0, 1500.0]
-        ], dtype=np.float32)
-
-        for act_idx in range(106):
-            if not mask[act_idx]:
-                continue
-            act = self.actions[act_idx]
-            tx = float(act.get("tx", 250.0))
-            ty = float(act.get("ty", 1000.0))
-            ab_x = tx - rx
-            ab_y = ty - ry
-            l2 = ab_x * ab_x + ab_y * ab_y
-            if l2 < 1e-4:
-                continue
-
-            target_pk = -1
-            if act.get("a") == "prendre":
-                p_str = act.get("p", "")
-                if p_str.startswith("P"):
-                    target_pk = int(p_str[1:]) - 1
-
-            for pk_idx in range(10):
-                if pk_idx == target_pk or packs[pk_idx] <= 0:
-                    continue
-                cx, cy = pack_centers[pk_idx]
-                ac_x = cx - rx
-                ac_y = cy - ry
-                u = max(0.0, min(1.0, (ac_x * ab_x + ac_y * ab_y) / l2))
-                px = rx + u * ab_x
-                py = ry + u * ab_y
-                dist = math.hypot(cx - px, cy - py)
-                if dist < 235.0:
-                    mask[act_idx] = False
-                    break
-
-        # 10. Collision avec murs construits (M1..M5) et tours (T1..T4) + Topologie château
-        wall_centers = np.array([
-            [250.0, 400.0], [679.3, 570.8], [850.0, 1000.0], [679.3, 1429.5], [250.0, 1600.0]
-        ], dtype=np.float32)
-        tower_centers = np.array([
-            [500.0, 400.0], [850.0, 750.0], [850.0, 1250.0], [500.0, 1600.0]
-        ], dtype=np.float32)
-
+        walls = state.get("walls", [0.0] * 5)
         is_blue = (state.get("team") == "blue")
         robot_in_castle = ((3000.0 - rx if is_blue else rx) < 760.0) and (300.0 < ry < 1700.0)
         front_walls_built = sum(1 for w_idx in [1, 2, 3] if walls[w_idx] > 0)
         castle_sealed = (front_walls_built >= 3)
-
-        for act_idx in range(106):
-            if not mask[act_idx]:
-                continue
-            act = self.actions[act_idx]
-            tx = float(act.get("tx", 250.0))
-            ty = float(act.get("ty", 1000.0))
-            ab_x = tx - rx
-            ab_y = ty - ry
-            l2 = ab_x * ab_x + ab_y * ab_y
-            if l2 < 1e-4:
-                continue
-
-            target_in_castle = (tx < 760.0) and (300.0 < ty < 1700.0)
-            crosses_border = robot_in_castle != target_in_castle
-            if castle_sealed and crosses_border:
-                mask[act_idx] = False
-                continue
-
-            # Ne pas fermer la 3e porte de façade depuis l'extérieur
-            a_fam = act.get("a", "")
-            z_id = act.get("z", "")
-            if a_fam in ("mur", "porte") and z_id in ("M2", "M3", "M4") and not target_in_castle and front_walls_built == 2:
-                w_idx = ["M1", "M2", "M3", "M4", "M5"].index(z_id)
-                if walls[w_idx] == 0:
-                    mask[act_idx] = False
-                    continue
-
-            # Test collisions murs construits
-            target_w = -1
-            if a_fam in ("mur", "porte") and z_id.startswith("M"):
-                target_w = int(z_id[1:]) - 1
-            elif a_fam == "poserGraal" and z_id.startswith("M"):
-                target_w = int(z_id[1:]) - 1
-
-            col_wall = False
-            for w_idx in range(5):
-                if walls[w_idx] <= 0 or w_idx == target_w:
-                    continue
-                cx, cy = wall_centers[w_idx]
-                ac_x = cx - rx
-                ac_y = cy - ry
-                u = max(0.0, min(1.0, (ac_x * ab_x + ac_y * ab_y) / l2))
-                d_start = math.hypot(cx - rx, cy - ry)
-                d_end = math.hypot(cx - tx, cy - ty)
-                u_min = 0.13 if d_start < 290.0 else 0.02
-                u_max = 0.87 if d_end < 290.0 else 0.98
-                if u_min < u < u_max:
-                    px = rx + u * ab_x
-                    py = ry + u * ab_y
-                    if math.hypot(cx - px, cy - py) < 210.0:
-                        col_wall = True
-                        break
-            if col_wall:
-                mask[act_idx] = False
-                continue
-
-            # Test collisions tours construites
-            target_tw = -1
-            if a_fam == "tour" and z_id.startswith("T"):
-                target_tw = int(z_id[1:]) - 1
-            elif a_fam == "poserGraal" and z_id.startswith("T"):
-                target_tw = int(z_id[1:]) - 1
-
-            col_tower = False
-            for tw_idx in range(4):
-                if towers[tw_idx] <= 0 or tw_idx == target_tw:
-                    continue
-                cx, cy = tower_centers[tw_idx]
-                ac_x = cx - rx
-                ac_y = cy - ry
-                u = max(0.0, min(1.0, (ac_x * ab_x + ac_y * ab_y) / l2))
-                d_start = math.hypot(cx - rx, cy - ry)
-                d_end = math.hypot(cx - tx, cy - ty)
-                u_min = 0.13 if d_start < 260.0 else 0.02
-                u_max = 0.87 if d_end < 260.0 else 0.98
-                if u_min < u < u_max:
-                    px = rx + u * ab_x
-                    py = ry + u * ab_y
-                    if math.hypot(cx - px, cy - py) < 180.0:
-                        col_tower = True
-                        break
-            if col_tower:
-                mask[act_idx] = False
-                continue
-
-            # Test collision adversaire si présent
-            opp_pose = state.get("opp_pose")
-            if opp_pose and (opp_pose[0] > 0 or opp_pose[1] > 0):
-                ox, oy = opp_pose[0], opp_pose[1]
-                ac_x = ox - rx
-                ac_y = oy - ry
-                u_opp = max(0.0, min(1.0, (ac_x * ab_x + ac_y * ab_y) / l2))
-                if 0.05 < u_opp < 0.95:
-                    px = rx + u_opp * ab_x
-                    py = ry + u_opp * ab_y
-                    if math.hypot(ox - px, oy - py) < 350.0:
-                        mask[act_idx] = False
-
-        # 11. Anticipation temporelle : Budget temps pour rentrer au trône et tirer les boulets
+        throne_x = 2750.0 if is_blue else 250.0
+        throne_y = 1000.0
         dt_tir = 6.1 if not balls_fired else 0.0
+
         for act_idx in range(106):
             if not mask[act_idx]:
                 continue
@@ -408,17 +399,31 @@ class Pi5EurobotAgent:
 
             tx = float(act.get("tx", 250.0))
             ty = float(act.get("ty", 1000.0))
+            target_in_castle = (tx < 760.0) and (300.0 < ty < 1700.0)
+
+            # Ne pas fermer la 3e porte de façade depuis l'extérieur
+            z_id = act.get("z", "")
+            if a_fam in ("mur", "porte") and z_id in ("M2", "M3", "M4") and not target_in_castle and front_walls_built == 2:
+                w_idx = ["M1", "M2", "M3", "M4", "M5"].index(z_id)
+                if walls[w_idx] == 0:
+                    mask[act_idx] = False
+                    continue
+
+            # Distance et faisabilité via Waypoint Bypass
+            eff_dist = self._get_effective_action_dist(rx, ry, tx, ty, act, state, is_blue)
+            if eff_dist is None:
+                mask[act_idx] = False
+                continue
+
+            # Budget temps prévisionnel pour rentrer au trône
             mech = float(act.get("mech", 1.0))
-
-            dist_ab = math.hypot(tx - rx, ty - ry)
-            dt_act = dist_ab / 500.0 + mech
-
+            dt_act = eff_dist / 500.0 + mech
             dist_throne = math.hypot(throne_x - tx, throne_y - ty)
             dt_throne = dist_throne / 500.0 + 0.5
-
             t_previsionnel = t + dt_act + dt_throne + dt_tir
             if t_previsionnel > 100.0:
                 mask[act_idx] = False
+                continue
 
         # 12. Optimisation double face : charger les deux pinces avant retour au château
         if t < 75.0:

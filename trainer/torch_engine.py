@@ -183,6 +183,14 @@ class TorchEnv:
             (self.action_tx < 760.0) & (self.action_ty > 300.0) & (self.action_ty < 1700.0)
         )
 
+        # 4 Waypoints stratégiques de contournement (Chantier 2)
+        self.waypoints = torch.tensor([
+            [1050.0, 320.0],   # Nord-Ouest
+            [1050.0, 1680.0],  # Sud-Ouest
+            [1750.0, 820.0],   # Nord-Est
+            [1750.0, 1180.0],  # Sud-Est
+        ], dtype=torch.float32, device=D)
+
     def _init_state_tensors(self):
         B = self.batch_size
         D = self.device
@@ -316,6 +324,77 @@ class TorchEnv:
 
         return obs
 
+    def _segment_Blocked(
+        self,
+        A_pos: torch.Tensor,      # (B, N, 2)
+        B_tgt: torch.Tensor,      # (B ou 1, N, 2)
+        fam_t: torch.Tensor,      # (B ou 1, N)
+        item_t: torch.Tensor,     # (B ou 1, N)
+    ) -> torch.Tensor:
+        """Vérifie vectoriellement si chaque segment coupe un paquet, un mur, une tour ou l'adversaire."""
+        AB_vec = B_tgt - A_pos                                              # (B, N, 2)
+        L2_dist = (AB_vec ** 2).sum(dim=-1, keepdim=True).clamp(min=1e-6)   # (B, N, 1)
+
+        A_exp = A_pos.unsqueeze(2)                                          # (B, N, 1, 2)
+        AB_exp = AB_vec.unsqueeze(2)                                        # (B, N, 1, 2)
+        L2_exp = L2_dist.unsqueeze(2)                                       # (B, N, 1, 1)
+
+        # 1. Paquets P1..P10
+        C_packs = self.pack_centers.unsqueeze(0).unsqueeze(0)               # (1, 1, 10, 2)
+        AC_packs = C_packs - A_exp
+        u_p = ((AC_packs * AB_exp).sum(dim=-1, keepdim=True) / L2_exp).clamp(0.0, 1.0)
+        P_p = A_exp + u_p * AB_exp
+        dist_p = torch.hypot(C_packs[..., 0] - P_p[..., 0], C_packs[..., 1] - P_p[..., 1])
+        u_p_sq = u_p.squeeze(-1)
+        target_pk = torch.where(fam_t == 0, item_t, torch.full_like(item_t, -1))
+        is_p_obs = (self.pack_stones > 0).unsqueeze(1) & (self.pack_indices.unsqueeze(1) != target_pk.unsqueeze(-1))
+        hit_p = ((dist_p < 235.0) & (u_p_sq > 0.05) & (u_p_sq < 0.95) & is_p_obs).any(dim=-1)
+
+        # 2. Murs construits M1..M5
+        C_walls = self.wall_centers.unsqueeze(0).unsqueeze(0)               # (1, 1, 5, 2)
+        AC_w = C_walls - A_exp
+        u_w = ((AC_w * AB_exp).sum(dim=-1, keepdim=True) / L2_exp).clamp(0.0, 1.0)
+        P_w = A_exp + u_w * AB_exp
+        dist_w = torch.hypot(C_walls[..., 0] - P_w[..., 0], C_walls[..., 1] - P_w[..., 1])
+        u_w_sq = u_w.squeeze(-1)
+        dist_start_w = torch.hypot(C_walls[..., 0] - A_exp[..., 0], C_walls[..., 1] - A_exp[..., 1])
+        dist_end_w = torch.hypot(C_walls[..., 0] - B_tgt.unsqueeze(2)[..., 0], C_walls[..., 1] - B_tgt.unsqueeze(2)[..., 1])
+        u_min_w = torch.where(dist_start_w < 290.0, 0.13, 0.02)
+        u_max_w = torch.where(dist_end_w < 290.0, 0.87, 0.98)
+        in_mid_w = (u_w_sq > u_min_w) & (u_w_sq < u_max_w)
+        target_w = torch.where((fam_t == 1) | (fam_t == 3) | ((fam_t == 6) & (item_t < 5)), item_t, torch.full_like(item_t, -1))
+        is_w_obs = (self.walls > 0.0).unsqueeze(1) & (self.wall_indices.unsqueeze(1) != target_w.unsqueeze(-1))
+        hit_w = ((dist_w < 210.0) & in_mid_w & is_w_obs).any(dim=-1)
+
+        # 3. Tours construites T1..T4
+        C_towers = self.tower_centers.unsqueeze(0).unsqueeze(0)             # (1, 1, 4, 2)
+        AC_t = C_towers - A_exp
+        u_t = ((AC_t * AB_exp).sum(dim=-1, keepdim=True) / L2_exp).clamp(0.0, 1.0)
+        P_t = A_exp + u_t * AB_exp
+        dist_t = torch.hypot(C_towers[..., 0] - P_t[..., 0], C_towers[..., 1] - P_t[..., 1])
+        u_t_sq = u_t.squeeze(-1)
+        dist_start_t = torch.hypot(C_towers[..., 0] - A_exp[..., 0], C_towers[..., 1] - A_exp[..., 1])
+        dist_end_t = torch.hypot(C_towers[..., 0] - B_tgt.unsqueeze(2)[..., 0], C_towers[..., 1] - B_tgt.unsqueeze(2)[..., 1])
+        u_min_t = torch.where(dist_start_t < 260.0, 0.13, 0.02)
+        u_max_t = torch.where(dist_end_t < 260.0, 0.87, 0.98)
+        in_mid_t = (u_t_sq > u_min_t) & (u_t_sq < u_max_t)
+        target_t = torch.where(fam_t == 2, item_t, torch.where((fam_t == 6) & (item_t >= 5), item_t - 5, torch.full_like(item_t, -1)))
+        is_t_obs = (self.towers > 0).unsqueeze(1) & (self.tower_indices.unsqueeze(1) != target_t.unsqueeze(-1))
+        hit_t = ((dist_t < 180.0) & in_mid_t & is_t_obs).any(dim=-1)
+
+        # 4. Adversaire (350 mm)
+        has_opp = (self.opp_pose[:, 0] > 0.0) & (self.opp_pose[:, 1] > 0.0)
+        C_opp = self.opp_pose.unsqueeze(1).unsqueeze(2)                     # (B, 1, 1, 2)
+        AC_opp = C_opp - A_exp
+        u_opp = ((AC_opp * AB_exp).sum(dim=-1, keepdim=True) / L2_exp).clamp(0.0, 1.0)
+        P_opp = A_exp + u_opp * AB_exp
+        dist_to_opp = torch.hypot(C_opp[..., 0] - P_opp[..., 0], C_opp[..., 1] - P_opp[..., 1]).squeeze(-1)
+        u_opp_sq = u_opp.squeeze(-1).squeeze(-1)
+        mid_opp = (u_opp_sq >= 0.05) & (u_opp_sq <= 0.95)
+        hit_opp = has_opp.unsqueeze(1) & mid_opp & (dist_to_opp < 350.0)
+
+        return hit_p | hit_w | hit_t | hit_opp
+
     def get_mask(self) -> torch.Tensor:
         """Calcule le masque de validité (B, 106) en tenseur booléen sur GPU de manière 100% vectorisée."""
         B = self.batch_size
@@ -359,76 +438,37 @@ class TorchEnv:
         # 8. RETOUR AU TRÔNE (105)
         mask[:, 105] = True
 
-                # 9. FILTRAGE GÉOMÉTRIQUE STRICT : Paquets + Murs construits + Tours construites
-        A_pos = self.robot_pose[:, :2].unsqueeze(1).unsqueeze(2)                        # (B, 1, 1, 2)
-        B_tgt = torch.stack([self.action_tx, self.action_ty], dim=1).unsqueeze(0).unsqueeze(2) # (1, 106, 1, 2)
-        AB_vec = B_tgt - A_pos                                                          # (B, 106, 1, 2)
-        L2_dist = (AB_vec ** 2).sum(dim=-1, keepdim=True).clamp(min=1e-6)               # (B, 106, 1, 1)
+        # 9. FILTRAGE GEOMETRIQUE STRICT : Paquets + Murs + Tours + Waypoint Bypass (Chantier 2)
+        A_pos = self.robot_pose[:, :2].unsqueeze(1).expand(-1, 106, -1)                        # (B, 106, 2)
+        B_tgt = torch.stack([self.action_tx, self.action_ty], dim=1).unsqueeze(0).expand(B, -1, -1) # (B, 106, 2)
+        fam_t = self.action_family.unsqueeze(0).expand(B, -1)                                   # (B, 106)
+        item_t = self.action_item.unsqueeze(0).expand(B, -1)                                    # (B, 106)
 
-        fam_t = self.action_family.unsqueeze(0).unsqueeze(-1)                           # (1, 106, 1)
-        item_t = self.action_item.unsqueeze(0).unsqueeze(-1)                            # (1, 106, 1)
+        # Segment direct A -> B
+        direct_blocked = self._segment_Blocked(A_pos, B_tgt, fam_t, item_t)
 
-        # --- 9a. Collision avec les 10 paquets (P1..P10) encore au sol ---
-        C_packs = self.pack_centers.unsqueeze(0).unsqueeze(0)                           # (1, 1, 10, 2)
-        AC_packs = C_packs - A_pos
-        u_packs = ((AC_packs * AB_vec).sum(dim=-1, keepdim=True) / L2_dist).clamp(0.0, 1.0)
-        P_packs = A_pos + u_packs * AB_vec
-        dist_to_packs = torch.hypot(C_packs[..., 0] - P_packs[..., 0], C_packs[..., 1] - P_packs[..., 1])
+        # Contournement intelligent par 4 Waypoints
+        dummy_fam = torch.full_like(fam_t, -1)
+        dummy_item = torch.full_like(item_t, -1)
+        any_waypoint_ok = torch.zeros((B, 106), dtype=torch.bool, device=D)
+        dist_direct = torch.hypot(B_tgt[..., 0] - A_pos[..., 0], B_tgt[..., 1] - A_pos[..., 1])
+        min_detour_dist = torch.full_like(dist_direct, 1e9)
 
-        target_pk = torch.where(fam_t == 0, item_t, torch.full_like(item_t, -1))
-        active_stones = (self.pack_stones > 0).unsqueeze(1)                             # (B, 1, 10)
-        pack_idx = self.pack_indices.unsqueeze(1)                                       # (1, 1, 10)
-        is_pack_obs = active_stones & (pack_idx != target_pk)
-        hits_pack = ((dist_to_packs < 235.0) & is_pack_obs).any(dim=-1)                 # (B, 106)
+        for w_idx in range(4):
+            W = self.waypoints[w_idx].view(1, 1, 2).expand(B, 106, 2)
+            A_to_W = self._segment_Blocked(A_pos, W, dummy_fam, dummy_item)
+            W_to_B = self._segment_Blocked(W, B_tgt, fam_t, item_t)
+            w_ok = (~A_to_W) & (~W_to_B)
+            any_waypoint_ok |= w_ok
+            d_w = (torch.hypot(W[..., 0] - A_pos[..., 0], W[..., 1] - A_pos[..., 1]) +
+                   torch.hypot(B_tgt[..., 0] - W[..., 0], B_tgt[..., 1] - W[..., 1]))
+            min_detour_dist = torch.where(w_ok, torch.minimum(min_detour_dist, d_w), min_detour_dist)
 
-        # --- 9b. Collision avec les 5 murs (M1..M5) DÉJ\xc3\x80 construits ---
-        C_walls = self.wall_centers.unsqueeze(0).unsqueeze(0)                           # (1, 1, 5, 2)
-        AC_walls = C_walls - A_pos
-        u_walls = ((AC_walls * AB_vec).sum(dim=-1, keepdim=True) / L2_dist).clamp(0.0, 1.0)
-        P_walls = A_pos + u_walls * AB_vec
-        dist_to_walls = torch.hypot(C_walls[..., 0] - P_walls[..., 0], C_walls[..., 1] - P_walls[..., 1])
-        u_w_sq = u_walls.squeeze(-1)
-        dist_start_w = torch.hypot(C_walls[..., 0] - A_pos[..., 0], C_walls[..., 1] - A_pos[..., 1])
-        dist_end_w = torch.hypot(C_walls[..., 0] - B_tgt[..., 0], C_walls[..., 1] - B_tgt[..., 1])
-        u_min_w = torch.where(dist_start_w < 290.0, 0.13, 0.02)
-        u_max_w = torch.where(dist_end_w < 290.0, 0.87, 0.98)
-        in_mid_wall = (u_w_sq > u_min_w) & (u_w_sq < u_max_w)
-        target_wall = torch.where((fam_t == 1) | (fam_t == 3) | ((fam_t == 6) & (item_t < 5)), item_t, torch.full_like(item_t, -1))
-        active_walls = (self.walls > 0.0).unsqueeze(1)                                  # (B, 1, 5)
-        wall_idx = self.wall_indices.unsqueeze(1)                                       # (1, 1, 5)
-        is_wall_obs = active_walls & (wall_idx != target_wall)
-        hits_wall = ((dist_to_walls < 210.0) & in_mid_wall & is_wall_obs).any(dim=-1)   # (B, 106)
+        # Un trajet est possible s'il est direct OU contournable via waypoints
+        path_possible = (~direct_blocked) | any_waypoint_ok
+        dist_eff = torch.where(~direct_blocked, dist_direct, min_detour_dist)
 
-        # --- 9c. Collision avec les 4 tours (T1..T4) (r = 180mm) ---
-        C_towers = self.tower_centers.unsqueeze(0).unsqueeze(0)                         # (1, 1, 4, 2)
-        AC_towers = C_towers - A_pos
-        u_towers = ((AC_towers * AB_vec).sum(dim=-1, keepdim=True) / L2_dist).clamp(0.0, 1.0)
-        P_towers = A_pos + u_towers * AB_vec
-        dist_to_towers = torch.hypot(C_towers[..., 0] - P_towers[..., 0], C_towers[..., 1] - P_towers[..., 1])
-        u_t_sq = u_towers.squeeze(-1)
-        dist_start_t = torch.hypot(C_towers[..., 0] - A_pos[..., 0], C_towers[..., 1] - A_pos[..., 1])
-        dist_end_t = torch.hypot(C_towers[..., 0] - B_tgt[..., 0], C_towers[..., 1] - B_tgt[..., 1])
-        u_min_t = torch.where(dist_start_t < 260.0, 0.13, 0.02)
-        u_max_t = torch.where(dist_end_t < 260.0, 0.87, 0.98)
-        in_mid_tower = (u_t_sq > u_min_t) & (u_t_sq < u_max_t)
-        target_tower = torch.where(fam_t == 2, item_t, torch.where((fam_t == 6) & (item_t >= 5), item_t - 5, torch.full_like(item_t, -1)))
-        active_towers = (self.towers > 0).unsqueeze(1)                                  # (B, 1, 4)
-        tower_idx = self.tower_indices.unsqueeze(1)                                     # (1, 1, 4)
-        is_tower_obs = active_towers & (tower_idx != target_tower)
-        hits_tower = ((dist_to_towers < 180.0) & in_mid_tower & is_tower_obs).any(dim=-1) # (B, 106)
-
-        # --- 9d. Collision avec adversaire dans le masque (r = 350mm) ---
-        has_opp = (self.opp_pose[:, 0] > 0.0) & (self.opp_pose[:, 1] > 0.0)
-        C_opp = self.opp_pose.unsqueeze(1).unsqueeze(2)                                 # (B, 1, 1, 2)
-        AC_opp = C_opp - A_pos
-        u_opp = ((AC_opp * AB_vec).sum(dim=-1, keepdim=True) / L2_dist).clamp(0.0, 1.0)
-        P_opp = A_pos + u_opp * AB_vec
-        dist_to_opp = torch.hypot(C_opp[..., 0] - P_opp[..., 0], C_opp[..., 1] - P_opp[..., 1]).squeeze(-1) # (B, 106)
-        u_opp_sq = u_opp.squeeze(-1).squeeze(-1)                                       # (B, 106)
-        mid_opp = (u_opp_sq >= 0.05) & (u_opp_sq <= 0.95)
-        hits_opp = has_opp.unsqueeze(1) & mid_opp & (dist_to_opp < 350.0) # (B, 106)
-
-        # --- 9d. Topologie du château : interdiction de traverser une enceinte fermée ---
+        # Topologie du chateau (M2, M3, M4)
         rx = self.robot_pose[:, 0]
         ry = self.robot_pose[:, 1]
         robot_in_castle = ((rx < 760.0) & (ry > 300.0) & (ry < 1700.0)).unsqueeze(1)    # (B, 1)
@@ -438,29 +478,26 @@ class TorchEnv:
         front_walls_built = (self.walls[:, 1:4] > 0.0).sum(dim=1, keepdim=True)         # (B, 1)
         castle_sealed = (front_walls_built >= 3)
 
-        hits_obstacle = hits_pack | hits_wall | hits_tower | hits_opp | (crosses_castle_border & castle_sealed)
-        mask = mask & (~hits_obstacle)
+        mask = mask & path_possible & (~(crosses_castle_border & castle_sealed))
 
-        # 10. ANTICIPATION DU RETOUR AU TRÔNE : Ne pas fermer la DERNIÈRE porte de façade depuis l'EXTÉRIEUR !
-        is_front_wall_act = ((fam_t.squeeze(-1) == 1) | (fam_t.squeeze(-1) == 3)) & (
-            (item_t.squeeze(-1) == 1) | (item_t.squeeze(-1) == 2) | (item_t.squeeze(-1) == 3)
+        # 10. ANTICIPATION DU RETOUR AU TRONE : Ne pas fermer la DERNIERE porte de facade depuis l'EXTERIEUR
+        is_front_wall_act = ((fam_t == 1) | (fam_t == 3)) & (
+            (item_t == 1) | (item_t == 2) | (item_t == 3)
         )
         locks_self_outside = is_front_wall_act & (~target_in_castle) & (front_walls_built == 2)
         mask = mask & (~locks_self_outside)
 
-        # 11. BUDGET TEMPS D'ANTICIPATION : Garantir le temps de rentrer et tirer les boulets (<= 100s)
-        dist_AB = torch.hypot(B_tgt[..., 0].squeeze(-1) - A_pos[..., 0].squeeze(-1),
-                              B_tgt[..., 1].squeeze(-1) - A_pos[..., 1].squeeze(-1))
-        dt_action = dist_AB / SPEED_LIN + self.action_mech.unsqueeze(0)
+        # 11. BUDGET TEMPS D'ANTICIPATION : Avec la distance effective du detour !
+        dt_action = dist_eff / SPEED_LIN + self.action_mech.unsqueeze(0)
         dist_to_throne_ret = torch.hypot(250.0 - self.action_tx.unsqueeze(0), 1000.0 - self.action_ty.unsqueeze(0))
         dt_throne_ret = dist_to_throne_ret / SPEED_LIN + 0.5
         dt_tir_requis = torch.where(~self.balls_fired, 6.1, 0.0).unsqueeze(1)
         t_previsionnel = self.t.unsqueeze(1) + dt_action + dt_throne_ret + dt_tir_requis
-        not_throne_act = (fam_t.squeeze(-1) != 4) & (fam_t.squeeze(-1) != 7)
+        not_throne_act = (fam_t != 4) & (fam_t != 7)
         out_of_time = (t_previsionnel > 100.0) & not_throne_act
         mask = mask & (~out_of_time)
 
-        # Si aucune action n'est libre, le tr\xc3\xb4ne permet le désengagement
+        # Si aucune action n'est libre, le trone permet le desengagement
         none_valid = ~mask.any(dim=1)
         mask[none_valid & (~(castle_sealed.squeeze(1) & (~robot_in_castle.squeeze(1)))), 105] = True
         return mask
@@ -584,10 +621,28 @@ class TorchEnv:
         f_idx = self.action_face[actions]
         item = self.action_item[actions]
 
-        # Déplacement robot
+        # Deplacement robot avec contournement par waypoints si segment direct bloque
         dx = tx - self.robot_pose[:, 0]
         dy = ty - self.robot_pose[:, 1]
-        dist = torch.hypot(dx, dy)
+        d_dir = torch.hypot(dx, dy)
+
+        A_p = self.robot_pose[:, :2].unsqueeze(1)                                     # (B, 1, 2)
+        B_t = torch.stack([tx, ty], dim=1).unsqueeze(1)                               # (B, 1, 2)
+        f_t = fam.unsqueeze(1)
+        it_t = item.unsqueeze(1)
+        dir_blk = self._segment_Blocked(A_p, B_t, f_t, it_t).squeeze(1)
+
+        min_detour = torch.full_like(d_dir, 1e9)
+        for w_idx in range(4):
+            W = self.waypoints[w_idx].view(1, 1, 2).expand(B, 1, 2)
+            A_to_W = self._segment_Blocked(A_p, W, torch.full_like(f_t, -1), torch.full_like(it_t, -1)).squeeze(1)
+            W_to_B = self._segment_Blocked(W, B_t, f_t, it_t).squeeze(1)
+            w_ok = (~A_to_W) & (~W_to_B)
+            d_w = (torch.hypot(W[:, 0, 0] - self.robot_pose[:, 0], W[:, 0, 1] - self.robot_pose[:, 1]) +
+                   torch.hypot(tx - W[:, 0, 0], ty - W[:, 0, 1]))
+            min_detour = torch.where(w_ok, torch.minimum(min_detour, d_w), min_detour)
+
+        dist = torch.where(~dir_blk, d_dir, torch.where(min_detour < 1e8, min_detour, d_dir))
 
         dh = torch.abs((th - self.robot_pose[:, 2] + 180.0) % 360.0 - 180.0)
 

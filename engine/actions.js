@@ -229,23 +229,20 @@
     return Math.hypot(cx - px, cy - py) < r;
   }
 
-  function hitsCrates(act, sim) {
-    if (act && (act.famille === 'boulets' || act.famille === 'trone')) return false;
-    if (!sim || typeof sim.pose !== 'function') return false;
-    var s = sim.pose();
-    if (!s || s.x == null) return false;
-    var rawTgt = getActionTarget(act);
-    if (!rawTgt) return false;
+  var WAYPOINTS = [
+    [1050, 320],   // Nord-Ouest
+    [1050, 1680],  // Sud-Ouest
+    [1750, 820],   // Nord-Est
+    [1750, 1180]   // Sud-Est
+  ];
 
-    var isBlue = (sim.params && sim.params().team === 'blue');
-    var tx = isBlue ? 3000 - rawTgt[0] : rawTgt[0];
-    var ty = rawTgt[1];
-    var ax = s.x, ay = s.y;
-    var abx = tx - ax, aby = ty - ay;
+  function isSegmentBlocked(ax, ay, bx, by, act, sim) {
+    var abx = bx - ax, aby = by - ay;
     var l2 = abx * abx + aby * aby;
     if (l2 < 1e-4) return false;
 
-    var targetPk = act.famille === 'prendre' ? (isBlue && typeof ENGINE !== 'undefined' ? ENGINE.mirrorId(act.p) : act.p) : null;
+    var isBlue = (sim.params && sim.params().team === 'blue');
+    var targetPk = act && act.famille === 'prendre' ? (isBlue && typeof ENGINE !== 'undefined' ? ENGINE.mirrorId(act.p) : act.p) : null;
     var stones = typeof sim.stones === 'function' ? sim.stones() : [];
 
     // 1. Collision avec les paquets P1..P10 encore au sol
@@ -263,26 +260,26 @@
       var u = Math.max(0, Math.min(1, (acx * abx + acy * aby) / l2));
       var px = ax + u * abx, py = ay + u * aby;
       var dist = Math.hypot(cx - px, cy - py);
-      if (dist < 235) return true;
+      if (dist < 235 && u > 0.05 && u < 0.95) return true;
     }
 
     // 2. Collision avec les constructions (M1..M5, T1..T4) déjà posées
-    var targetZone = act.z ? (isBlue && typeof ENGINE !== 'undefined' ? ENGINE.mirrorId(act.z) : act.z) : null;
+    var targetZone = act && act.z ? (isBlue && typeof ENGINE !== 'undefined' ? ENGINE.mirrorId(act.z) : act.z) : null;
     for (var b = 0; b < BUILD_OBSTACLES.length; b++) {
       var obs = BUILD_OBSTACLES[b];
       var zId = isBlue && typeof ENGINE !== 'undefined' ? ENGINE.mirrorId(obs.id) : obs.id;
       if (zId === targetZone) continue;
       if (!zoneHasBuild(sim, zId)) continue;
       var ox = isBlue ? 3000 - obs.x : obs.x, oy = obs.y;
-      if (segmentHitsCircle(ax, ay, tx, ty, ox, oy, obs.r)) return true;
+      if (segmentHitsCircle(ax, ay, bx, by, ox, oy, obs.r)) return true;
     }
 
     // 3. Empêcher de traverser l'enceinte du château si elle est fermée
     var inCastleNow = (isBlue ? (3000 - ax) : ax) < 760 && ay > 300 && ay < 1700;
-    var inCastleAfter = rawTgt[0] < 760 && rawTgt[1] > 300 && rawTgt[1] < 1700;
+    var inCastleAfter = (isBlue ? (3000 - bx) : bx) < 760 && by > 300 && by < 1700;
     var exitsOpen = ['M2', 'M3', 'M4'].filter(function (z) {
       var zid = isBlue && typeof ENGINE !== 'undefined' ? ENGINE.mirrorId(z) : z;
-      if (zid === targetZone && (act.famille === 'mur' || act.famille === 'porte')) return false;
+      if (zid === targetZone && act && (act.famille === 'mur' || act.famille === 'porte')) return false;
       return !zoneHasBuild(sim, zid);
     }).length;
 
@@ -291,18 +288,54 @@
     }
 
     // 4. Ne pas fermer la DERNIÈRE porte de façade depuis l'EXTÉRIEUR
-    var isFrontWall = (act.famille === 'mur' || act.famille === 'porte') && (act.z === 'M2' || act.z === 'M3' || act.z === 'M4');
-    if (isFrontWall && !inCastleAfter && exitsOpen === 1 && !zoneHasBuild(sim, targetZone)) {
-      return true;
+    if (act) {
+      var isFrontWall = (act.famille === 'mur' || act.famille === 'porte') && (act.z === 'M2' || act.z === 'M3' || act.z === 'M4');
+      if (isFrontWall && !inCastleAfter && exitsOpen === 1 && !zoneHasBuild(sim, targetZone)) {
+        return true;
+      }
     }
 
     // 5. Collision avec le robot adverse si détecté
     var opp = (typeof sim.oppPose === 'function' ? sim.oppPose() : (sim.opp ? sim.opp : null));
     if (opp && opp.x > 0 && opp.y > 0) {
-      if (segmentHitsCircle(ax, ay, tx, ty, opp.x, opp.y, 350)) return true;
+      if (segmentHitsCircle(ax, ay, bx, by, opp.x, opp.y, 350)) return true;
     }
 
     return false;
+  }
+
+  function getEffectiveActionDistance(ax, ay, tx, ty, act, sim) {
+    if (!isSegmentBlocked(ax, ay, tx, ty, act, sim)) {
+      return Math.hypot(tx - ax, ty - ay);
+    }
+    var isBlue = (sim.params && sim.params().team === 'blue');
+    var bestDist = Infinity;
+    for (var w = 0; w < WAYPOINTS.length; w++) {
+      var wx = isBlue ? 3000 - WAYPOINTS[w][0] : WAYPOINTS[w][0];
+      var wy = WAYPOINTS[w][1];
+      if (!isSegmentBlocked(ax, ay, wx, wy, null, sim) && !isSegmentBlocked(wx, wy, tx, ty, act, sim)) {
+        var d = Math.hypot(wx - ax, wy - ay) + Math.hypot(tx - wx, ty - wy);
+        if (d < bestDist) bestDist = d;
+      }
+    }
+    return bestDist < Infinity ? bestDist : null;
+  }
+
+  function hitsCrates(act, sim) {
+    if (act && (act.famille === 'boulets' || act.famille === 'trone')) return false;
+    if (!sim || typeof sim.pose !== 'function') return false;
+    var s = sim.pose();
+    if (!s || s.x == null) return false;
+    var rawTgt = getActionTarget(act);
+    if (!rawTgt) return false;
+
+    var isBlue = (sim.params && sim.params().team === 'blue');
+    var tx = isBlue ? 3000 - rawTgt[0] : rawTgt[0];
+    var ty = rawTgt[1];
+    var ax = s.x, ay = s.y;
+
+    var effDist = getEffectiveActionDistance(ax, ay, tx, ty, act, sim);
+    return effDist == null;
   }
 
   function valid(act, sim) {
@@ -318,7 +351,8 @@
         var thX = isBlue ? 2750 : 250, thY = 1000;
         var MECH_DURATIONS = { 'prendre': 1.8, 'mur': 1.6, 'tour': 2.2, 'porte': 4.8, 'boulets': 5.0, 'prendreGraal': 2.5, 'poserGraal': 2.9, 'trone': 2.0 };
         var mech = act.mech || MECH_DURATIONS[act.famille] || 1.0;
-        var dt_act = Math.hypot(tx - s.x, ty - s.y) / 500.0 + mech;
+        var effDist = getEffectiveActionDistance(s.x, s.y, tx, ty, act, sim) || Math.hypot(tx - s.x, ty - s.y);
+        var dt_act = effDist / 500.0 + mech;
         var dt_throne = Math.hypot(thX - tx, thY - ty) / 500.0 + 0.5;
         var ballsFired = sim.balls && sim.balls().shots;
         var dt_tir = ballsFired ? 0.0 : 6.1;
