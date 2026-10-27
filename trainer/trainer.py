@@ -13,8 +13,13 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+TRAINER_DIR = Path(__file__).resolve().parent
+# Éliminer le dossier trainer/ de sys.path pour éviter qu'un module trainer.py masque le package trainer
+while str(TRAINER_DIR) in sys.path:
+    sys.path.remove(str(TRAINER_DIR))
+if str(ROOT) in sys.path:
+    sys.path.remove(str(ROOT))
+sys.path.insert(0, str(ROOT))
 WORKER = ROOT / "engine" / "env_worker.js"
 
 try:

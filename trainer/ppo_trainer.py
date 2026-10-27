@@ -22,8 +22,12 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+TRAINER_DIR = Path(__file__).resolve().parent
+while str(TRAINER_DIR) in sys.path:
+    sys.path.remove(str(TRAINER_DIR))
+if str(ROOT) in sys.path:
+    sys.path.remove(str(ROOT))
+sys.path.insert(0, str(ROOT))
 
 import numpy as np
 import torch

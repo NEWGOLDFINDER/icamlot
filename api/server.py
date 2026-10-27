@@ -331,7 +331,7 @@ def spawn_job(jid):
         log_fh = None
 
     proc = subprocess.Popen(
-        [py_bin, TRAINER_PY, "--job", path, "--strategies", DATA, "--weights-out", weights_out],
+        [py_bin, "-m", "trainer.trainer", "--job", path, "--strategies", DATA, "--weights-out", weights_out],
         cwd=REPO,
         env=env,
         stdout=log_fh if log_fh else subprocess.DEVNULL,
