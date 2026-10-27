@@ -168,6 +168,9 @@ input[type=number], input[type=text], input[type=search] { background: var(--bg)
         <div>
           <article class="card">
             <h2>Architecture</h2>
+            <div class="pgrid" style="margin-bottom:10px">
+              <label>Architecture <select id="pArch" style="width:160px"><option value="mlp" selected>MLP dense profond</option><option value="transformer">Entity-Transformer (22 entités)</option></select></label>
+            </div>
             <p class="note">Ajoute ou retire des couches. La sortie softmax est imposée. Plafond : 8 couches, 256 neurones, 250 000 paramètres.</p>
             <div class="layers" id="layers"></div>
             <div class="crow" style="margin-top:8px">
@@ -195,6 +198,7 @@ input[type=number], input[type=text], input[type=search] { background: var(--bg)
           <div class="segc" id="meth" role="group" aria-label="Méthode d'apprentissage">
             <button type="button" data-m="evolution" aria-pressed="true">Neuroévolution</button>
             <button type="button" data-m="imitation">Imitation</button>
+            <button type="button" data-m="ppo">PPO Récurrent (GPU)</button>
           </div>
           <p class="note" id="methHelp" style="margin-top:10px">Une population joue des matchs ; on garde les meilleurs et on les mute.</p>
           <div class="pgrid" id="reglEvo" style="margin-top:12px">
@@ -207,6 +211,16 @@ input[type=number], input[type=text], input[type=search] { background: var(--bg)
             <label>Époques <input id="rEp" type="number" min="1" max="500" value="40"></label>
             <label>Taux d'apprent. <input id="rLr" type="number" min="0.00001" max="1" step="0.001" value="0.02"></label>
             <label>Taille de lot <input id="rBatch" type="number" min="1" max="256" value="16"></label>
+          </div>
+          <div class="pgrid" id="reglPpo" hidden style="margin-top:12px">
+            <label>Transitions GPU <input id="rPpoSteps" type="number" min="1000" max="1000000" step="5000" value="100000"></label>
+            <label>Envs parallèles <input id="rPpoBatch" type="number" min="16" max="1024" step="16" value="256"></label>
+            <label>Longueur rollout <input id="rPpoRollout" type="number" min="8" max="128" step="8" value="32"></label>
+            <label>Taux d'apprent. <input id="rPpoLr" type="number" min="0.00001" max="0.01" step="0.0001" value="0.0003"></label>
+            <label class="chk" style="grid-column: 1 / -1; margin-top: 4px"><input id="rPpoCurriculum" type="checkbox" checked> Curriculum Sokoban (50% libre / 30% châteaux / 20% désenclavement)</label>
+            <label class="chk" style="grid-column: 1 / -1"><input id="rPpoWorldModel" type="checkbox" checked> Tête auxiliaire World-Model (8 dynamiques physiques)</label>
+            <label class="chk" style="grid-column: 1 / -1"><input id="rPpoMcts" type="checkbox"> Planification GPU MCTS (Gumbel AlphaZero)</label>
+            <label class="chk" style="grid-column: 1 / -1"><input id="rPpoPretrain" type="checkbox" checked> Pré-entraînement par imitation (initialisation GRU)</label>
           </div>
           <div class="pgrid" style="margin-top:12px">
             <label>Durée max (s) <input id="rMax" type="number" min="30" max="1800" value="300"></label>

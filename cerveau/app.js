@@ -12,10 +12,16 @@
       format: 'camelot-cerveau', version: 1, name: '',
       entrees: ENV.GROUPS.map(function (g) { return g.id; }),
       actions: { familles: ACTIONS.FAMILLES.map(function (f) { return f.id; }), cotes: ['ext', 'int'] },
-      reseau: { couches: [{ neurones: 64, activation: 'relu' }, { neurones: 64, activation: 'relu' }], sortie: 'softmax' },
+      architecture: 'mlp',
+      reseau: { couches: [{ neurones: 64, activation: 'relu' }, { neurones: 64, activation: 'relu' }], sortie: 'softmax', architecture: 'mlp' },
       adversaire: { actif: false, intensite: 'aucun' },
       methode: 'evolution',
-      reglages: { population: 20, generations: 30, mutation: 0.1, scenarios_par_evaluation: 1, graine: 1, duree_max: 300, epoques: 40, taux_apprentissage: 0.02, lot: 16, mode: 'rapide' },
+      reglages: {
+        population: 20, generations: 30, mutation: 0.1, scenarios_par_evaluation: 1, graine: 1, duree_max: 300,
+        epoques: 40, taux_apprentissage: 0.02, lot: 16, mode: 'rapide',
+        ppo_steps: 100000, ppo_batch_size: 256, ppo_rollout_len: 32, ppo_lr: 0.0003,
+        curriculum_sokoban: true, world_model: true, mcts_eval: false, pretrain_imitation: true
+      },
       recompense: { base: 'score', penalite_erreur: 0, penalite_contact: 0, sur_erreur: 'penalite' },
       graine: 1
     };
@@ -68,6 +74,8 @@
     if (!cfg.entrees.length) cfg.entrees = ['temps'];
     cfg.actions.familles = Array.prototype.map.call(document.querySelectorAll('#sorties input:checked'), function (i) { return i.value; });
     if (cfg.actions.familles.indexOf('trone') < 0) cfg.actions.familles.push('trone');
+    cfg.architecture = ($('pArch') && $('pArch').value) || cfg.architecture || 'mlp';
+    cfg.reseau.architecture = cfg.architecture;
     cfg.graine = parseInt($('pSeed').value, 10) || 1;
     cfg.reglages.graine = parseInt($('rSeed').value, 10) || cfg.graine;
     cfg.reglages.population = parseInt($('rPop').value, 10) || 20;
@@ -78,6 +86,14 @@
     cfg.reglages.epoques = parseInt($('rEp').value, 10) || 40;
     cfg.reglages.taux_apprentissage = parseFloat($('rLr').value) || 0.02;
     cfg.reglages.lot = parseInt($('rBatch').value, 10) || 16;
+    if ($('rPpoSteps')) cfg.reglages.ppo_steps = parseInt($('rPpoSteps').value, 10) || 100000;
+    if ($('rPpoBatch')) cfg.reglages.ppo_batch_size = parseInt($('rPpoBatch').value, 10) || 256;
+    if ($('rPpoRollout')) cfg.reglages.ppo_rollout_len = parseInt($('rPpoRollout').value, 10) || 32;
+    if ($('rPpoLr')) cfg.reglages.ppo_lr = parseFloat($('rPpoLr').value) || 0.0003;
+    if ($('rPpoCurriculum')) cfg.reglages.curriculum_sokoban = $('rPpoCurriculum').checked;
+    if ($('rPpoWorldModel')) cfg.reglages.world_model = $('rPpoWorldModel').checked;
+    if ($('rPpoMcts')) cfg.reglages.mcts_eval = $('rPpoMcts').checked;
+    if ($('rPpoPretrain')) cfg.reglages.pretrain_imitation = $('rPpoPretrain').checked;
     cfg.recompense.penalite_erreur = parseFloat($('rPenE').value) || 0;
     cfg.recompense.penalite_contact = parseFloat($('rPenC').value) || 0;
     cfg.recompense.sur_erreur = $('rFinErr').checked ? 'fin' : 'penalite';
@@ -86,10 +102,19 @@
   function writeUi() {
     $('sName').value = cfg.name || current || '';
     $('pSeed').value = cfg.graine || 1;
+    if ($('pArch')) $('pArch').value = cfg.architecture || (cfg.reseau && cfg.reseau.architecture) || 'mlp';
     var r = cfg.reglages;
     $('rPop').value = r.population; $('rGen').value = r.generations; $('rMut').value = r.mutation;
     $('rScen').value = r.scenarios_par_evaluation; $('rMax').value = r.duree_max; $('rSeed').value = r.graine;
     $('rEp').value = r.epoques; $('rLr').value = r.taux_apprentissage; $('rBatch').value = r.lot;
+    if ($('rPpoSteps')) $('rPpoSteps').value = r.ppo_steps != null ? r.ppo_steps : 100000;
+    if ($('rPpoBatch')) $('rPpoBatch').value = r.ppo_batch_size != null ? r.ppo_batch_size : 256;
+    if ($('rPpoRollout')) $('rPpoRollout').value = r.ppo_rollout_len != null ? r.ppo_rollout_len : 32;
+    if ($('rPpoLr')) $('rPpoLr').value = r.ppo_lr != null ? r.ppo_lr : 0.0003;
+    if ($('rPpoCurriculum')) $('rPpoCurriculum').checked = r.curriculum_sokoban !== false;
+    if ($('rPpoWorldModel')) $('rPpoWorldModel').checked = r.world_model !== false;
+    if ($('rPpoMcts')) $('rPpoMcts').checked = !!r.mcts_eval;
+    if ($('rPpoPretrain')) $('rPpoPretrain').checked = r.pretrain_imitation !== false;
     $('rPenE').value = cfg.recompense.penalite_erreur; $('rPenC').value = cfg.recompense.penalite_contact;
     $('rFinErr').checked = cfg.recompense.sur_erreur === 'fin';
     document.querySelectorAll('#meth button').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.m === cfg.methode)); });
@@ -138,7 +163,7 @@
     $('nHid').textContent = cfg.reseau.couches.length;
     $('parDetail').innerHTML = p.detail.map(function (d) { return esc(d.txt); }).join(' &nbsp;·&nbsp; ');
     if (p.total > NET.MAX_PARAMS) $('parDetail').innerHTML += ' <span class="bad">Plafond ' + NET.MAX_PARAMS.toLocaleString('fr-FR') + ' dépassé.</span>';
-    $('code').textContent = NET.pytorchCode(slugify($('sName').value) || 'Cerveau', nIn(), cfg.reseau.couches, nOut());
+    $('code').textContent = NET.pytorchCode(slugify($('sName').value) || 'Cerveau', nIn(), cfg.reseau.couches, nOut(), cfg.architecture || (cfg.reseau && cfg.reseau.architecture));
     NET.draw($('netCv'), nIn(), cfg.reseau.couches, nOut());
   }
 
@@ -184,8 +209,17 @@
       epoques: 100,
       taux_apprentissage: 0.003,
       lot: 64,
-      mode: 'rapide'
+      mode: 'rapide',
+      ppo_steps: 150000,
+      ppo_batch_size: 256,
+      ppo_rollout_len: 32,
+      ppo_lr: 0.0003,
+      curriculum_sokoban: true,
+      world_model: true,
+      mcts_eval: true,
+      pretrain_imitation: true
     };
+    cfg.architecture = 'mlp';
     // 6. Récompenses et sécurité Eurobot (pénalités pour 0 faute / 0 contact)
     cfg.recompense = {
       base: 'score',
@@ -208,10 +242,16 @@
   function setMethode(m, silent) {
     cfg.methode = m;
     document.querySelectorAll('#meth button').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.m === m)); });
-    $('reglEvo').hidden = m !== 'evolution'; $('reglImi').hidden = m !== 'imitation';
-    $('methHelp').textContent = m === 'imitation'
-      ? 'Le réseau apprend à reproduire les stratégies déjà enregistrées, rejouées pas à pas.'
-      : 'Une population joue des matchs ; on garde les meilleurs et on les mute.';
+    $('reglEvo').hidden = m !== 'evolution';
+    $('reglImi').hidden = m !== 'imitation';
+    if ($('reglPpo')) $('reglPpo').hidden = m !== 'ppo';
+    if (m === 'imitation') {
+      $('methHelp').textContent = 'Le réseau apprend à reproduire les stratégies déjà enregistrées, rejouées pas à pas.';
+    } else if (m === 'ppo') {
+      $('methHelp').textContent = 'PPO Récurrent GPU : optimise un Actor-Critic GRU avec World-Model auxiliaire et Curriculum Sokoban vectorisé.';
+    } else {
+      $('methHelp').textContent = 'Une population joue des matchs ; on garde les meilleurs et on les mute.';
+    }
     if (!silent) updateDirty();
   }
   document.querySelectorAll('#meth button').forEach(function (b) { b.addEventListener('click', function () { setMethode(b.dataset.m); }); });
@@ -222,9 +262,12 @@
       updateDirty();
     });
   });
-  ['rPop', 'rGen', 'rMut', 'rScen', 'rMax', 'rSeed', 'rEp', 'rLr', 'rBatch', 'rPenE', 'rPenC', 'rFinErr'].forEach(function (id) {
-    $(id).addEventListener('change', function () { readUi(); updateDirty(); });
+  ['rPop', 'rGen', 'rMut', 'rScen', 'rMax', 'rSeed', 'rEp', 'rLr', 'rBatch', 'rPenE', 'rPenC', 'rFinErr',
+   'rPpoSteps', 'rPpoBatch', 'rPpoRollout', 'rPpoLr', 'rPpoCurriculum', 'rPpoWorldModel', 'rPpoMcts', 'rPpoPretrain'].forEach(function (id) {
+    var el = $(id);
+    if (el) el.addEventListener('change', function () { readUi(); updateDirty(); });
   });
+  if ($('pArch')) $('pArch').addEventListener('change', function () { readUi(); refreshNet(); updateDirty(); });
 
   document.querySelectorAll('.tab').forEach(function (t) {
     t.addEventListener('click', function () {
@@ -268,7 +311,9 @@
   function confirmLoss(go) { if (!isDirty()) go(); else toast('Les modifications non enregistrées seront perdues.', 'bad', [['Continuer', go], ['Annuler', null]]); }
   function applyBrain(j) {
     cfg = Object.assign(defaultCfg(), j);
+    cfg.architecture = j.architecture || (j.reseau && j.reseau.architecture) || 'mlp';
     cfg.reseau = j.reseau || cfg.reseau;
+    cfg.reseau.architecture = cfg.architecture;
     cfg.actions = j.actions || cfg.actions;
     cfg.reglages = Object.assign(defaultCfg().reglages, j.reglages || {});
     cfg.recompense = Object.assign(defaultCfg().recompense, j.recompense || {});
@@ -280,7 +325,7 @@
     }
     weights = null;
     refreshPlayInfo();
-    if (j.entraine) api('GET', API + '/cerveaux/' + slugify(j.name) + '/poids').then(function (w) { weights = w.layers; refreshPlayInfo(); }, function () { refreshPlayInfo(); });
+    if (j.entraine) api('GET', API + '/cerveaux/' + slugify(j.name) + '/poids').then(function (w) { weights = w.layers || w; refreshPlayInfo(); }, function () { refreshPlayInfo(); });
   }
   function loadBrain(slug) {
     delArm = '';
@@ -341,7 +386,11 @@
     ctx.clearRect(0, 0, w, h);
     if (!hist || !hist.length) return;
     var pad = 28, ys = [];
-    hist.forEach(function (p) { if (methode === 'imitation') ys.push(p.loss); else { ys.push(p.best, p.mean, p.worst); } });
+    hist.forEach(function (p) {
+      if (methode === 'imitation') ys.push(p.loss);
+      else if (methode === 'ppo') { ys.push(p.best, p.mean, p.loss, p.aux_loss); }
+      else { ys.push(p.best, p.mean, p.worst); }
+    });
     var ymin = Math.min.apply(null, ys.filter(function (x) { return x != null; })), ymax = Math.max.apply(null, ys.filter(function (x) { return x != null; }));
     if (ymin === ymax) { ymin -= 1; ymax += 1; }
     function X(i) { return pad + (w - 2 * pad) * i / Math.max(hist.length - 1, 1); }
@@ -353,6 +402,11 @@
       ctx.stroke();
     }
     if (methode === 'imitation') series('loss', '#f5c518');
+    else if (methode === 'ppo') {
+      series('best', '#3ccf7a');
+      series('mean', '#f5c518');
+      series('aux_loss', '#8ab4ff');
+    }
     else { series('best', '#3ccf7a'); series('mean', '#f5c518'); series('worst', '#ff6b6b'); }
   }
   function diagnose(hist, methode) {
@@ -364,6 +418,11 @@
       else $('tDiag').textContent = '';
       return;
     }
+    if (methode === 'ppo') {
+      var lastPpo = hist[hist.length - 1];
+      if (lastPpo) $('tDiag').innerHTML = '<span style="color:#3ccf7a">● Record: ' + (lastPpo.best != null ? lastPpo.best : 0) + ' pts</span> &nbsp; <span style="color:#f5c518">● Moyen: ' + (lastPpo.mean != null ? lastPpo.mean : 0) + ' pts</span> &nbsp; <span style="color:#8ab4ff">● World-Model aux: ' + (lastPpo.aux_loss != null ? lastPpo.aux_loss : '—') + '</span>';
+      return;
+    }
     var bests = hist.map(function (p) { return p.best; });
     var last = bests.slice(-4);
     if (last.every(function (v) { return v === last[0]; })) $('tDiag').textContent = 'Le score ne progresse plus.';
@@ -373,8 +432,14 @@
     var p = j.progress || {}, m = j.methode || cfg.methode;
     $('tJob').textContent = (j.name || '') + ' · ' + (j.status || '');
     $('tQueue').textContent = j.queue ? 'position ' + j.queue : (j.status === 'running' ? 'en cours' : 'libre');
-    if (p.generation) $('tProg').textContent = p.generation + ' / ' + p.generations;
-    else $('tProg').textContent = j.status === 'queued' ? 'file' : '—';
+    if (p.step && p.steps) {
+      var pct = Math.round((p.step / p.steps) * 100);
+      $('tProg').textContent = pct + '% (' + (p.generation || 1) + '/' + (p.generations || 1) + ')';
+    } else if (p.generation) {
+      $('tProg').textContent = p.generation + ' / ' + p.generations;
+    } else {
+      $('tProg').textContent = j.status === 'queued' ? 'file' : '—';
+    }
     $('tEta').textContent = p.eta_s != null ? Math.round(p.eta_s) + ' s' : '—';
     $('tMps').textContent = p.matches_per_s != null ? p.matches_per_s : '—';
     if (p.device) $('tDev').textContent = (p.name || p.device) + (p.vram_mo ? ' · ' + p.vram_mo + ' Mo' : '');
@@ -382,7 +447,7 @@
     setJobBtns(j.status);
     if (j.status === 'done') {
       toast('Entraînement terminé' + (j.best_score ? ' · meilleur score ' + Math.round(j.best_score) : ''), 'ok');
-      api('GET', API + '/cerveaux/' + slugify(j.slug || current) + '/poids').then(function (w) { weights = w.layers; }, function () {});
+      api('GET', API + '/cerveaux/' + slugify(j.slug || current) + '/poids').then(function (w) { weights = w.layers || w; }, function () {});
     }
     if (j.status === 'error') toast(j.error || 'Erreur d\'entraînement', 'bad');
   }

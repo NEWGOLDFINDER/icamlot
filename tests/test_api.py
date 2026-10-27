@@ -45,6 +45,36 @@ def main():
     assert st == 200 and j["name"] == "Test API", j
     st, j, _ = req("GET", "/api/cerveaux")
     assert st == 200 and any(c["slug"] == "test-api" for c in j["cerveaux"]), j
+
+    # Test Cerveau PPO GPU avec Architecture Transformer et World Model
+    st, j, _ = req("PUT", "/api/cerveaux/test-ppo", {
+        "name": "Test PPO",
+        "entrees": ["temps", "robot", "paquets", "faces", "constructions", "graal", "boulets", "adversaire"],
+        "actions": {"familles": ["prendre", "mur", "tour", "porte", "boulets", "prendreGraal", "poserGraal", "trone"]},
+        "reseau": {"couches": [{"neurones": 64, "activation": "relu"}], "architecture": "transformer"},
+        "architecture": "transformer",
+        "methode": "ppo",
+        "reglages": {
+            "ppo_steps": 50000,
+            "ppo_batch_size": 128,
+            "ppo_rollout_len": 32,
+            "ppo_lr": 0.0003,
+            "curriculum_sokoban": True,
+            "world_model": True,
+            "mcts_eval": True,
+        },
+    })
+    assert st == 200, (st, j)
+    st, j, _ = req("GET", "/api/cerveaux/test-ppo")
+    assert st == 200, (st, j)
+    assert j["methode"] == "ppo"
+    assert j["reglages"]["ppo_steps"] == 50000
+    assert j["reglages"]["curriculum_sokoban"] is True
+    assert j["reglages"]["world_model"] is True
+    assert j["reglages"]["mcts_eval"] is True
+    assert j["architecture"] == "transformer"
+    st, _, _ = req("DELETE", "/api/cerveaux/test-ppo")
+    assert st == 200
     st, j, _ = req("PUT", "/api/cerveaux/test-api", {
         "name": "Test API",
         "reseau": {"couches": [{"neurones": 9999, "activation": "relu"}]},

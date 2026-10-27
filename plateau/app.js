@@ -391,7 +391,18 @@
   }
   function brainSpec(name, layers, cfg) {
     var familles = (cfg.actions && cfg.actions.familles) || BrainActs.FAMILLES.map(function (f) { return f.id; });
-    return { name: name, brain: { layers: layers, acts: ((cfg.reseau && cfg.reseau.couches) || []).map(function (c) { return c.activation; }), entrees: cfg.entrees || window.ENV.GROUPS.map(function (g) { return g.id; }), familles: familles } };
+    var acts = ((cfg.reseau && cfg.reseau.couches) || []).map(function (c) { return c.activation; });
+    var model = (pilot.weights && (pilot.weights.model || pilot.weights)) || null;
+    return {
+      name: name,
+      brain: {
+        layers: Array.isArray(layers) ? layers : (layers && layers.layers) || [],
+        acts: acts,
+        entrees: cfg.entrees || window.ENV.GROUPS.map(function (g) { return g.id; }),
+        familles: familles,
+        model: (model && model.hidden_dim) ? model : null
+      }
+    };
   }
   function recomputeLive(opp) {
     if (!window.ENV || !window.NET || !BrainActs) {
@@ -409,8 +420,12 @@
         var inten = opp ? oppChoice.intensity : 'aucun', oppSpec = oppData(opp), ours, theirs;
         if (pilot.mode === 'cerveau') {
           var bs = brainSpec(pilot.name, pilot.layers, pilot.cfg);
-          var env = window.ENV.create({ entrees: bs.brain.entrees, familles: bs.brain.familles, params: params, adversaire: { intensite: inten }, skipContacts: false, onError: 'penalite', filterSafety: true });
-          env.play(window.ENV.chooserFromLayers(bs.brain.layers, bs.brain.acts), { params: params, intensite: inten, opponent: oppSpec, filterSafety: true });
+          var useMcts = $('cMcts') && $('cMcts').checked;
+          var env = window.ENV.create({ entrees: bs.brain.entrees, familles: bs.brain.familles, params: params, adversaire: { intensite: inten }, skipContacts: false, onError: 'penalite', filterSafety: true, mcts: useMcts });
+          var chooser = (bs.brain.model && window.NET && window.NET.chooserFromRecurrent)
+            ? window.NET.chooserFromRecurrent(bs.brain.model)
+            : window.ENV.chooserFromLayers(bs.brain.layers, bs.brain.acts);
+          env.play(chooser, { params: params, intensite: inten, opponent: oppSpec, filterSafety: true, mcts: useMcts });
           ours = env.program(); theirs = env.opponentProgram();
         } else {
           var pm = window.ENV.playProgram(prog, params, oppSpec, inten, false);
@@ -1046,9 +1061,10 @@
       pilot.slug = meta.slug || '';
       pilot.name = meta.name || '';
       if (meta.layers) pilot.layers = meta.layers;
+      if (meta.weights) pilot.weights = meta.weights;
       if (meta.cfg) pilot.cfg = meta.cfg;
     }
-    if (mode !== 'cerveau') { pilot.layers = null; pilot.cfg = null; pilot.slug = ''; pilot.name = ''; }
+    if (mode !== 'cerveau') { pilot.layers = null; pilot.weights = null; pilot.cfg = null; pilot.slug = ''; pilot.name = ''; }
     document.body.classList.toggle('pilot-cerveau', mode === 'cerveau');
     $('tabProg').textContent = mode === 'cerveau' ? 'Décisions' : 'Programme';
     $('vProg').innerHTML = mode === 'cerveau'
@@ -1244,12 +1260,12 @@
       var nIn = window.ENV.nInputs(j.entrees);
       var nOut = BrainActs.filterByFamilles(familles).length;
       var layers = (w && w.layers) ? w.layers : window.NET.randomWeights(nIn, couches, nOut, j.graine || 1);
-      setPilotMode('cerveau', { slug: slug, name: j.name, layers: layers, cfg: j });
+      setPilotMode('cerveau', { slug: slug, name: j.name, layers: layers, weights: w, cfg: j });
       if (!keepDrawer) closeDrawer();
       oursKind = 'cerveau'; renderMatch();
-      toast(w && w.layers
+      toast(w && (w.layers || w.model)
         ? '« ' + j.name + ' » joue en direct'
-        : '« ' + j.name + ' » sans poids entraînés : décisions aléatoires parmi les actions valides', w && w.layers ? 'ok' : 'bad');
+        : '« ' + j.name + ' » sans poids entraînés : décisions aléatoires parmi les actions valides', (w && (w.layers || w.model)) ? 'ok' : 'bad');
       time = 0; setPlaying(true);
       recompute();
     }, function (e) { toast('Impossible d\'ouvrir le cerveau : ' + e.message, 'bad'); });
@@ -1363,6 +1379,13 @@
     b.addEventListener('click', function () { camMode = b.dataset.cam; setCam(camMode); document.querySelectorAll('[data-cam]').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); }); });
   });
   $('cLab').addEventListener('change', function (e) { labels.visible = e.target.checked; });
+  if ($('cMcts')) {
+    $('cMcts').checked = lsGet('icamlot-mcts-enabled') === '1';
+    $('cMcts').addEventListener('change', function (e) {
+      lsSet('icamlot-mcts-enabled', e.target.checked ? '1' : null);
+      if (pilot.mode === 'cerveau') recompute();
+    });
+  }
   $('cTrail').addEventListener('change', function (e) { showTrail = e.target.checked; if (trail) trail.visible = showTrail; if (shotLines) shotLines.visible = showTrail; if (shotLinesOpp) shotLinesOpp.visible = showTrail; });
   $('cOppTrail').addEventListener('change', function (e) { showOppTrail = e.target.checked; if (trailOpp) trailOpp.visible = showOppTrail; });
   $('cPer').addEventListener('change', function (e) { countPer = e.target.checked; if (R) { computeBad(); drawStrip(); renderAlerts(); renderResults(); } });

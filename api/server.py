@@ -59,7 +59,7 @@ MAX_GEN = 500
 MAX_EPOCHS = 500
 MAX_DURATION = 1800
 ACTIVATIONS = {"relu", "tanh", "sigmoid"}
-METHODES = {"evolution", "imitation"}
+METHODES = {"evolution", "imitation", "ppo"}
 FAMILLES = ["prendre", "mur", "tour", "porte", "boulets", "prendreGraal", "poserGraal", "trone"]
 ENTREES = ["temps", "robot", "paquets", "faces", "constructions", "graal", "boulets", "adversaire"]
 ENTREE_N = {"temps": 1, "robot": 4, "paquets": 10, "faces": 6, "constructions": 9, "graal": 4, "boulets": 1, "adversaire": 2}
@@ -170,7 +170,10 @@ def validate_cerveau(j, slug):
         return None, f"Le réseau a {params} paramètres, le plafond est {MAX_PARAMS}."
     methode = j.get("methode") or "evolution"
     if methode not in METHODES:
-        return None, "Méthode inconnue (evolution ou imitation)."
+        return None, "Méthode inconnue (evolution, imitation ou ppo)."
+    architecture = str((j.get("reseau") or {}).get("architecture") or j.get("architecture") or "mlp")
+    if architecture not in ("mlp", "transformer"):
+        architecture = "mlp"
     regl = j.get("reglages") or {}
     if not isinstance(regl, dict):
         return None, "Réglages invalides."
@@ -191,6 +194,14 @@ def validate_cerveau(j, slug):
         "taux_apprentissage": clamp("taux_apprentissage", 1e-5, 1.0, 0.02),
         "lot": int(clamp("lot", 1, 256, 16)),
         "mode": "rapide" if str(regl.get("mode") or "rapide") == "rapide" else "precis",
+        "ppo_steps": int(clamp("ppo_steps", 1000, 1_000_000, 100_000)),
+        "ppo_batch_size": int(clamp("ppo_batch_size", 16, 1024, 256)),
+        "ppo_rollout_len": int(clamp("ppo_rollout_len", 8, 128, 32)),
+        "ppo_lr": clamp("ppo_lr", 1e-5, 0.01, 0.0003),
+        "curriculum_sokoban": bool(regl.get("curriculum_sokoban", True)),
+        "world_model": bool(regl.get("world_model", True)),
+        "mcts_eval": bool(regl.get("mcts_eval", False)),
+        "pretrain_imitation": bool(regl.get("pretrain_imitation", True)),
     }
     rec = j.get("recompense") or {}
     recompense = {
@@ -210,7 +221,8 @@ def validate_cerveau(j, slug):
         "name": name,
         "entrees": entrees,
         "actions": {"familles": familles, "cotes": ["ext", "int"]},
-        "reseau": {"couches": clean, "sortie": "softmax"},
+        "reseau": {"couches": clean, "sortie": "softmax", "architecture": architecture},
+        "architecture": architecture,
         "adversaire": {"actif": intensite != "aucun", "intensite": intensite},
         "methode": methode,
         "reglages": reglages,

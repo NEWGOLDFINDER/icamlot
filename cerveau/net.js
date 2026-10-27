@@ -14,7 +14,26 @@
     return { total: n, detail: detail, sizes: s };
   }
   function actName(a) { return a === 'tanh' ? 'Tanh' : a === 'sigmoid' ? 'Sigmoid' : 'ReLU'; }
-  function pytorchCode(name, nIn, couches, nOut) {
+  function pytorchCode(name, nIn, couches, nOut, arch) {
+    if (arch === 'transformer') {
+      return [
+        'import torch',
+        'import torch.nn as nn',
+        'from trainer.models import FactorizedEncoder, RecurrentActorCritic',
+        '',
+        '# Modèle Eurobot 2027 Entity-Transformer (22 entités + GRU 128)',
+        'class ' + (name || 'Cerveau').replace(/[^A-Za-z0-9_]/g, '_') + '(nn.Module):',
+        '    def __init__(self):',
+        '        super().__init__()',
+        '        self.model = RecurrentActorCritic(n_in=' + nIn + ', n_out=' + nOut + ', hidden_dim=128)',
+        '',
+        '    def forward(self, obs, hidden=None, mask=None):',
+        '        if hidden is None:',
+        '            hidden = self.model.init_hidden(obs.shape[0], device=obs.device)',
+        '        logits, val, next_h = self.model(obs, hidden, mask=mask)',
+        '        return logits, next_h',
+      ].join('\n');
+    }
     var lines = [
       'import torch',
       'import torch.nn as nn',

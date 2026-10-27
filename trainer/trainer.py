@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import random
 import subprocess
@@ -90,6 +91,9 @@ if HAS_TORCH:
 
 if HAS_TORCH:
     from trainer.torch_engine import TorchEnv, _load_actions_table
+    from trainer.models import RecurrentActorCritic
+    from trainer.export_onnx import export_pi5_onnx
+    from trainer.ppo_trainer import PPOTrainer
 
     class TorchEnvWorker:
         """Environnement de simulation 100% PyTorch GPU vectorisé."""
@@ -263,11 +267,15 @@ class EnvWorker:
 
 
 def activations_of(cfg):
-    return [c.get("activation", "relu") for c in cfg["reseau"]["couches"]]
+    reseau = cfg.get("reseau") or {}
+    couches = reseau.get("couches") or [{"activation": "relu"}, {"activation": "relu"}]
+    return [c.get("activation", "relu") for c in couches]
 
 
 def sizes_of(cfg, n_in, n_out):
-    hidden = [int(c["neurones"]) for c in cfg["reseau"]["couches"]]
+    reseau = cfg.get("reseau") or {}
+    couches = reseau.get("couches") or [{"neurones": 64}, {"neurones": 64}]
+    hidden = [int(c.get("neurones", 64)) for c in couches]
     return [n_in] + hidden + [n_out]
 
 
@@ -664,6 +672,174 @@ def run_imitation(job: Job, env, cfg, strats):
     return net.export_layers(), 0, history
 
 
+def export_recurrent_weights(model) -> dict:
+    def to_list(t):
+        return t.detach().cpu().numpy().tolist()
+
+    enc = model.encoder
+    gru = model.gru
+    act_dense = model.actor_dense[0]
+    act_out = model.actor_out
+
+    return {
+        "hidden_dim": model.hidden_dim,
+        "encoder": {
+            "geo_w": to_list(enc.geo_mlp[0].weight.T),
+            "geo_b": to_list(enc.geo_mlp[0].bias),
+            "table_w": to_list(enc.table_mlp[0].weight.T),
+            "table_b": to_list(enc.table_mlp[0].bias),
+            "mech_w": to_list(enc.mech_mlp[0].weight.T),
+            "mech_b": to_list(enc.mech_mlp[0].bias),
+            "fusion_w": to_list(enc.fusion[0].weight.T),
+            "fusion_b": to_list(enc.fusion[0].bias),
+            "ln_gamma": to_list(enc.fusion[1].weight),
+            "ln_beta": to_list(enc.fusion[1].bias),
+        },
+        "gru": {
+            "w_ih": to_list(gru.weight_ih.T),
+            "w_hh": to_list(gru.weight_hh.T),
+            "b_ih": to_list(gru.bias_ih),
+            "b_hh": to_list(gru.bias_hh),
+        },
+        "actor": {
+            "dense_w": to_list(act_dense.weight.T),
+            "dense_b": to_list(act_dense.bias),
+            "out_w": to_list(act_out.weight.T),
+            "out_b": to_list(act_out.bias),
+        },
+    }
+
+
+def run_ppo(job: Job, cfg: dict, weights_out: Optional[Path] = None):
+    if not HAS_TORCH:
+        raise RuntimeError("PyTorch avec GPU/CUDA est requis pour l'entraînement PPO.")
+
+    regl = cfg.get("reglages") or {}
+    total_steps = int(regl.get("ppo_steps") or 100_000)
+    batch_size = int(regl.get("ppo_batch_size") or 256)
+    rollout_len = int(regl.get("ppo_rollout_len") or 32)
+    lr = float(regl.get("ppo_lr") or 3e-4)
+    t_max = float(regl.get("duree_max") or 600)
+    curriculum = bool(regl.get("curriculum_sokoban", True))
+    world_model = bool(regl.get("world_model", True))
+    pretrain = bool(regl.get("pretrain_imitation", True))
+
+    job.logline(f"Configuration PPO : {total_steps:,} transitions, batch {batch_size}, rollout {rollout_len}, lr {lr}")
+    job.logline(f"Options : Curriculum Sokoban = {curriculum}, World-Model = {world_model}")
+
+    trainer = PPOTrainer(
+        env_batch_size=batch_size,
+        rollout_len=rollout_len,
+        hidden_dim=128,
+        lr=lr,
+        c_aux=0.1 if world_model else 0.0,
+        curriculum=curriculum,
+        device=DEVICE,
+    )
+
+    if pretrain:
+        job.logline("Pré-entraînement par imitation (initialisation stratégique GRU)...")
+        trainer.pretrain_imitation(epochs=30)
+        job.logline("Initialisation GRU terminée.")
+
+    transitions_per_rollout = batch_size * rollout_len
+    num_rollouts = max(1, math.ceil(total_steps / transitions_per_rollout))
+
+    current_obs = trainer.env.reset(curriculum=curriculum)
+    current_hidden = trainer.model.init_hidden(batch_size, device=DEVICE)
+    current_done = torch.zeros(batch_size, dtype=torch.bool, device=DEVICE)
+
+    best_score = 0.0
+    total_transitions_done = 0
+    t0 = time.time()
+    history = []
+
+    out_pt = Path(weights_out).with_suffix(".pt") if weights_out else Path(".data/weights/ppo_best.pt")
+    out_onnx = Path(weights_out).with_suffix(".onnx") if weights_out else Path(".data/weights/best_brain_pi5.onnx")
+    out_pt.parent.mkdir(parents=True, exist_ok=True)
+    out_onnx.parent.mkdir(parents=True, exist_ok=True)
+
+    for r in range(1, num_rollouts + 1):
+        if job.wait_if_paused():
+            job.data["status"] = "stopped"
+            job.save()
+            break
+
+        rollout_data, current_obs, current_hidden, current_done = trainer.collect_rollouts(
+            current_obs, current_hidden, current_done
+        )
+        metrics = trainer.train_step(rollout_data)
+
+        total_transitions_done += transitions_per_rollout
+        elapsed = time.time() - t0
+        sps = int(total_transitions_done / max(elapsed, 0.001))
+        eta = (elapsed / total_transitions_done) * max(0, total_steps - total_transitions_done)
+
+        recent_scores = trainer.finished_scores[-100:] if trainer.finished_scores else [0.0]
+        avg_sc = float(np.mean(recent_scores))
+
+        # Évaluation greedy périodique (tous les 5 rollouts ou au dernier)
+        if r % 5 == 0 or r == num_rollouts:
+            eval_res = trainer.evaluate_greedy(num_episodes=64)
+            mean_sc = eval_res["mean_score"]
+            errs = eval_res["mean_errors"]
+            eff_sc = mean_sc - 15.0 * errs
+            if eff_sc > best_score:
+                best_score = max(best_score, mean_sc)
+                torch.save({"model_state": trainer.model.state_dict(), "score": best_score}, out_pt)
+                try:
+                    export_pi5_onnx(trainer.model, str(out_onnx), hidden_dim=128)
+                except Exception as ex:
+                    job.logline(f"Avertissement export ONNX : {ex}")
+
+        history.append({
+            "g": r,
+            "best": round(best_score, 1),
+            "mean": round(avg_sc, 1),
+            "worst": None,
+            "loss": round(metrics["pg_loss"], 4),
+            "aux_loss": round(metrics["aux_loss"], 4),
+        })
+
+        job.data["progress"] = {
+            "methode": "ppo",
+            "generation": r,
+            "generations": num_rollouts,
+            "step": total_transitions_done,
+            "steps": total_steps,
+            "loss": round(metrics["pg_loss"], 4),
+            "aux_loss": round(metrics["aux_loss"], 4),
+            "history": history[-200:],
+            "eta_s": round(eta),
+            "elapsed_s": round(elapsed),
+            "matches": len(trainer.finished_scores),
+            "matches_per_s": round(sps / 20.0, 1),
+            **device_info(),
+        }
+        job.data["status"] = "running"
+        job.data["best_score"] = round(best_score, 1)
+        job.save()
+
+        job.logline(
+            f"Rollout {r}/{num_rollouts} — Transitions {total_transitions_done:,}/{total_steps:,} · "
+            f"Perte {metrics['pg_loss']:.3f} · WM {metrics['aux_loss']:.3f} · Score moyen {avg_sc:.1f} pts"
+        )
+
+        if elapsed > t_max:
+            job.logline("Durée maximale atteinte, on s'arrête.")
+            break
+
+    # Export final
+    torch.save({"model_state": trainer.model.state_dict(), "score": best_score}, out_pt)
+    try:
+        export_pi5_onnx(trainer.model, str(out_onnx), hidden_dim=128)
+    except Exception as ex:
+        job.logline(f"Avertissement export ONNX final : {ex}")
+
+    recurrent_model = export_recurrent_weights(trainer.model)
+    return recurrent_model, best_score, history
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--job", required=True, help="fichier JSON de la tâche")
@@ -693,12 +869,26 @@ def main():
         folder = Path(args.strategies) if args.strategies else None
         strats = load_strategies(folder) if folder else []
         methode = cfg.get("methode") or "evolution"
+        out = Path(args.weights_out or job.data.get("weights") or job.path.with_name(job.path.stem + "-poids.json"))
         if methode == "imitation":
             best_w, best_sc, history = run_imitation(job, env, cfg, strats)
+            atomic_write(out, {"format": "camelot-poids", "version": 1, "layers": weights_to_json(best_w)})
+        elif methode == "ppo":
+            recurrent_model, best_sc, history = run_ppo(job, cfg, out)
+            sizes = sizes_of(cfg, getattr(env, "n_in", 37), getattr(env, "n_out", 106))
+            fallback_layers = init_weights(sizes, 42)
+            atomic_write(out, {
+                "format": "camelot-poids",
+                "version": 1,
+                "architecture": "recurrent_actor_critic",
+                "layers": weights_to_json(fallback_layers),
+                "model": recurrent_model,
+                "onnx": str(out.with_suffix(".onnx")),
+                "pt": str(out.with_suffix(".pt")),
+            })
         else:
             best_w, best_sc, history = run_evolution(job, env, cfg, strats)
-        out = Path(args.weights_out or job.data.get("weights") or job.path.with_name(job.path.stem + "-poids.json"))
-        atomic_write(out, {"format": "camelot-poids", "version": 1, "layers": weights_to_json(best_w)})
+            atomic_write(out, {"format": "camelot-poids", "version": 1, "layers": weights_to_json(best_w)})
         job.data["weights"] = str(out)
         job.data["best_score"] = best_sc
         job.data["status"] = "done"
