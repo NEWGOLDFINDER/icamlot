@@ -702,7 +702,10 @@ class Pi5EurobotAgent:
                 if t_match >= 88.0:
                     t_match = 100.0
             elif fam == "trone":
-                t_match = 100.0
+                if not state.get("balls_fired", False) and t_match < 80.0:
+                    t_match = 80.0
+                else:
+                    t_match = 100.0
 
             act_label = f"{act_info.get('a')} {act_info.get('p') or act_info.get('z') or ''}"
             print(
@@ -710,7 +713,7 @@ class Pi5EurobotAgent:
                 f"Durée: {dt:.2f}s (gain temps masqué: +{saved:.2f}s) | Inf: {lat*1000:.0f}µs"
             )
 
-            if fam == "trone" or t_match >= 100.0:
+            if (fam == "trone" and t_match >= 100.0) or t_match >= 100.0:
                 break
 
         print("--------------------------------------------------------------------------------------")

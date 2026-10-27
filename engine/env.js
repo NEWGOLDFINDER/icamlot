@@ -325,14 +325,16 @@
       if (info.err && onError === 'fin') done = true;
       if (t1 >= MATCH) done = true;
       if (act.a === 'trone') {
-        if (sim.time() < MATCH) {
-          finishWait(MATCH);
+        var ballsLeft = sim.balls && !sim.balls().shots && catalogue.some(function (a) { return a.famille === 'boulets' || a.a === 'boulets'; });
+        var until = (ballsLeft && sim.time() < 80) ? 80 : MATCH;
+        if (sim.time() < until) {
+          finishWait(until);
           t1 = Math.min(sim.time(), MATCH);
           sc = SCORE.scoreAt(sim.result(false), sim.params(), t1);
           reward = sc.total - lastScore + reward;
           lastScore = sc.total;
         }
-        done = true;
+        if (until >= MATCH) done = true;
       }
       var s = state();
       s.dt = sim.time() - t0;

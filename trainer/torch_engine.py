@@ -690,7 +690,9 @@ class TorchEnv:
         mask_tour = success & (fam == 2)
         if mask_tour.any():
             idx_b = torch.where(mask_tour)[0]
-            self.held_count[idx_b, f_idx[idx_b]] = torch.clamp(self.held_count[idx_b, f_idx[idx_b]] - 1, min=0)
+            new_cnt = torch.clamp(self.held_count[idx_b, f_idx[idx_b]] - 1, min=0)
+            self.held_count[idx_b, f_idx[idx_b]] = new_cnt
+            self.held_rot[idx_b, f_idx[idx_b]] = torch.where(new_cnt > 0, 90.0, 0.0)
             self.towers[idx_b, item[idx_b]] = 1
 
         # 4. PORTE (fam == 3)
@@ -730,7 +732,13 @@ class TorchEnv:
         mask_trone = success & (fam == 7)
         if mask_trone.any():
             idx_b = torch.where(mask_trone)[0]
-            self.t[idx_b] = torch.maximum(self.t[idx_b], torch.full_like(self.t[idx_b], MATCH_DURATION))
+            # Si les boulets ne sont pas encore tirés et qu'il est < 80s, on attend jusqu'à 80s !
+            wait_target = torch.where(
+                (~self.balls_fired[idx_b]) & (self.t[idx_b] + dt_move[idx_b] < 80.0),
+                torch.full_like(self.t[idx_b], 80.0),
+                torch.full_like(self.t[idx_b], MATCH_DURATION)
+            )
+            self.t[idx_b] = torch.maximum(self.t[idx_b] + dt_move[idx_b], wait_target)
 
         # Le robot ne bouge que pour les actions RÉELLEMENT sans collision !
         self.robot_pose[success, 0] = tx[success]

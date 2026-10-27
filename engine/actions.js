@@ -230,6 +230,7 @@
   }
 
   function hitsCrates(act, sim) {
+    if (act && (act.famille === 'boulets' || act.famille === 'trone')) return false;
     if (!sim || typeof sim.pose !== 'function') return false;
     var s = sim.pose();
     if (!s || s.x == null) return false;
