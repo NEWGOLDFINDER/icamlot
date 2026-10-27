@@ -98,7 +98,7 @@ function getDecision(team) {
     ACTIONS.ALL.forEach(function (a, i) { if (a.a === 'trone') rawMask[i] = 1; });
   }
 
-  var m = ENV.liveMask(ACTIONS.ALL, rawMask, t);
+  var m = ENV.liveMask(ACTIONS.ALL, rawMask, t, sim);
   if (repeatCount[team] >= 2 && lastAction[team] >= 0 && m.some(function (x, i) { return x && i !== lastAction[team]; })) {
     m[lastAction[team]] = 0;
   }
@@ -110,8 +110,9 @@ function getDecision(team) {
   }
 
   if (!m.some(function (x) { return x; })) {
-    // Si rien de possible, attendre
-    var waitSec = t < 80 ? 80 : ENV.MATCH;
+    // Si rien de possible, attendre la fin du match
+    done[team] = true;
+    var waitSec = ENV.MATCH;
     var brick = { a: 'attendreJusqua', sec: waitSec };
     duel.exec(team, team === 'blue' ? ENGINE.mirrorStep(brick) : brick);
     rejectedMask[team] = {};
@@ -258,6 +259,22 @@ function applyAction(team, actIdx) {
   var brick = ACTIONS.toProgramStep(act, sim);
   var info = duel.exec(team, team === 'blue' ? ENGINE.mirrorStep(brick) : brick);
   ENV.updateBelief(beliefs[team], brick, info || { err: null });
+
+  if (act.a === 'trone') {
+    done[team] = true;
+    var waitSec = ENV.MATCH;
+    var waitBrick = { a: 'attendreJusqua', sec: waitSec };
+    duel.exec(team, team === 'blue' ? ENGINE.mirrorStep(waitBrick) : waitBrick);
+    return findNextTeam();
+  }
+
+  if (act.a === 'boulets' && duel.sims[team].time() >= 88.0) {
+    done[team] = true;
+    var endSec = ENV.MATCH;
+    var endBrick = { a: 'attendreJusqua', sec: endSec };
+    duel.exec(team, team === 'blue' ? ENGINE.mirrorStep(endBrick) : endBrick);
+    return findNextTeam();
+  }
 
   if (!isBlueExternal && blueAgent) {
     try {

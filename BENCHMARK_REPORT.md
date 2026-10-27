@@ -1,6 +1,6 @@
 # Rapport de Benchmark Officiel ICAM LOT — Eurobot 2027
 
-Date d'évaluation : `2026-10-26 23:06:53`
+Date d'évaluation : `2026-10-27 07:27:01`
 Moteur cinématique : `ICAM LOT Engine v1.3.0` | Barème : `Eurobot 2027 v1.0`
 Architecture : `Factorized Multi-Branch GRU ResNet (V2 - 164,715 paramètres)`
 Modèle ONNX : `best_brain_pi5.onnx`
@@ -9,11 +9,11 @@ Modèle ONNX : `best_brain_pi5.onnx`
 
 | Scénario Opposé | Matchs | Victoires Jaune | Égalités | Victoires Bleu | Score Moyen Jaune | Score Moyen Bleu | Collisions Jaune | Overlap Robots |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Self-Play : Cerveau V2 Jaune vs Cerveau V2 Bleu** | 20 | **100.0%** | 0.0% | 0.0% | **105.0 ± 0.0** | 34.0 ± 4.4 | **0 (0.0/m)** | **0** |
-| **Cerveau V2 Jaune vs Adversaire Réaliste** | 20 | **100.0%** | 0.0% | 0.0% | **70.7 ± 7.4** | 54.0 ± 0.0 | **0 (0.0/m)** | **0** |
-| **Cerveau V2 Jaune vs Adversaire Agressif (120% vitesse)** | 20 | **0.0%** | 0.0% | 100.0% | **8.0 ± 0.0** | 62.0 ± 0.0 | **0 (0.0/m)** | **0** |
-| **Cerveau V2 Jaune vs Adversaire Faible (70% vitesse)** | 20 | **100.0%** | 0.0% | 0.0% | **70.5 ± 7.0** | 54.0 ± 0.0 | **0 (0.0/m)** | **0** |
-| **Cerveau V2 (128-dim, 164k) vs Cerveau V1 Baseline (64-dim, 42k)** | 20 | **30.0%** | 0.0% | 70.0% | **27.6 ± 33.6** | 53.3 ± 24.0 | **0 (0.0/m)** | **0** |
+| **Self-Play : Cerveau V2 Jaune vs Cerveau V2 Bleu** | 2 | **0.0%** | 100.0% | 0.0% | **24.0 ± 0.0** | 24.0 ± 0.0 | **0 (0.0/m)** | **0** |
+| **Cerveau V2 Jaune vs Adversaire Réaliste** | 2 | **0.0%** | 0.0% | 100.0% | **24.0 ± 0.0** | 54.0 ± 0.0 | **0 (0.0/m)** | **0** |
+| **Cerveau V2 Jaune vs Adversaire Agressif (120% vitesse)** | 2 | **0.0%** | 0.0% | 100.0% | **24.0 ± 0.0** | 54.0 ± 0.0 | **0 (0.0/m)** | **0** |
+| **Cerveau V2 Jaune vs Adversaire Faible (70% vitesse)** | 2 | **50.0%** | 0.0% | 50.0% | **49.5 ± 25.5** | 54.0 ± 0.0 | **0 (0.0/m)** | **0** |
+| **Cerveau V2 (128-dim, 164k) vs Cerveau V1 Baseline (64-dim, 42k)** | 2 | **50.0%** | 0.0% | 50.0% | **52.0 ± 28.0** | 69.5 ± 4.5 | **0 (0.0/m)** | **0** |
 
 > [!NOTE]
 > Tous les matchs ont été simulés avec la vérification physique continue complète (`skipContacts: false`).
@@ -22,62 +22,62 @@ Modèle ONNX : `best_brain_pi5.onnx`
 ## 2. Analyse Détaillée par Scénario
 
 ### Self-Play : Cerveau V2 Jaune vs Cerveau V2 Bleu
-- **Taux de victoire Jaune (Cerveau V2)** : `100.0%` (0.0% égalités, 0.0% adversaire)
-- **Score Jaune** : Moyenne **105.0 pts** (Min : 105.0, Max : 105.0, Écart-type : ±0.0)
-- **Score Bleu** : Moyenne **34.0 pts** (Min : 33.0, Max : 53.0, Écart-type : ±4.4)
+- **Taux de victoire Jaune (Cerveau V2)** : `0.0%` (100.0% égalités, 0.0% adversaire)
+- **Score Jaune** : Moyenne **24.0 pts** (Min : 24.0, Max : 24.0, Écart-type : ±0.0)
+- **Score Bleu** : Moyenne **24.0 pts** (Min : 24.0, Max : 24.0, Écart-type : ±0.0)
 - **Intégrité physique** : `0` collision caisse/bordure, `0` overlap robots, `0` erreur d'exécution
 - **Contestation ressource P9 (Centre Bas)** : Jaune `100.0%` | Bleu `0.0%` | Non prise `0.0%`
-- **Contestation ressource P10 (Centre Haut)** : Jaune `100.0%` | Bleu `0.0%` | Non prise `0.0%`
-- **Cadence de simulation** : `0.4 matchs/seconde` (56.02 s au total)
+- **Contestation ressource P10 (Centre Haut)** : Jaune `0.0%` | Bleu `100.0%` | Non prise `0.0%`
+- **Cadence de simulation** : `0.7 matchs/seconde` (2.76 s au total)
 
 ### Cerveau V2 Jaune vs Adversaire Réaliste
-- **Taux de victoire Jaune (Cerveau V2)** : `100.0%` (0.0% égalités, 0.0% adversaire)
-- **Score Jaune** : Moyenne **70.7 pts** (Min : 69.0, Max : 103.0, Écart-type : ±7.4)
+- **Taux de victoire Jaune (Cerveau V2)** : `0.0%` (0.0% égalités, 100.0% adversaire)
+- **Score Jaune** : Moyenne **24.0 pts** (Min : 24.0, Max : 24.0, Écart-type : ±0.0)
 - **Score Bleu** : Moyenne **54.0 pts** (Min : 54.0, Max : 54.0, Écart-type : ±0.0)
 - **Intégrité physique** : `0` collision caisse/bordure, `0` overlap robots, `0` erreur d'exécution
 - **Contestation ressource P9 (Centre Bas)** : Jaune `100.0%` | Bleu `0.0%` | Non prise `0.0%`
 - **Contestation ressource P10 (Centre Haut)** : Jaune `0.0%` | Bleu `100.0%` | Non prise `0.0%`
-- **Cadence de simulation** : `0.9 matchs/seconde` (22.75 s au total)
+- **Cadence de simulation** : `1.3 matchs/seconde` (1.58 s au total)
 
 ### Cerveau V2 Jaune vs Adversaire Agressif (120% vitesse)
 - **Taux de victoire Jaune (Cerveau V2)** : `0.0%` (0.0% égalités, 100.0% adversaire)
-- **Score Jaune** : Moyenne **8.0 pts** (Min : 8.0, Max : 8.0, Écart-type : ±0.0)
-- **Score Bleu** : Moyenne **62.0 pts** (Min : 62.0, Max : 62.0, Écart-type : ±0.0)
+- **Score Jaune** : Moyenne **24.0 pts** (Min : 24.0, Max : 24.0, Écart-type : ±0.0)
+- **Score Bleu** : Moyenne **54.0 pts** (Min : 54.0, Max : 54.0, Écart-type : ±0.0)
 - **Intégrité physique** : `0` collision caisse/bordure, `0` overlap robots, `0` erreur d'exécution
 - **Contestation ressource P9 (Centre Bas)** : Jaune `0.0%` | Bleu `100.0%` | Non prise `0.0%`
-- **Contestation ressource P10 (Centre Haut)** : Jaune `0.0%` | Bleu `100.0%` | Non prise `0.0%`
-- **Cadence de simulation** : `1.3 matchs/seconde` (15.51 s au total)
+- **Contestation ressource P10 (Centre Haut)** : Jaune `100.0%` | Bleu `0.0%` | Non prise `0.0%`
+- **Cadence de simulation** : `1.0 matchs/seconde` (2.03 s au total)
 
 ### Cerveau V2 Jaune vs Adversaire Faible (70% vitesse)
-- **Taux de victoire Jaune (Cerveau V2)** : `100.0%` (0.0% égalités, 0.0% adversaire)
-- **Score Jaune** : Moyenne **70.5 pts** (Min : 67.0, Max : 101.0, Écart-type : ±7.0)
+- **Taux de victoire Jaune (Cerveau V2)** : `50.0%` (0.0% égalités, 50.0% adversaire)
+- **Score Jaune** : Moyenne **49.5 pts** (Min : 24.0, Max : 75.0, Écart-type : ±25.5)
 - **Score Bleu** : Moyenne **54.0 pts** (Min : 54.0, Max : 54.0, Écart-type : ±0.0)
 - **Intégrité physique** : `0` collision caisse/bordure, `0` overlap robots, `0` erreur d'exécution
 - **Contestation ressource P9 (Centre Bas)** : Jaune `100.0%` | Bleu `0.0%` | Non prise `0.0%`
 - **Contestation ressource P10 (Centre Haut)** : Jaune `0.0%` | Bleu `100.0%` | Non prise `0.0%`
-- **Cadence de simulation** : `0.5 matchs/seconde` (42.06 s au total)
+- **Cadence de simulation** : `0.2 matchs/seconde` (10.74 s au total)
 
 ### Cerveau V2 (128-dim, 164k) vs Cerveau V1 Baseline (64-dim, 42k)
-- **Taux de victoire Jaune (Cerveau V2)** : `30.0%` (0.0% égalités, 70.0% adversaire)
-- **Score Jaune** : Moyenne **27.6 pts** (Min : 8.0, Max : 105.0, Écart-type : ±33.6)
-- **Score Bleu** : Moyenne **53.3 pts** (Min : 6.0, Max : 73.0, Écart-type : ±24.0)
+- **Taux de victoire Jaune (Cerveau V2)** : `50.0%` (0.0% égalités, 50.0% adversaire)
+- **Score Jaune** : Moyenne **52.0 pts** (Min : 24.0, Max : 80.0, Écart-type : ±28.0)
+- **Score Bleu** : Moyenne **69.5 pts** (Min : 65.0, Max : 74.0, Écart-type : ±4.5)
 - **Intégrité physique** : `0` collision caisse/bordure, `0` overlap robots, `0` erreur d'exécution
-- **Contestation ressource P9 (Centre Bas)** : Jaune `30.0%` | Bleu `70.0%` | Non prise `0.0%`
-- **Contestation ressource P10 (Centre Haut)** : Jaune `10.0%` | Bleu `80.0%` | Non prise `10.0%`
-- **Cadence de simulation** : `0.0 matchs/seconde` (407.64 s au total)
+- **Contestation ressource P9 (Centre Bas)** : Jaune `50.0%` | Bleu `50.0%` | Non prise `0.0%`
+- **Contestation ressource P10 (Centre Haut)** : Jaune `100.0%` | Bleu `0.0%` | Non prise `0.0%`
+- **Cadence de simulation** : `0.1 matchs/seconde` (19.92 s au total)
 
 ## 3. Profil de Latence d'Inférence Matérielle (Raspberry Pi 5 / CPU)
 
-Mesures réalisées avec **ONNX Runtime (C++ CPU Provider, intra_op_threads=2)** sur `5,000` itérations :
+Mesures réalisées avec **ONNX Runtime (C++ CPU Provider, intra_op_threads=2)** sur `100` itérations :
 
 | Métrique | Valeur (µs) | Valeur (ms) | Statut / Budget Eurobot (< 5.0 ms) |
 | :--- | :---: | :---: | :--- |
-| **Médiane (P50)** | `47.9 µs` | `0.048 ms` | Très largement sous le budget |
-| **Moyenne** | `50.1 ± 6.8 µs` | `0.05 ms` | **99.8x** plus rapide que le cycle requis |
-| **90e Percentile (P90)** | `58.1 µs` | `0.058 ms` | Précision temps-réel dure garantie |
-| **95e Percentile (P95)** | `62.1 µs` | `0.062 ms` | Gigue minimale |
-| **99e Percentile (P99)** | `81.0 µs` | `0.081 ms` | Aucun lag ou garbage collection |
-| **Débit Maximum** | — | — | **19,957 décisions / seconde** |
+| **Médiane (P50)** | `65.9 µs` | `0.066 ms` | Très largement sous le budget |
+| **Moyenne** | `65.9 ± 7.7 µs` | `0.066 ms` | **75.9x** plus rapide que le cycle requis |
+| **90e Percentile (P90)** | `70.0 µs` | `0.070 ms` | Précision temps-réel dure garantie |
+| **95e Percentile (P95)** | `79.2 µs` | `0.079 ms` | Gigue minimale |
+| **99e Percentile (P99)** | `93.5 µs` | `0.093 ms` | Aucun lag ou garbage collection |
+| **Débit Maximum** | — | — | **15,177 décisions / seconde** |
 
 > [!TIP]
 > Grâce à l'architecture factorisée sans PyTorch en inférence, le Raspberry Pi 5 consomme moins de **1.2% du CPU Cortex-A76**, laissant 98.8% des ressources disponibles pour la vision, le SLAM et la communication UART Dual ESP32.

@@ -124,13 +124,47 @@
   }
 
   /* masque « en direct » : pas de trône tant qu'il reste à jouer, et pas avant 80 s si les boulets sont encore possibles */
-  function liveMask(catalogue, mask, t) {
+  function liveMask(catalogue, mask, t, sim) {
     var m = mask.slice(), useful = false, i, ballsIn = false;
     for (i = 0; i < m.length; i++) if (m[i] && catalogue[i].a !== 'trone') useful = true;
     for (i = 0; i < catalogue.length; i++) if (catalogue[i].a === 'boulets') ballsIn = true;
     if ((useful && t < 88) || (ballsIn && !useful && t < 80)) {
       for (i = 0; i < catalogue.length; i++) if (catalogue[i].a === 'trone') m[i] = 0;
     }
+
+    /* Optimisation double face : si le robot est sur la table hors du chateau, qu une face est pleine et l autre vide,
+       et qu un paquet prenable sans collision reste disponible avant 75 s, on masque le retour au chateau (mur, tour, porte)
+       pour forcer le robot a charger sa seconde face et doubler l efficacite de ses trajets. */
+    if (sim && typeof sim.pose === 'function' && t < 75.0) {
+      var p = sim.pose();
+      var isBlue = (sim.params && sim.params().team === 'blue');
+      var inField = isBlue ? (p.x < 2500) : (p.x > 500);
+      if (inField) {
+        var hA = sim.held()['A'], hB = sim.held()['B'];
+        var nA = (hA && hA.stack) ? hA.stack.filter(function (x) { return x; }).length : 0;
+        var nB = (hB && hB.stack) ? hB.stack.filter(function (x) { return x; }).length : 0;
+        var oneFullOneEmpty = (nA === 3 && nB === 0 && !(hB && hB.graal)) || (nB === 3 && nA === 0 && !(hA && hA.graal));
+        if (oneFullOneEmpty) {
+          var emptyFace = (nA === 0 && !(hA && hA.graal)) ? 'A' : 'B';
+          var hasPack = false;
+          for (i = 0; i < catalogue.length; i++) {
+            if (m[i] && catalogue[i].a === 'prendre' && catalogue[i].f === emptyFace) {
+              hasPack = true;
+              break;
+            }
+          }
+          if (hasPack) {
+            for (i = 0; i < catalogue.length; i++) {
+              var aFam = catalogue[i].a;
+              if (aFam === 'mur' || aFam === 'tour' || aFam === 'porte') {
+                m[i] = 0;
+              }
+            }
+          }
+        }
+      }
+    }
+
     return m;
   }
 
@@ -177,7 +211,7 @@
         if (t >= MATCH - 0.05 || n >= 80) return null;
         var mask = ACTIONS.mask(sim, catalogue);
         if (!mask.some(function (x) { return x; })) catalogue.forEach(function (a, i) { if (a.a === 'trone') mask[i] = 1; });
-        var m = liveMask(catalogue, mask, t);
+        var m = liveMask(catalogue, mask, t, sim);
         if (same >= 2 && last >= 0 && m.some(function (x, i) { return x && i !== last; })) m[last] = 0;
         if (!m.some(function (x) { return x; })) {
           if (t < 80) return wait(sim, 80);
@@ -289,18 +323,15 @@
       lastScore = sc.total;
       if (info.err && onError === 'fin') done = true;
       if (t1 >= MATCH) done = true;
-      if (!ACTIONS.mask(sim, catalogue).some(function (x, i) { return x && catalogue[i].a !== 'trone'; }) && act.a === 'trone') {
-        /* plus rien d'utile : on attend les boulets (80 s) ou la fin, sans figer une stratégie */
+      if (act.a === 'trone') {
         if (sim.time() < MATCH) {
-          var ballsLeft = !sim.balls().shots && catalogue.some(function (a) { return a.a === 'boulets'; });
-          var until = (ballsLeft && sim.time() < 80) ? 80 : MATCH;
-          finishWait(until);
+          finishWait(MATCH);
           t1 = Math.min(sim.time(), MATCH);
           sc = SCORE.scoreAt(sim.result(false), sim.params(), t1);
           reward = sc.total - lastScore + reward;
           lastScore = sc.total;
-          if (t1 >= MATCH) done = true;
         }
+        done = true;
       }
       var s = state();
       s.dt = sim.time() - t0;
@@ -327,7 +358,7 @@
     function play(chooseFn, scenario) {
       var st = reset(scenario || {}), n = 0, last = -1, same = 0, max = 80;
       while (!st.done && n < max && sim.time() < MATCH) {
-        var m = liveMask(catalogue, st.mask, st.t);
+        var m = liveMask(catalogue, st.mask, st.t, sim);
         if (same >= 2 && last >= 0 && m.some(function (x, i) { return x && i !== last; })) m[last] = 0;
         if (!m.some(function (x) { return x; })) {
           if (sim.time() < 80) { finishWait(80); st = state(); n++; continue; }

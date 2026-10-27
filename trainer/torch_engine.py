@@ -408,6 +408,21 @@ class TorchEnv:
         mask = self.get_mask().clone()
         B = self.batch_size
 
+        # Optimisation double-face : si en table (x > 500), une face pleine et une vide,
+        # et paquets disponibles avant 75s, masquer mur/tour/porte
+        rx = self.robot_pose[:, 0]
+        in_field = (rx > 500.0) & (self.t < 75.0)
+        hA = self.held_count[:, 0]
+        hB = self.held_count[:, 1]
+        gA = self.graal_state == 1
+        gB = self.graal_state == 2
+        one_full_one_empty = ((hA == 3) & (hB == 0) & (~gB)) | ((hB == 3) & (hA == 0) & (~gA))
+        apply_dual = in_field & one_full_one_empty
+        if apply_dual.any():
+            has_pack = mask[:, 0:20].any(dim=1)
+            mask_dual = apply_dual & has_pack
+            mask[mask_dual, 20:84] = False
+
         useful = mask[:, :105].any(dim=1)
         early_useful = useful & (self.t < 88.0)
         early_balls = (~self.balls_fired) & (~useful) & (self.t < 80.0)

@@ -241,6 +241,8 @@ class Pi5EurobotAgent:
         has_other = np.any(mask[:105])
         if t >= 88.0 or not has_other:
             mask[105] = True
+        else:
+            mask[105] = False
 
         # 9. Filtrage géométrique strict : Interdiction absolue de traverser des caisses
         rx = float(state.get("x", 250.0))
@@ -344,6 +346,24 @@ class Pi5EurobotAgent:
             t_previsionnel = t + dt_act + dt_throne + dt_tir
             if t_previsionnel > 100.0:
                 mask[act_idx] = False
+
+        # 12. Optimisation double face : charger les deux pinces avant retour au château
+        if t < 75.0:
+            is_blue = (state.get("team") == "blue")
+            in_field = (rx < 2500.0) if is_blue else (rx > 500.0)
+            if in_field:
+                nA = held.get("A", 0)
+                nB = held.get("B", 0)
+                one_full_one_empty = (nA == 3 and nB == 0 and not g_held_B) or (nB == 3 and nA == 0 and not g_held_A)
+                if one_full_one_empty:
+                    empty_face = "A" if (nA == 0 and not g_held_A) else "B"
+                    has_pack = False
+                    for act_idx in range(20):
+                        if mask[act_idx] and self.actions[act_idx].get("f") == empty_face:
+                            has_pack = True
+                            break
+                    if has_pack:
+                        mask[20:84] = False
 
         # Si absolument aucune action valide, le trône est autorisé
         if not np.any(mask):
@@ -606,6 +626,8 @@ class Pi5EurobotAgent:
                 state[f"graal_{f}"] = False
             elif fam == "boulets":
                 state["balls_fired"] = True
+                if t_match >= 88.0:
+                    t_match = 100.0
             elif fam == "trone":
                 t_match = 100.0
 
