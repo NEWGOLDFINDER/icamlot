@@ -11,7 +11,7 @@
    Temps masqué automatique (contrat §7.1) : toutes les briques qui le permettent portent tm: true ; le moteur choisit le
    moment (pendant le trajet, en fin de trajet, avant de partir, ou sur place). */
 (function (root) {
-  var CATALOGUE_VERSION = 'icamlot-catalogue-3.0';
+  var CATALOGUE_VERSION = 'icamlot-catalogue-3.1';
   var FACES = ['A', 'B'];
   var PACKS = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'P9', 'P10'];
   var MURS = ['M1', 'M2', 'M3', 'M4', 'M5'];
@@ -56,7 +56,17 @@
     margeGrille: 1,
     viaRotationEssais: 6,
     /* autour de la pose de départ (mm), le robot peut passer par des cases aussi dégagées que la sienne */
-    zoneDepart: 250
+    zoneDepart: 250,
+    /* Tir explicite (décision de l'équipe, option B, contrat §13). La brique tir du moteur attend, canon rentré, jusqu'à
+       T_ATTAQUE - (sortie + mise en route) avant le premier boulet. L'action « tir » n'est valide que si cette attente, pour un
+       lancement maintenant, est d'au plus attenteMaxTir s : l'attente devient un choix explicite (attentes courtes) au lieu d'être
+       cachée dans la macro-action. Hypothèse : 1 s = la plus courte des attentes ci-dessous, si bien que, depuis la position de
+       tir, la fenêtre de validité (1 s de large) est toujours atteignable par des attentes de 1 s ; au plus 1 s perdue sans décision. */
+    attenteMaxTir: 1,
+    /* Attentes courtes sur place (s). Hypothèses : 1 s = attenteMaxTir (granularité de la fenêtre de tir) ; 1, 2 et 4 s composent
+       toute attente entière de 1 à 7 s en 3 décisions au plus ; 4 s reste sous la durée médiane d'une macro-action de la
+       référence (4,2 s mesurées, catalogue 3.0), si bien qu'une attente ne cache jamais plus d'une action. */
+    attentesCourtes: [1, 2, 4]
   };
   var WAYPOINTS_INFO = HYPOTHESES.waypoints;
   var STOCKS = HYPOTHESES.stocks;
@@ -74,7 +84,8 @@
     { id: 'stockage', label: 'Stocker / reprendre des pierres dans la cour (3 au plus)', n: 8 },
     { id: 'traj', label: 'Aller à un point de passage', n: 8 },
     { id: 'preparerPince', label: 'Préparer la pince (angle, pendant le trajet suivant)', n: 6 },
-    { id: 'lacher', label: 'Lâcher les pierres sur place', n: 2 }
+    { id: 'lacher', label: 'Lâcher les pierres sur place', n: 2 },
+    { id: 'attenteCourte', label: 'Attendre sur place (courte durée)', n: HYPOTHESES.attentesCourtes.length }
   ];
 
   function buildAll() {
@@ -99,6 +110,7 @@
     WAYPOINTS_INFO.forEach(function (w) { add({ famille: 'traj', a: 'traj', w: w.id, label: 'Aller en ' + w.id + ' (' + w.label + ', ' + w.x + ', ' + w.y + ')' }); });
     FACES.forEach(function (f) { ANGLES.forEach(function (r) { add({ famille: 'preparerPince', a: 'preparer', f: f, r: r, label: 'Préparer la pince ' + f + ' à ' + r + '° (pendant le trajet suivant)' }); }); });
     FACES.forEach(function (f) { add({ famille: 'lacher', a: 'lacher', f: f, label: 'Lâcher la charge de la face ' + f + ' sur place' }); });
+    HYPOTHESES.attentesCourtes.forEach(function (d) { add({ famille: 'attenteCourte', a: 'attendre', sec: d, label: 'Attendre ' + String(d).replace('.', ',') + ' s sur place' }); });
     return out;
   }
   var ALL = buildAll();
@@ -341,6 +353,7 @@
       case 'monterGraal': return { a: 'monterGraal' };
       case 'trone': return { a: 'trone' };
       case 'finir': return { a: 'attendreJusqua', sec: E().MATCH };
+      case 'attendre': return { a: 'attendre', sec: act.sec };
       case 'traj': var w = wpById(act.w); return { a: 'seDeplacer', x: w.x, y: w.y };
       case 'preparer': return { a: 'tourner', f: act.f, r: act.r, tm: true };
       case 'lacher': return { a: 'deposerZone', f: act.f, q: 'pile' };
@@ -398,6 +411,7 @@
     if (st.a === 'tour') return a === 'tour' && act.f === st.f && act.z === st.z;
     if (st.a === 'tir') return a === 'tir';
     if (st.a === 'attendreJusqua') return a === 'finir';
+    if (st.a === 'attendre') return a === 'attendre' && +act.sec === +st.sec;
     if (st.a === 'seDeplacer') return a === 'traj';
     if (st.a === 'tourner') return a === 'preparer' && act.f === st.f;
     if (st.a === 'deposerZone') return a === 'lacher' && act.f === st.f;
@@ -754,8 +768,9 @@
     /* échec appris : la même brique vient d'échouer à cet instant, le monde n'a pas changé */
     if (b.echecs && b.echecs.t === b.t && (b.echecs.briques || []).some(function (x) { return sameStep(x, st); })) return 'Vient d\'échouer à cet instant.';
     var ap = approaches(act, st, b);
-    /* finir (attendre sur place) : toujours possible avant 100 s, même si l'état courant est déjà fautif */
-    if (HYPOTHESES.planification === 'moteur' && st.a === 'attendreJusqua') return null;
+    /* finir et attentes courtes (attendre sur place, sans rotation préparée, contrat §10) : toujours possibles avant 100 s,
+       même si l'état courant est déjà fautif */
+    if (st.a === 'attendreJusqua' || st.a === 'attendre') return null;
     if (HYPOTHESES.planification === 'moteur') return engineCheck(st, b, ap, cache);
     if (!ap) return pendingOk(b, st, cache);
     if (st.a === 'tir') {
@@ -763,6 +778,8 @@
       var P2 = b.params || {}, v = (P2.v || 0.5) * 1000, w = P2.w || 120, tg = ap[0].O;
       var dh2 = Math.abs(((ap[0].h - b.pose.h) % 360 + 540) % 360 - 180);
       if (b.t + Math.max(dist(tg, [b.pose.x, b.pose.y]) / v, dh2 / w) + (P2.bdep > 0 ? P2.bdep : 0.1) + (P2.bspin > 0 ? P2.bspin : 0) >= E().MATCH) return 'Tir : la position de tir serait atteinte après 100 s.';
+      var att = attenteTir(b, b.t + Math.max(dist(tg, [b.pose.x, b.pose.y]) / v, dh2 / w));
+      if (att > HYPOTHESES.attenteMaxTir + 1e-6) return raisonAttente(att);
     }
     /* règlement E.2.b : le Graal monté ne doit pas sortir du château */
     if (b.graal === 'toit' || b.graal === 'ascenseur') {
@@ -799,7 +816,28 @@
       if (b.t + Math.max(dist(tg, [b.pose.x, b.pose.y]) / v, dh2 / w) + (P2.bdep > 0 ? P2.bdep : 0.1) + (P2.bspin > 0 ? P2.bspin : 0) >= E().MATCH) return 'Tir : la position de tir serait atteinte après 100 s.';
     }
     var r = worldOf(b, cache).planifierEtape(st, { mode: 'disque', verifier: true });
-    return r.ok ? null : r.raison || 'Refusé par le moteur.';
+    if (!r.ok) return r.raison || 'Refusé par le moteur.';
+    if (ap && st.a === 'tir') {
+      /* attente avant le premier boulet (contrat §13) : majorée d'abord avec un minorant du trajet (ligne droite à v, rotation à w) ;
+         si ce majorant dépasse attenteMaxTir, l'étape est jouée à blanc avec son vrai trajet (même planificateur qu'exec) */
+      var att = attenteTir(b, b.t + Math.max(dist(tg, [b.pose.x, b.pose.y]) / v, dh2 / w));
+      if (att > HYPOTHESES.attenteMaxTir + 1e-6) {
+        var r2 = worldOf(b, cache).planifierEtape(st, { mode: 'disque' });
+        if (!r2.ok) return r2.raison || 'Refusé par le moteur.';
+        att = attenteTir(b, b.t + (r2.trajet ? r2.trajet.duree : 0));
+        if (att > HYPOTHESES.attenteMaxTir + 1e-6) return raisonAttente(att);
+      }
+    }
+    return null;
+  }
+  /* attente (s) de la brique tir, canon rentré, avant la sortie du canon, pour une arrivée à la position de tir à l'instant arrivee
+     (comme seanceTir du moteur : sortie et mise en route terminées à T_ATTAQUE) */
+  function attenteTir(b, arrivee) {
+    var P2 = b.params || {}, tPrep = (P2.bdep > 0 ? P2.bdep : 0.1) + (P2.bspin > 0 ? P2.bspin : 0);
+    return Math.max(0, E().T_ATTAQUE - tPrep - arrivee);
+  }
+  function raisonAttente(att) {
+    return 'Tir : ' + att.toFixed(1).replace('.', ',') + ' s d\'attente avant le premier boulet (au plus ' + String(HYPOTHESES.attenteMaxTir).replace('.', ',') + ' s) : attendre ou construire d\'abord.';
   }
   /* fonctions pures : la grille d'atteignabilité est calculée une fois par appel, au besoin */
   function explainBelief(b, catalogue) { var cache = {}; return (catalogue || ALL).map(function (a) { return explain(a, b, cache); }); }
