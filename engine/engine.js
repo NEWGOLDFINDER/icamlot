@@ -18,10 +18,11 @@
     x0: 250, y0: 1000, h0: 0,
     /* Graal au départ (repère jaune) : centre (gx, gy), ga = angle (repère table) de l'axe perpendiculaire aux anses.
        Valeur calculée, pas supposée : parmi les positions d'une grille de 10 mm et 15° où le Graal (base et anses) est entièrement
-       dans la salle du trône et hors de la projection du robot au départ (mécanismes compris), monterGraal depuis le départ dure 10,0 s
-       au minimum (sortie et descente de la fourche, 4,3 s, masquent le trajet) ; on retient celle qui laisse le plus d'écart
-       (61 mm) avec l'emprise du robot au départ. Le test « Graal par défaut » de tests/test_moteur.js revérifie ces contraintes. */
-    gx: 90, gy: 810, ga: 30,
+       dans la salle du trône et hors de la projection du robot au départ (mécanismes compris), et où monterGraal réussit depuis le départ
+       pour le jaune et pour le bleu (position en miroir, même robot), monterGraal dure 10,0 s au minimum (sortie et descente de la fourche,
+       4,3 s, masquent le trajet) ; on retient celle qui laisse le plus d'écart (60,9 mm) avec l'emprise du robot au départ.
+       Le test « Graal par défaut » de tests/test_moteur.js revérifie ces contraintes. */
+    gx: 70, gy: 810, ga: 0,
     gs: GR.base,   /* côté du Graal (affichage), = spec */
     /* hypothèses héritées : jeu de 5 mm au-dessus des piliers avant de poser le linteau (325 mm), chevauchement minimal de 8 mm d'une construction avec sa zone */
     pgap: 5, ovl: 8,
@@ -162,7 +163,9 @@
     function adv(d, label) { seg(d, label); s.t += d; pushK(); applyOpp(s.t); }
     function poseNow() { return { x: s.x, y: s.y, h: s.h, A: cp(s.A), B: cp(s.B), C: cpC(s.C) }; }
     function fk(f) { return f === 'A' ? 0 : 1; }
-    function homeGeo(st) { var pk = PK[st.pk]; return { foot: rectPoly({ cx: pk.x, cy: pk.y, hl: 160, hn: 55, ang: pk.tan + 90 }), top: 110 * st.l + 110, bottom: 110 * st.l, id: st.id }; }
+    /* pierres à leur place de départ : géométrie constante, mise en cache */
+    var HOME = {};
+    function homeGeo(st) { var g = HOME[st.id]; if (g) return g; var pk = PK[st.pk]; g = HOME[st.id] = prep({ foot: rectPoly({ cx: pk.x, cy: pk.y, hl: 160, hn: 55, ang: pk.tan + 90 }), top: 110 * st.l + 110, bottom: 110 * st.l, id: st.id }); return g; }
     function stoneFoot(st, pose) {
       var c = st.cur;
       if (c.k === 'home') return homeGeo(st);
@@ -177,14 +180,16 @@
     /* centre et rayon d'un obstacle (mis en cache sur l'objet) */
     function prep(o) {
       if (o.rad != null) return o;
-      var cx = 0, cy = 0, r = 0, F = o.foot;
-      F.forEach(function (v) { cx += v[0] / F.length; cy += v[1] / F.length; });
-      F.forEach(function (v) { r = Math.max(r, Math.hypot(v[0] - cx, v[1] - cy)); });
-      o.cx = cx; o.cy = cy; o.rad = r; return o;
+      var cx = 0, cy = 0, r = 0, F = o.foot, n = F.length, i;
+      for (i = 0; i < n; i++) { cx += F[i][0]; cy += F[i][1]; }
+      cx /= n; cy /= n;
+      for (i = 0; i < n; i++) { var dx = F[i][0] - cx, dy = F[i][1] - cy; if (dx * dx + dy * dy > r) r = dx * dx + dy * dy; }
+      o.cx = cx; o.cy = cy; o.rad = Math.sqrt(r); return o;
     }
+    var GHOME = null;
     function graalGeo() {
       if (graal.cur.k !== 'home') return null;
-      return { id: 'graal', foot: graalPoly([P.gx, P.gy], P.ga), bottom: 0, top: GR.h };
+      return GHOME || (GHOME = prep({ id: 'graal', foot: graalPoly([P.gx, P.gy], P.ga), bottom: 0, top: GR.h }));
     }
     function obstacles(excl) {
       var obs = freeStones(excl).map(function (st) { var g = stoneFoot(st); g.id = st.id; return g; }).concat(foreign());
@@ -214,8 +219,16 @@
     /* ---- corps du robot hors châssis (nacelles, canon, ascenseur), repère robot, mis en cache par état des mécanismes ---- */
     var bodyCache = new Map();
     function rectC(x0, x1, y0, y1) { return [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]; }
+    var bLast = null, bLastV = [NaN, NaN, NaN, NaN, NaN, NaN, NaN];
     function bodiesOf(p) {
-      var C = G.cState(p.C), key = p.A.hc.toFixed(1) + ',' + p.A.rot.toFixed(1) + ',' + p.B.hc.toFixed(1) + ',' + p.B.rot.toFixed(1) + ',' + C.can.toFixed(1) + ',' + C.fx.toFixed(1) + ',' + C.fz.toFixed(1);
+      var C = G.cState(p.C), lv0 = bLastV;
+      if (bLast && lv0[0] === p.A.hc && lv0[1] === p.A.rot && lv0[2] === p.B.hc && lv0[3] === p.B.rot && lv0[4] === C.can && lv0[5] === C.fx && lv0[6] === C.fz) return bLast;
+      bLastV = [p.A.hc, p.A.rot, p.B.hc, p.B.rot, C.can, C.fx, C.fz];
+      bLast = bodiesKey(p, C);
+      return bLast;
+    }
+    function bodiesKey(p, C) {
+      var key = p.A.hc.toFixed(1) + ',' + p.A.rot.toFixed(1) + ',' + p.B.hc.toFixed(1) + ',' + p.B.rot.toFixed(1) + ',' + C.can.toFixed(1) + ',' + C.fx.toFixed(1) + ',' + C.fz.toFixed(1);
       var b = bodyCache.get(key); if (b) return b;
       var L = [];
       ['A', 'B'].forEach(function (f, k) { var g = p[f], e = G.actExt(g.rot); L.push({ id: 'nacelle ' + f, P: G.nacPtsR(k, g, e.umax), z0: g.hc + e.zmin, z1: g.hc + e.zmax }); });
@@ -246,9 +259,10 @@
         if (edge && add('bord de table')) return out;
       }
       for (j = 0; j < fr.length; j++) {
-        o = prep(fr[j]);
-        var d = Math.hypot(o.cx - p.x, o.cy - p.y);
-        if (d >= B.R + o.rad + mg) continue;
+        o = fr[j]; if (o.rad == null) prep(o);
+        var ex = o.cx - p.x, ey = o.cy - p.y, d2 = ex * ex + ey * ey, rr0 = B.R + o.rad + mg;
+        if (d2 >= rr0 * rr0) continue;
+        var d = Math.sqrt(d2);
         if (d < HULL_R + o.rad + mg && G.hullHit(p, o.foot, tol)) { if (add(o.id)) return out; continue; }
         for (k = 0; k < B.list.length; k++) {
           var b = B.list[k];
@@ -259,7 +273,13 @@
       if (oNow && oNow.x != null && G.hullsHit(p, oNow, 1)) { if (add('robot adverse')) return out; }
       for (i = 0; i < hs.length; i++) {
         if (hs[i].bottom < BORDURE && !inTable(hs[i].foot, -1)) { if (add('bord de table')) return out; }
-        for (k = 0; k < fr.length; k++) if (heldVsFree(hs[i], fr[k], tol)) { if (add(fr[k].id)) return out; }
+        var hx = hs[i].fo.cx, hy = hs[i].fo.cy, hr = Math.sqrt(hs[i].fo.hl * hs[i].fo.hl + hs[i].fo.hn * hs[i].fo.hn);
+        for (k = 0; k < fr.length; k++) {
+          o = fr[k]; if (o.rad == null) prep(o);
+          var qx = o.cx - hx, qy = o.cy - hy, qr = hr + o.rad + mg;
+          if (qx * qx + qy * qy >= qr * qr || hs[i].bottom >= o.top - 1) continue;
+          if (heldVsFree(hs[i], o, tol)) { if (add(o.id)) return out; }
+        }
       }
       return out;
     }
@@ -1460,15 +1480,16 @@
       res.stoneAt = function (st, t) { var e = st.tl[0]; for (var i = 0; i < st.tl.length; i++) if (st.tl[i].t <= t) e = st.tl[i]; return e; };
       return res;
     }
+    var FREEG = new WeakMap();
     function contactsOf(res) {
-      var last = '', collisions = [], gHome = { id: 'graal', foot: graalPoly([P.gx, P.gy], P.ga), bottom: 0, top: GR.h };
+      var last = '', collisions = [], gHome = prep({ id: 'graal', foot: graalPoly([P.gx, P.gy], P.ga), bottom: 0, top: GR.h });
       for (var tt = 0; tt <= s.t; tt += 0.1) {
         var p = res.poseAt(tt), hs = [], free = [];
         stones.forEach(function (st) {
           var e = res.stoneAt(st, tt);
           if (e.k === 'held') hs.push(geomHeld(p, e.f, e.l));
           else if (e.k === 'home') free.push(homeGeo(st));
-          else if (e.k !== 'gone') { var g2 = geomHeld(e.pose, e.f, e.l); free.push({ id: st.id, foot: g2.foot, top: g2.top, bottom: g2.bottom }); }
+          else if (e.k !== 'gone') { var g2 = FREEG.get(e); if (!g2) { g2 = geomHeld(e.pose, e.f, e.l); g2 = prep({ id: st.id, foot: g2.foot, top: g2.top, bottom: g2.bottom }); FREEG.set(e, g2); } free.push(g2); }
         });
         if (SCORE_graalAt(res, tt).k === 'home' && !(graal.approche && tt >= graal.approche[0] - 1e-9 && tt <= graal.approche[1] + 1e-9)) free.push(gHome);
         var hit = hits(p, hs, free, 1.5, true, oppAt(tt));
