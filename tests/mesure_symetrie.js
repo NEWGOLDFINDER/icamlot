@@ -75,6 +75,7 @@ function mesureEtats(N) {
       st = env.step(idx); k++;
     }
   }
+  var sep = { n90: { etats: 0, diff: 0 }, nAutre: { etats: 0, diff: 0 } };
   var obsOk = 0, maskOk = 0, tenues = 0, diffIdx = {}, diffFam = {}, nDiffAct = 0, nAct = 0, exemples = [], t0 = Date.now();
   states.forEach(function (bY, n) {
     var bB = mirrorBelief(bY), oY = ENV.observeBelief(bY), oB = ENV.observeBelief(bB);
@@ -91,11 +92,16 @@ function mesureEtats(N) {
       }
     });
     if (same) maskOk++;
+    /* répartition : nacelle à 90° (pierres décalées latéralement, chiralité des nacelles) ou non */
+    var a90 = ['A', 'B'].some(function (f) { var g = bY.pinces[f]; return Math.abs(g.rot - 90) < 0.5 || (g.rotReelle != null && Math.abs(g.rotReelle - 90) < 0.5); });
+    var dN = mY.filter(function (v, i) { return v !== mB[i]; }).length;
+    sep[a90 ? 'n90' : 'nAutre'].etats++; sep[a90 ? 'n90' : 'nAutre'].diff += dN;
   });
   console.log('\n1. Miroir physique sur ' + N + ' croyances (' + tenues + ' avec pierres tenues), ' + f1((Date.now() - t0) / 1000) + ' s');
   console.log('   obs(jaune) == obs(bleu miroir) hors bit d\'équipe : ' + obsOk + ' / ' + N);
   console.log('   indices d\'observation différents (nombre d\'états) : ' + JSON.stringify(diffIdx));
   console.log('   masque identique : ' + maskOk + ' / ' + N + ' ; actions différentes : ' + nDiffAct + ' / ' + nAct + ' ' + JSON.stringify(diffFam));
+  console.log('   actions différentes, états avec une nacelle à 90° : ' + sep.n90.diff + ' sur ' + sep.n90.etats + ' états ; autres états : ' + sep.nAutre.diff + ' sur ' + sep.nAutre.etats + ' états');
   exemples.forEach(function (e) { console.log('     ' + e); });
   return { obsOk: obsOk, maskOk: maskOk, N: N, nDiffAct: nDiffAct, nAct: nAct };
 }
@@ -133,6 +139,11 @@ function mesureReference() {
     /* une action masquée est sautée (comptée), la suivante est jouée */
     var brain = { choose: function (obs, mask) { while (k < seq.length && !mask[seq[k]]) { invalides.push(k + ':' + ACTIONS.ALL[seq[k]].label); k++; } var i = k < seq.length ? seq[k] : iFin; k++; return i; } };
     var r = jouer(team, brain, 0, null, null);
+    /* même programme, briques exécutées sans masque (ENGINE.mirrorStep en bleu) */
+    var Pm = Object.assign({}, ENGINE.DEF, { seed: 0 }), simM = ENGINE.makeSim(team === 'blue' ? ENGINE.blueParams(Pm) : Pm, { skipContacts: true });
+    ENGINE.PROGRAMME_REFERENCE.forEach(function (st) { simM.exec(team === 'blue' ? ENGINE.mirrorStep(st) : st); });
+    var RM = simM.finish();
+    console.log('   ' + (team === 'blue' ? 'bleu ' : 'jaune') + ' seul, briques du programme sans masque : ' + SCORE.scoreAt(RM, RM.params, ENV.MATCH).total + ' pts, ' + RM.errors.length + ' erreur(s)' + (RM.errors.length ? ' ' + JSON.stringify(RM.errors.slice(0, 3).map(function (e) { return e.msg; })) : ''));
     console.log('   ' + (team === 'blue' ? 'bleu ' : 'jaune') + ' seul : ' + r.score + ' pts, ' + r.errors + ' erreur(s), ' + invalides.length + ' action(s) masquée(s) sautée(s)' + (invalides.length ? ' ' + JSON.stringify(invalides.slice(0, 6)) : '') + (r.errs.length ? ' ' + JSON.stringify(r.errs.slice(0, 3)) : ''));
   });
 }
@@ -172,6 +183,7 @@ function coherence(team, N, seed) {
       if (pick === iFin) break;
       if (!info.err) continue;
       o.fail++;
+      if (process.env.DEBUG_COH) console.log('     ' + team + ' match ' + (o.eps - 1) + ' t=' + f1(t0) + ' « ' + cat[pick].label + ' » ' + JSON.stringify(st) + ' -> ' + info.err + ' | pinces ' + JSON.stringify(b.pinces) + ' graal ' + b.graal);
       if (PATH.test(info.err)) o.path++; else { var key = info.err.replace(/[0-9]+([.,][0-9]+)?/g, '#'); o.other[key] = (o.other[key] || 0) + 1; }
     }
   }
