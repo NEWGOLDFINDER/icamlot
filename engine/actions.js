@@ -353,7 +353,8 @@
       case 'monterGraal': return { a: 'monterGraal' };
       case 'trone': return { a: 'trone' };
       case 'finir': return { a: 'attendreJusqua', sec: E().MATCH };
-      case 'attendre': return { a: 'attendre', sec: act.sec };
+      /* attente courte bornée à la fin du match (le robot ne planifie rien au-delà de 100 s) */
+      case 'attendre': return { a: 'attendre', sec: Math.min(act.sec, Math.round((E().MATCH - b.t) * 1e6) / 1e6) };
       case 'traj': var w = wpById(act.w); return { a: 'seDeplacer', x: w.x, y: w.y };
       case 'preparer': return { a: 'tourner', f: act.f, r: act.r, tm: true };
       case 'lacher': return { a: 'deposerZone', f: act.f, q: 'pile' };
@@ -411,7 +412,7 @@
     if (st.a === 'tour') return a === 'tour' && act.f === st.f && act.z === st.z;
     if (st.a === 'tir') return a === 'tir';
     if (st.a === 'attendreJusqua') return a === 'finir';
-    if (st.a === 'attendre') return a === 'attendre' && +act.sec === +st.sec;
+    if (st.a === 'attendre') return a === 'attendre';
     if (st.a === 'seDeplacer') return a === 'traj';
     if (st.a === 'tourner') return a === 'preparer' && act.f === st.f;
     if (st.a === 'deposerZone') return a === 'lacher' && act.f === st.f;

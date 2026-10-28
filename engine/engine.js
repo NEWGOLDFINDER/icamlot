@@ -2274,7 +2274,9 @@
     duel.run(agents);
     return duel.finish();
   }
-  /* Programme de référence (golden test, tests/test_moteur.js) : piles, murs, porte, tours, tir, Graal monté sur le toit, retour au trône. */
+  /* Programme de référence (golden test, tests/test_moteur.js) : piles, murs, porte, tours, tir, Graal monté sur le toit, retour au trône.
+     Tir explicite (contrat §13, catalogue 3.1) : après le Graal (70,4 s), le robot va à la position de tir (salle du trône) et
+     attend par attentes courtes (4 + 4 + 2 + 1 s) ; la brique tir, lancée à 81,7 s, n'attend plus que 0,09 s (premier boulet à 85 s). */
   var PROGRAMME_REFERENCE = [
     { a: 'prendre', f: 'A', p: 'P1' }, { a: 'prendre', f: 'B', p: 'P9' },
     { a: 'mur', f: 'B', z: 'M2', side: 'ext' }, { a: 'mur', f: 'A', z: 'M1', side: 'int' },
@@ -2283,7 +2285,9 @@
     { a: 'prendre', f: 'B', mode: 'pierre', s: 'P6.3' }, { a: 'prendre', f: 'A', p: 'P2' },
     { a: 'tour', f: 'B', z: 'T2', s: 'P6.3' },
     { a: 'porte', f: 'A', z: 'M3', side: 'int' },
-    { a: 'monterGraal' }, { a: 'tir' }, { a: 'trone' }
+    { a: 'monterGraal' }, { a: 'trone' },
+    { a: 'attendre', sec: 4 }, { a: 'attendre', sec: 4 }, { a: 'attendre', sec: 2 }, { a: 'attendre', sec: 1 },
+    { a: 'tir' }, { a: 'trone' }
   ];
   var api = {
     VERSION: VERSION, MATCH: MATCH, T_ATTAQUE: T_ATTAQUE, DEF: DEF, simulate: simulate, simulateMatch: simulateMatch, makeSim: makeSim, makeDuel: makeDuel, programAgent: programAgent,

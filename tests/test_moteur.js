@@ -72,7 +72,13 @@ console.log('     score ' + sc.total + ' pts, programme terminé à ' + Rref.T.t
 sc.rows.forEach(function (r) { r[1].forEach(function (x) { console.log('       ' + r[0] + ' · ' + x[0] + ' : ' + x[1] + ' → ' + x[2]); }); });
 ok(Rref.errors.length === 0, 'aucune erreur moteur', msgs(Rref));
 ok(Rref.collisions.length === 0, 'aucun contact', JSON.stringify(Rref.collisions));
-var GOLDEN = { total: 116, T: 90.30, detail: { pierres: 16, murs: 20, tours: 5, porte: 20, graal: 25, roi: 10, boulets: 20 } };
+/* Golden (contrat §13, catalogue 3.1) : la référence va au trône après le Graal (70,4 s), attend 4 + 4 + 2 + 1 s puis lance le tir
+   à 81,7 s. Score et durée inchangés (116 pts, 90,30 s) : le premier boulet part toujours à 85 s et le retour au trône finit au même
+   instant. Une prise + une tour de plus (122 pts) n'est pas imitable sans cible invalide (voir §13). */
+var GOLDEN = { total: 116, T: 90.30, detail: { pierres: 16, murs: 20, tours: 5, porte: 20, graal: 25, roi: 10, boulets: 20 }, attenteTirMax: 0.1 };
+var attTir = Rref.segs.filter(function (x) { return /^Attente, canon rentré/.test(x.label); }).reduce(function (u, x) { return u + x.t1 - x.t0; }, 0);
+ok(ref.some(function (st) { return st.a === 'attendre'; }) && attTir <= GOLDEN.attenteTirMax, 'tir explicite : attentes courtes avant le tir, attente dans la brique tir <= ' + GOLDEN.attenteTirMax + ' s', attTir.toFixed(2) + ' s');
+ok(Math.abs(Rref.balls.t0 - E.T_ATTAQUE) < 1e-9, 'premier boulet au début de la phase d\'attaque (' + E.T_ATTAQUE + ' s)', String(Rref.balls.t0));
 ok(sc.total === GOLDEN.total, 'score golden ' + GOLDEN.total, String(sc.total));
 ok(proche(Rref.T, GOLDEN.T, 0.005), 'durée golden ' + GOLDEN.T.toFixed(2) + ' s', Rref.T.toFixed(2));
 Object.keys(GOLDEN.detail).forEach(function (k) { ok(sc.detail[k] === GOLDEN.detail[k], 'poste ' + k + ' = ' + GOLDEN.detail[k], String(sc.detail[k])); });
