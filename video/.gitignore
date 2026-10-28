@@ -1,0 +1,8 @@
+node_modules/
+prev/
+seg*/
+match.json
+parts.txt
+*.mp4
+*.wav
+package-lock.json
