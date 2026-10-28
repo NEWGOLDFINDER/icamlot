@@ -1,631 +1,472 @@
-"""Entraîneur PPO (Proximal Policy Optimization) récurrent pour ICAM LOT Eurobot 2027.
+"""PPO récurrent sur le moteur JS de référence (pool de processus Node, trainer/js_env_pool.py).
 
-Entraîne un réseau RecurrentActorCritic (GRU + MLP) 100% sur GPU avec TorchEnv,
-puis exporte automatiquement le cerveau champion au format ONNX optimisé pour Raspberry Pi 5.
+- Collecte de séquences de `rollout` pas sur N = processus × environnements ; l'état caché repart de zéro au début
+  de chaque épisode (pendant la collecte et pendant l'apprentissage).
+- Récompense = celle de l'environnement (somme = score officiel final, contrat §4) + pénalités configurables
+  (par erreur moteur, par action refusée). Le masque d'actions vient de l'environnement.
+- GAE, normalisation des avantages (par mini-lot), normalisation des observations (statistiques glissantes,
+  figées pendant un rollout et sa mise à jour, sauvegardées dans le modèle et exportées), mise à l'échelle des
+  retours pour la critique (écart-type glissant des retours actualisés), clipping de la valeur optionnel,
+  entropie et taux d'apprentissage planifiés linéairement, écrêtage du gradient, points de sauvegarde, reprise.
+- Le champion n'est choisi que sur une évaluation dans le moteur JS (trainer/evaluation.py).
+
+  python -m trainer.ppo_trainer --processus 2 --envs-par-processus 4 --rollout 16 --mises-a-jour 3 \\
+      --imitation-exemple --eval-matchs 8 --sortie .data/modeles/fumee
 """
 from __future__ import annotations
 
 import argparse
-import math
+import json
 import sys
-import os
-
-# Forcer stdout/stderr en mode unbuffered et UTF-8
-if hasattr(sys.stdout, "reconfigure"):
-    try:
-        sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)
-        sys.stderr.reconfigure(encoding="utf-8", line_buffering=True)
-    except Exception:
-        pass
 import time
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional
 
 ROOT = Path(__file__).resolve().parent.parent
-TRAINER_DIR = Path(__file__).resolve().parent
-while str(TRAINER_DIR) in sys.path:
-    sys.path.remove(str(TRAINER_DIR))
-if str(ROOT) in sys.path:
-    sys.path.remove(str(ROOT))
-sys.path.insert(0, str(ROOT))
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.optim as optim
+import torch.nn.functional as F
 
-from trainer.torch_engine import TorchEnv, MATCH_DURATION
-from trainer.models import RecurrentActorCritic
-from trainer.export_onnx import export_pi5_onnx
+from trainer.evaluation import MATCHS_SELECTION, evaluate, resume
+from trainer.js_env_pool import JsEnvPool, default_procs
+from trainer.models import RecurrentActorCritic, RunningMeanStd, load_checkpoint, save_checkpoint
+from trainer.scenarios import ScenarioSampler
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+@dataclass
+class PPOConfig:
+    """Hyperparamètres. Les valeurs par défaut sont des HYPOTHÈSES de départ (pratiques PPO usuelles),
+    pas des valeurs mesurées sur ce problème ; elles sont toutes réglables."""
+    # environnement
+    processus: int = 1
+    envs_par_processus: int = 4
+    rollout: int = 32                 # pas par environnement et par mise à jour
+    max_decisions: int = 80           # troncature d'un épisode (repris de ENV.play)
+    # optimisation
+    mises_a_jour: int = 100           # nombre de rollouts + mises à jour (borné aussi par transitions_max / duree_max_s)
+    transitions_max: int = 0          # 0 = pas de borne
+    duree_max_s: float = 0.0          # 0 = pas de borne
+    lr: float = 3e-4
+    lr_fin: float = 0.0               # décroissance linéaire de lr vers lr_fin
+    gamma: float = 1.0                # objectif = score final (somme non actualisée des récompenses)
+    gae_lambda: float = 0.95
+    clip: float = 0.2
+    clip_valeur: bool = True
+    coef_valeur: float = 0.5
+    entropie: float = 0.01
+    entropie_fin: float = 0.01        # décroissance linéaire de l'entropie vers entropie_fin
+    epoques: int = 4
+    mini_lots: int = 2                # découpage des N séquences en mini-lots
+    grad_max: float = 0.5
+    normaliser_obs: bool = True
+    normaliser_retours: bool = True
+    # récompense : pénalités ajoutées à celle de l'environnement (0 = récompense de l'environnement seule)
+    penalite_erreur: float = 0.0      # par décision qui produit une erreur moteur
+    penalite_invalide: float = 0.0    # par action refusée par l'environnement (« Action invalide. »)
+    # modèle
+    hidden: int = 128
+    encodeur: List[int] = field(default_factory=lambda: [128])
+    acteur: List[int] = field(default_factory=list)
+    critique: List[int] = field(default_factory=lambda: [128])
+    activation: str = "silu"
+    # scénarios
+    intensites: List[str] = field(default_factory=lambda: ["aucun"])
+    graine: int = 1
+    # sauvegardes, évaluation
+    checkpoint_tous_les: int = 10
+    eval_tous_les: int = 0            # 0 = seulement à la fin
+    eval_matchs: int = MATCHS_SELECTION
+    eval_graine: int = 10_000
 
 
 class PPOTrainer:
-    """Gestionnaire d'entraînement PPO récurrent avec TorchEnv sur GPU."""
+    def __init__(self, cfg: PPOConfig, pool: JsEnvPool, sampler: ScenarioSampler,
+                 device: Optional[torch.device] = None, model: Optional[RecurrentActorCritic] = None,
+                 log: Optional[Callable[[str], None]] = None):
+        self.cfg = cfg
+        self.pool = pool
+        self.sampler = sampler
+        self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.log = log or (lambda s: print(s, flush=True))
+        self.model = (model or RecurrentActorCritic(pool.n_in, pool.n_out, hidden=cfg.hidden, encodeur=cfg.encodeur,
+                                                    acteur=cfg.acteur, critique=cfg.critique,
+                                                    activation=cfg.activation)).to(self.device)
+        if self.model.n_in != pool.n_in or self.model.n_out != pool.n_out:
+            raise ValueError(f"Modèle {self.model.n_in}→{self.model.n_out}, environnement {pool.n_in}→{pool.n_out}.")
+        self.opt = torch.optim.Adam(self.model.parameters(), lr=cfg.lr, eps=1e-5)
+        self.obs_rms = RunningMeanStd((pool.n_in,))
+        self.ret_rms = RunningMeanStd(())
+        self.update = 0
+        self.global_step = 0
+        self.episodes: List[dict] = []
+        self.best_eval: Optional[dict] = None
+        N = pool.n_envs
+        self._ret_acc = np.zeros(N, np.float64)
+        self._ep_ret = np.zeros(N, np.float64)
+        self._obs = self._mask = None
+        self._hidden = self.model.init_hidden(N, self.device)
+        self._start = np.ones(N, bool)
 
-    def __init__(
-        self,
-        env_batch_size: int = 256,
-        rollout_len: int = 32,
-        hidden_dim: int = 128,
-        lr: float = 3e-4,
-        gamma: float = 0.99,
-        gae_lambda: float = 0.95,
-        clip_coef: float = 0.2,
-        ent_coef: float = 0.01,
-        vf_coef: float = 0.5,
-        max_grad_norm: float = 0.5,
-        ppo_epochs: int = 4,
-        num_minibatches: int = 4,
-        c_aux: float = 0.1,
-        curriculum: bool = False,
-        device: Optional[torch.device] = None,
-    ):
-        self.device = device or DEVICE
-        self.batch_size = env_batch_size
-        self.rollout_len = rollout_len
-        self.hidden_dim = hidden_dim
-        self.lr = lr
-        self.gamma = gamma
-        self.gae_lambda = gae_lambda
-        self.clip_coef = clip_coef
-        self.ent_coef = ent_coef
-        self.vf_coef = vf_coef
-        self.max_grad_norm = max_grad_norm
-        self.ppo_epochs = ppo_epochs
-        self.num_minibatches = num_minibatches
-        self.c_aux = c_aux
-        self.use_curriculum = curriculum
-        self.aux_targets_buf = []
+    # ───────── état sauvegardé ─────────
+    def state(self) -> dict:
+        return {
+            "env_config": self.pool.config, "obs_version": self.pool.obs_version,
+            "catalogue_version": self.pool.catalogue_version, "catalogue": self.pool.catalogue,
+            "groupes": self.pool.groups, "moteur": self.pool.moteur, "bareme": self.pool.bareme,
+            "obs_rms": self.obs_rms.state_dict(), "ret_rms": self.ret_rms.state_dict(),
+            "optimizer_state": self.opt.state_dict(), "update": self.update, "global_step": self.global_step,
+            "ppo_config": asdict(self.cfg), "gamma": self.cfg.gamma, "best_eval": self.best_eval,
+        }
 
-        # Environnement d'entraînement sur GPU
-        self.env = TorchEnv(batch_size=self.batch_size, device=self.device)
+    def load_state(self, ck: dict, optimizer: bool = True) -> None:
+        if ck.get("obs_rms"):
+            self.obs_rms.load_state_dict(ck["obs_rms"])
+        if ck.get("ret_rms"):
+            self.ret_rms.load_state_dict(ck["ret_rms"])
+        if optimizer and ck.get("optimizer_state"):
+            self.opt.load_state_dict(ck["optimizer_state"])
+        self.update = int(ck.get("update") or 0)
+        self.global_step = int(ck.get("global_step") or 0)
+        self.best_eval = ck.get("best_eval")
 
-        # Modèle Acteur-Critique récurrent
-        self.model = RecurrentActorCritic(
-            n_in=self.env.n_in,
-            n_out=self.env.n_out,
-            hidden_dim=self.hidden_dim,
-        ).to(self.device)
+    def save(self, path, extra: Optional[dict] = None) -> None:
+        st = self.state()
+        st.update(extra or {})
+        save_checkpoint(path, self.model, st)
 
-        self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr, eps=1e-5)
+    # ───────── plans ─────────
+    def _frac(self) -> float:
+        c = self.cfg
+        return min(1.0, self.update / max(1, c.mises_a_jour))
 
-        # Suivi des scores réels des matchs terminés
-        self.finished_scores: List[float] = []
-        self.finished_errors: List[int] = []
+    def lr_now(self) -> float:
+        return self.cfg.lr + (self.cfg.lr_fin - self.cfg.lr) * self._frac()
 
-    @staticmethod
-    def compute_multihead_loss(
-        new_logprob: torch.Tensor,
-        old_logprob: torch.Tensor,
-        advantages: torch.Tensor,
-        clip_coef: float = 0.2,
-    ) -> torch.Tensor:
-        """Calcule la perte surrogate clippée PPO pour politique conjointe multi-têtes."""
-        log_ratio = new_logprob - old_logprob
-        ratio = torch.exp(log_ratio)
-        surr1 = ratio * advantages
-        surr2 = torch.clamp(ratio, 1.0 - clip_coef, 1.0 + clip_coef) * advantages
-        return -torch.min(surr1, surr2).mean()
+    def ent_now(self) -> float:
+        return self.cfg.entropie + (self.cfg.entropie_fin - self.cfg.entropie) * self._frac()
 
-    @staticmethod
-    def joint_policy_loss(
-        new_logprob: torch.Tensor,
-        old_logprob: torch.Tensor,
-        advantages: torch.Tensor,
-        clip_coef: float = 0.2,
-    ) -> torch.Tensor:
-        """Alias pour le calcul de la perte de politique conjointe multi-têtes."""
-        return PPOTrainer.compute_multihead_loss(new_logprob, old_logprob, advantages, clip_coef)
+    def _ret_scale(self) -> float:
+        return float(np.sqrt(self.ret_rms.var + 1e-8)) if self.cfg.normaliser_retours else 1.0
 
-    @staticmethod
-    def multihead_entropy(
-        primary_logits: torch.Tensor,
-        approach_logits: torch.Tensor,
-        folding_logits: torch.Tensor,
-    ) -> torch.Tensor:
-        """Calcule l'entropie multi-têtes cumulée sur les 3 têtes d'action."""
-        ent_prim = torch.distributions.Categorical(logits=primary_logits).entropy()
-        ent_app = torch.distributions.Categorical(logits=approach_logits).entropy()
-        ent_fold = torch.distributions.Categorical(logits=folding_logits).entropy()
-        return ent_prim + ent_app + ent_fold
-
-    def compute_aux_loss(self, aux_preds: torch.Tensor, aux_targets: torch.Tensor) -> torch.Tensor:
-        """Calcule la perte auxiliaire multi-tâche (MSE sur cinématique/enveloppe + BCE sur contact)."""
-        mse_loss = nn.functional.mse_loss(aux_preds[:, 0:7], aux_targets[:, 0:7])
-        bce_loss = nn.functional.binary_cross_entropy(
-            torch.clamp(aux_preds[:, 7], min=1e-6, max=1.0 - 1e-6),
-            aux_targets[:, 7]
-        )
-        return mse_loss + bce_loss
-
-    def pretrain_imitation(self, epochs: int = 150, lr: float = 1e-3) -> None:
-        """Pré-entraîne le réseau récurrent par imitation du programme champion Eurobot."""
-        print(f"--- Pré-entraînement par imitation (initialisation stratégique GRU) ---")
-        example_actions = [0, 18, 20, 32, 4, 19, 28, 36, 3, 86, 69, 98, 84, 105]
-
-        # Simuler un épisode pour enregistrer la trajectoire de référence
-        B = 64
-        env = TorchEnv(batch_size=B, device=self.device)
-        obs_seq = []
-        mask_seq = []
-        act_seq = []
-
-        obs = env.reset()
-        for act_idx in example_actions:
-            obs_seq.append(obs.clone())
-            mask = env.get_live_mask()
-            mask_seq.append(mask.clone())
-            act = torch.full((B,), act_idx, dtype=torch.long, device=self.device)
-            act_seq.append(act)
-            obs, _, _, _ = env.step(act)
-
-        T = len(example_actions)
-        opt = optim.Adam(self.model.parameters(), lr=lr)
-        criterion_ce = nn.CrossEntropyLoss()
-        criterion_mse = nn.MSELoss()
-
-        self.model.train()
-        for ep in range(1, epochs + 1):
-            hidden = self.model.init_hidden(B, device=self.device)
-            total_loss = 0.0
-
-            for t in range(T):
-                t_obs = obs_seq[t]
-                t_mask = mask_seq[t]
-                t_act = act_seq[t]
-
-                logits, val, hidden = self.model(t_obs, hidden, mask=t_mask)
-                loss_ce = criterion_ce(logits, t_act)
-                loss_v = criterion_mse(val, torch.full_like(val, 105.0))
-                loss = loss_ce + 0.01 * loss_v
-
-                total_loss += loss
-
-            opt.zero_grad()
-            total_loss.backward()
-            opt.step()
-
-            if ep % 50 == 0 or ep == epochs:
-                print(f"  [Imitation Ep {ep:3d}/{epochs}] Perte moyenne : {total_loss.item() / T:.4f}")
-
-        print("  ok  Mémoire temporelle GRU initialisée avec succès.")
-
-    def collect_rollouts(
-        self,
-        current_obs: Optional[torch.Tensor] = None,
-        current_hidden: Optional[torch.Tensor] = None,
-        current_done: Optional[torch.Tensor] = None,
-    ) -> Tuple[dict, torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Collecte un buffer de transitions (T, B) en faisant progresser le batch sur GPU."""
-        T = self.rollout_len
-        B = self.batch_size
-        D = self.device
-
-        if current_obs is None:
-            current_obs = self.env.get_obs()
-        if current_hidden is None:
-            current_hidden = self.model.init_hidden(B, device=D)
-        if current_done is None:
-            current_done = torch.zeros(B, dtype=torch.bool, device=D)
-
-        # Buffers de stockage multi-têtes
-        obs_buf = torch.zeros((T, B, self.env.n_in), dtype=torch.float32, device=D)
-        mask_buf = torch.zeros((T, B, self.env.n_out), dtype=torch.bool, device=D)
-        primary_actions_buf = torch.zeros((T, B), dtype=torch.long, device=D)
-        approach_actions_buf = torch.zeros((T, B), dtype=torch.long, device=D)
-        folding_actions_buf = torch.zeros((T, B), dtype=torch.long, device=D)
-        logprobs_buf = torch.zeros((T, B), dtype=torch.float32, device=D)
-        rewards_buf = torch.zeros((T, B), dtype=torch.float32, device=D)
-        dones_buf = torch.zeros((T, B), dtype=torch.bool, device=D)
-        values_buf = torch.zeros((T, B), dtype=torch.float32, device=D)
-        hiddens_buf = torch.zeros((T, B, self.hidden_dim), dtype=torch.float32, device=D)
-        aux_targets_buf = torch.zeros((T, B, 8), dtype=torch.float32, device=D)
-
-        obs = current_obs
-        hidden = current_hidden
-        done = current_done
-
-        prev_scores = self.env.score.clone()
-        prev_errors = self.env.errors.clone()
-
-        for step in range(T):
-            # Si un env est done, on reset son hidden state
-            hidden = torch.where(done.unsqueeze(1), torch.zeros_like(hidden), hidden)
-
-            # Auto-reset des environnements terminés
-            if done.any():
-                done_idx = torch.where(done)[0]
-                # Enregistrer le score final du match
-                final_sc = self.env.score[done_idx].cpu().tolist()
-                final_err = self.env.errors[done_idx].cpu().tolist()
-                self.finished_scores.extend(final_sc)
-                self.finished_errors.extend(final_err)
-
-                # Reset des environnements terminés avec support curriculum
-                self.env.reset(curriculum=self.use_curriculum, indices=done_idx)
-                prev_scores[done_idx] = self.env.score[done_idx]
-                prev_errors[done_idx] = self.env.errors[done_idx]
-
-                obs = self.env.get_obs()
-
-            live_mask = self.env.get_live_mask()
-
-            obs_buf[step] = obs
-            mask_buf[step] = live_mask
-            dones_buf[step] = done
-            hiddens_buf[step] = hidden
-
-            with torch.no_grad():
-                action, logprob, _, value, next_hidden = self.model.get_action_and_value(
-                    obs, hidden, mask=live_mask
-                )
-
-            if isinstance(action, (tuple, list)):
-                a_prim, a_app, a_fold = action[0], action[1], action[2]
+    # ───────── collecte ─────────
+    def _penalties(self, infos) -> np.ndarray:
+        p = np.zeros(len(infos), np.float32)
+        for i, inf in enumerate(infos):
+            err = inf.get("err")
+            if not err:
+                continue
+            if err in ("Action invalide.", "Action hors catalogue."):
+                p[i] -= self.cfg.penalite_invalide
             else:
-                a_prim = action
-                a_app = torch.zeros_like(action)
-                a_fold = torch.zeros_like(action)
+                p[i] -= self.cfg.penalite_erreur
+        return p
 
-            primary_actions_buf[step] = a_prim
-            approach_actions_buf[step] = a_app
-            folding_actions_buf[step] = a_fold
-            logprobs_buf[step] = logprob
-            values_buf[step] = value
-
-            # Transition dans l'environnement GPU
-            next_obs, _, next_done, info = self.env.step(action)
-
-            # Enregistrer les cibles d'entraînement du World Model auxiliaire (8 variables)
-            rx_norm = self.env.robot_pose[:, 0] / 3000.0
-            ry_norm = self.env.robot_pose[:, 1] / 2000.0
-            rad = self.env.robot_pose[:, 2] * (math.pi / 180.0)
-            rcos = torch.cos(rad)
-            rsin = torch.sin(rad)
-            dt_step = info["dt"] / 10.0
-            env_L = info["envelope"][:, 0] / 300.0
-            env_W = info["envelope"][:, 1] / 300.0
-            contact = info["contact"]
-            aux_targets_buf[step] = torch.stack([rx_norm, ry_norm, rcos, rsin, dt_step, env_L, env_W, contact], dim=-1)
-
-            # Calcul de la récompense mise en forme :
-            # 1. Delta score Eurobot
-            sc_diff = self.env.score - prev_scores
-            # 2. Pénalité stricte par erreur / collision (-15 pts par collision de caisse ou adversaire)
-            err_diff = (self.env.errors - prev_errors).float()
-            # 3. Récompense totale
-            step_reward = sc_diff - 15.0 * err_diff
-
-            # Bonus terminal de match réussi sans fautes
-            throne_bonus = torch.where(
-                next_done & (self.env.errors == 0) & (self.env.score >= 50.0) & (self.env.robot_pose[:, 0] <= 500.0) & (self.env.robot_pose[:, 1] >= 750.0) & (self.env.robot_pose[:, 1] <= 1250.0),
-                torch.full_like(step_reward, 10.0),
-                torch.zeros_like(step_reward),
-            )
-            step_reward += throne_bonus
-
-            rewards_buf[step] = step_reward
-
-            prev_scores = self.env.score.clone()
-            prev_errors = self.env.errors.clone()
-            obs = next_obs
-            hidden = next_hidden
-            done = next_done
-
-        # Estimation de la valeur terminale pour GAE
-        with torch.no_grad():
-            last_mask = self.env.get_live_mask()
-            last_hidden = torch.where(done.unsqueeze(1), torch.zeros_like(hidden), hidden)
-            _, last_value, _ = self.model(obs, last_hidden, last_mask)
-
-            # Calcul des avantages GAE
-            advantages = torch.zeros_like(rewards_buf)
-            lastgaelam = 0.0
-            for t in reversed(range(T)):
-                if t == T - 1:
-                    nextnonterminal = (~done).float()
-                    nextvalues = last_value
-                else:
-                    nextnonterminal = (~dones_buf[t + 1]).float()
-                    nextvalues = values_buf[t + 1]
-
-                delta = rewards_buf[t] + self.gamma * nextvalues * nextnonterminal - values_buf[t]
-                advantages[t] = lastgaelam = delta + self.gamma * self.gae_lambda * nextnonterminal * lastgaelam
-
-            returns = advantages + values_buf
-
-        rollout_data = {
-            "obs": obs_buf,
-            "mask": mask_buf,
-            "primary_actions": primary_actions_buf,
-            "approach_actions": approach_actions_buf,
-            "folding_actions": folding_actions_buf,
-            "actions": primary_actions_buf,
-            "logprobs": logprobs_buf,
-            "rewards": rewards_buf,
-            "dones": dones_buf,
-            "values": values_buf,
-            "advantages": advantages,
-            "returns": returns,
-            "initial_hiddens": hiddens_buf[0],  # État caché au début du rollout pour chaque env
-            "aux_targets": aux_targets_buf,
-        }
-        self.aux_targets_buf = aux_targets_buf
-
-        return rollout_data, obs, hidden, done
-
-    collect_rollout = collect_rollouts
-
-    def train_step(self, rollout_data: dict) -> dict:
-        """Effectue les époques d'optimisation PPO récurrentes sur les données du rollout."""
-        T = self.rollout_len
-        B = self.batch_size
-        env_batch_size = B // self.num_minibatches
-
-        obs_buf = rollout_data["obs"]                  # (T, B, n_in)
-        mask_buf = rollout_data["mask"]                # (T, B, n_out)
-        primary_actions_buf = rollout_data.get("primary_actions", rollout_data.get("actions"))
-        approach_actions_buf = rollout_data.get("approach_actions", torch.zeros_like(primary_actions_buf))
-        folding_actions_buf = rollout_data.get("folding_actions", torch.zeros_like(primary_actions_buf))
-        logprobs_buf = rollout_data["logprobs"]        # (T, B)
-        advantages_buf = rollout_data["advantages"]    # (T, B)
-        returns_buf = rollout_data["returns"]          # (T, B)
-        dones_buf = rollout_data["dones"]              # (T, B)
-        init_hiddens = rollout_data["initial_hiddens"] # (B, hidden_dim)
-
-        # Normalisation des avantages sur l'ensemble du rollout
-        adv_flat = advantages_buf.view(-1)
-        adv_mean = adv_flat.mean()
-        adv_std = adv_flat.std() + 1e-8
-        norm_adv_buf = (advantages_buf - adv_mean) / adv_std
-
-        total_pg_loss = 0.0
-        total_v_loss = 0.0
-        total_ent_loss = 0.0
-        total_aux_loss = 0.0
-        n_updates = 0
-
-        for epoch in range(self.ppo_epochs):
-            # Permutation aléatoire des indices d'environnements
-            env_indices = torch.randperm(B, device=self.device)
-
-            for mb in range(self.num_minibatches):
-                mb_env_idx = env_indices[mb * env_batch_size : (mb + 1) * env_batch_size]
-
-                # Déroulement séquentiel récurrent pour ce minibatch d'environnements
-                mb_hidden = init_hiddens[mb_env_idx].clone()
-
-                mb_new_logprobs = []
-                mb_entropies = []
-                mb_new_values = []
-                mb_aux_preds = []
-
-                for t in range(T):
-                    t_done = dones_buf[t, mb_env_idx]
-                    mb_hidden = torch.where(t_done.unsqueeze(1), torch.zeros_like(mb_hidden), mb_hidden)
-
-                    t_obs = obs_buf[t, mb_env_idx]
-                    t_mask = mask_buf[t, mb_env_idx]
-                    t_act_prim = primary_actions_buf[t, mb_env_idx]
-                    t_act_app = approach_actions_buf[t, mb_env_idx]
-                    t_act_fold = folding_actions_buf[t, mb_env_idx]
-                    t_act = (t_act_prim, t_act_app, t_act_fold)
-
-                    _, new_lp, ent, val, next_mb_hidden = self.model.get_action_and_value(
-                        t_obs, mb_hidden, mask=t_mask, action=t_act
-                    )
-
-                    # Prédiction auxiliaire conditionnée par l'état caché et l'action primaire
-                    if self.c_aux > 0.0 and "aux_targets" in rollout_data:
-                        pred_aux = self.model.forward_aux(mb_hidden, t_act_prim)
-                        mb_aux_preds.append(pred_aux)
-
-                    mb_hidden = next_mb_hidden
-                    mb_new_logprobs.append(new_lp)
-                    mb_entropies.append(ent)
-                    mb_new_values.append(val)
-
-                new_logprob = torch.stack(mb_new_logprobs, dim=0) # (T, mb_B)
-                entropy = torch.stack(mb_entropies, dim=0)         # (T, mb_B)
-                new_value = torch.stack(mb_new_values, dim=0)       # (T, mb_B)
-
-                old_logprob = logprobs_buf[:, mb_env_idx]
-                mb_adv = norm_adv_buf[:, mb_env_idx]
-                mb_ret = returns_buf[:, mb_env_idx]
-
-                # 1. Perte de politique (surrogate objectif clippé PPO multi-têtes)
-                pg_loss = self.compute_multihead_loss(new_logprob, old_logprob, mb_adv, self.clip_coef)
-
-                # 2. Perte de valeur (fonction de valeur du Critique)
-                v_loss = 0.5 * ((new_value - mb_ret) ** 2).mean()
-
-                # 3. Perte d'entropie (exploration)
-                ent_loss = entropy.mean()
-
-                # 4. Perte auxiliaire World-Model (MSE + BCE)
-                if self.c_aux > 0.0 and len(mb_aux_preds) > 0:
-                    all_aux_preds = torch.stack(mb_aux_preds, dim=0).view(-1, 8)
-                    all_aux_targets = rollout_data["aux_targets"][:, mb_env_idx].reshape(-1, 8)
-                    aux_loss = self.compute_aux_loss(all_aux_preds, all_aux_targets)
-                else:
-                    aux_loss = torch.tensor(0.0, device=self.device)
-
-                # Perte globale
-                loss = pg_loss + self.vf_coef * v_loss - self.ent_coef * ent_loss + self.c_aux * aux_loss
-
-                self.optimizer.zero_grad()
-                loss.backward()
-                nn.utils.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
-                self.optimizer.step()
-
-                total_pg_loss += pg_loss.item()
-                total_v_loss += v_loss.item()
-                total_ent_loss += ent_loss.item()
-                total_aux_loss += aux_loss.item()
-                n_updates += 1
-
-        return {
-            "pg_loss": total_pg_loss / max(n_updates, 1),
-            "v_loss": total_v_loss / max(n_updates, 1),
-            "entropy": total_ent_loss / max(n_updates, 1),
-            "aux_loss": total_aux_loss / max(n_updates, 1),
-        }
-
-    def evaluate_greedy(self, num_episodes: int = 128) -> dict:
-        """Évalue la politique en mode déterministe (greedy) sur plusieurs matchs complets."""
+    @torch.no_grad()
+    def collect(self) -> dict:
+        c, pool, dev = self.cfg, self.pool, self.device
+        N, T = pool.n_envs, c.rollout
+        if self._obs is None:
+            self._obs, self._mask = pool.reset([self.sampler.sample() for _ in range(N)])
+            self._start[:] = True
+            self._hidden = self.model.init_hidden(N, dev)
+        if c.normaliser_obs:
+            self.model.set_obs_stats(self.obs_rms.mean, self.obs_rms.var)
         self.model.eval()
-        eval_env = TorchEnv(batch_size=num_episodes, device=self.device)
-        obs = eval_env.reset()
-        hidden = self.model.init_hidden(num_episodes, device=self.device)
+        buf = {k: [] for k in ("obs", "mask", "act", "logp", "val", "rew", "done", "start")}
+        h0 = None
+        raw_obs = []
+        for t in range(T):
+            start = torch.as_tensor(self._start, device=dev)
+            h_in = self._hidden * (~start).float().unsqueeze(-1)
+            if t == 0:
+                h0 = h_in.clone()
+            o = torch.as_tensor(self._obs, device=dev)
+            m = torch.as_tensor(self._mask, device=dev)
+            logits, value, h = self.model(o, h_in, m)
+            dist = torch.distributions.Categorical(logits=logits)
+            a = dist.sample()
+            nxt = [self.sampler.sample() for _ in range(N)]
+            sr = pool.step(a.cpu().numpy().tolist(), nxt)
+            r = sr.reward + self._penalties(sr.infos)
+            buf["obs"].append(self._obs); buf["mask"].append(self._mask); buf["start"].append(self._start.copy())
+            buf["act"].append(a.cpu().numpy()); buf["logp"].append(dist.log_prob(a).cpu().numpy())
+            buf["val"].append(value.cpu().numpy()); buf["rew"].append(r); buf["done"].append(sr.done.copy())
+            raw_obs.append(self._obs)
+            # échelle des retours : écart-type glissant du retour actualisé
+            self._ret_acc = self._ret_acc * c.gamma + r
+            self.ret_rms.update(self._ret_acc)
+            self._ret_acc[sr.done] = 0.0
+            self._ep_ret += r
+            for i in np.flatnonzero(sr.done):
+                fin = dict(sr.infos[i].get("final") or {})
+                fin["retour"] = float(self._ep_ret[i])
+                self.episodes.append(fin)
+                self._ep_ret[i] = 0.0
+            self._obs, self._mask = sr.obs, sr.mask
+            self._hidden = h
+            self._start = sr.done.copy()
+        # valeur de la dernière observation (bootstrap)
+        start = torch.as_tensor(self._start, device=dev)
+        h_in = self._hidden * (~start).float().unsqueeze(-1)
+        _, last_v, _ = self.model(torch.as_tensor(self._obs, device=dev), h_in, torch.as_tensor(self._mask, device=dev))
+        self.global_step += N * T
+        data = {k: np.stack(v) for k, v in buf.items()}
+        data["h0"] = h0
+        data["last_val"] = last_v.cpu().numpy()
+        data["raw_obs"] = np.concatenate(raw_obs)
+        return data
 
-        with torch.no_grad():
-            for _ in range(50):
-                if eval_env.done.all():
-                    break
-                live_mask = eval_env.get_live_mask()
-                action, _, _, _, next_hidden = self.model.get_action_and_value(
-                    obs, hidden, mask=live_mask, deterministic=True
-                )
-                obs, _, dones, _ = eval_env.step(action)
-                hidden = torch.where(dones.unsqueeze(1), torch.zeros_like(hidden), next_hidden)
+    def gae(self, data: dict, scale: float):
+        c = self.cfg
+        rew = data["rew"] / scale
+        val, done = data["val"], data["done"].astype(np.float32)
+        T = rew.shape[0]
+        adv = np.zeros_like(rew)
+        last = np.zeros(rew.shape[1], np.float32)
+        for t in reversed(range(T)):
+            next_v = data["last_val"] if t == T - 1 else val[t + 1]
+            nonterm = 1.0 - done[t]   # troncature traitée comme une fin d'épisode (hypothèse)
+            delta = rew[t] + c.gamma * next_v * nonterm - val[t]
+            last = delta + c.gamma * c.gae_lambda * nonterm * last
+            adv[t] = last
+        return adv, adv + val
 
-        eval_env.t = torch.maximum(eval_env.t, torch.full_like(eval_env.t, MATCH_DURATION))
-        eval_env.done.fill_(True)
-        final_scores = eval_env.compute_score().cpu().numpy()
-        errors = eval_env.errors.cpu().numpy()
-
+    def learn(self, data: dict) -> dict:
+        c, dev = self.cfg, self.device
+        for g in self.opt.param_groups:
+            g["lr"] = self.lr_now()
+        ent_coef = self.ent_now()
+        # l'échelle des retours est figée pour toute la mise à jour (valeurs collectées dans la même échelle)
+        adv, ret = self.gae(data, self._scale_used)
+        T, N = adv.shape
+        to = lambda x, dt=torch.float32: torch.as_tensor(x, device=dev, dtype=dt)
+        O, M = to(data["obs"]), to(data["mask"], torch.bool)
+        A, LP, V = to(data["act"], torch.long), to(data["logp"]), to(data["val"])
+        ADV, RET, S = to(adv), to(ret), to(data["start"])
+        h0 = data["h0"]
+        n_mb = max(1, min(c.mini_lots, N))
         self.model.train()
-        return {
-            "mean_score": float(np.mean(final_scores)),
-            "max_score": float(np.max(final_scores)),
-            "min_score": float(np.min(final_scores)),
-            "std_score": float(np.std(final_scores)),
-            "mean_errors": float(np.mean(errors)),
-        }
+        stats = {"perte_politique": 0.0, "perte_valeur": 0.0, "entropie": 0.0, "kl_approx": 0.0, "fraction_clip": 0.0}
+        n = 0
+        for _ in range(c.epoques):
+            perm = np.random.permutation(N)
+            for chunk in np.array_split(perm, n_mb):
+                idx = torch.as_tensor(chunk, device=dev)
+                logits, values, _ = self.model.forward_sequence(O[:, idx], h0[idx], S[:, idx], M[:, idx])
+                dist = torch.distributions.Categorical(logits=logits)
+                new_lp = dist.log_prob(A[:, idx])
+                ent = dist.entropy().mean()
+                log_ratio = new_lp - LP[:, idx]
+                ratio = log_ratio.exp()
+                adv_b = ADV[:, idx]
+                adv_b = (adv_b - adv_b.mean()) / (adv_b.std() + 1e-8)
+                pg = torch.max(-adv_b * ratio, -adv_b * ratio.clamp(1 - c.clip, 1 + c.clip)).mean()
+                if c.clip_valeur:
+                    v_clip = V[:, idx] + (values - V[:, idx]).clamp(-c.clip, c.clip)
+                    v_loss = 0.5 * torch.max((values - RET[:, idx]) ** 2, (v_clip - RET[:, idx]) ** 2).mean()
+                else:
+                    v_loss = 0.5 * ((values - RET[:, idx]) ** 2).mean()
+                loss = pg + c.coef_valeur * v_loss - ent_coef * ent
+                self.opt.zero_grad()
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), c.grad_max)
+                self.opt.step()
+                with torch.no_grad():
+                    stats["perte_politique"] += pg.item()
+                    stats["perte_valeur"] += v_loss.item()
+                    stats["entropie"] += ent.item()
+                    stats["kl_approx"] += ((ratio - 1) - log_ratio).mean().item()
+                    stats["fraction_clip"] += ((ratio - 1).abs() > c.clip).float().mean().item()
+                n += 1
+        self.model.eval()
+        out = {k: v / max(n, 1) for k, v in stats.items()}
+        out.update({"lr": self.lr_now(), "coef_entropie": ent_coef, "echelle_retours": self._scale_used})
+        return out
 
-    def train(
-        self,
-        total_steps: int = 200_000,
-        eval_every_rollouts: int = 10,
-        save_path_pt: str = ".data/weights/ppo_best.pt",
-        save_path_onnx: str = ".data/weights/best_brain_pi5.onnx",
-    ):
-        """Boucle principale d'entraînement PPO sur GPU."""
-        print(f"=== Démarrage Entraînement PPO Eurobot 2027 ===")
-        print(f"  Périphérique : {self.device}")
-        print(f"  Envs parallèles : {self.batch_size}")
-        print(f"  Longueur rollout : {self.rollout_len} pas ({self.batch_size * self.rollout_len:,} transitions / rollout)")
-        print(f"  Objectif étapes : {total_steps:,}")
+    def train_iteration(self) -> dict:
+        """Un rollout + une mise à jour PPO. Renvoie les statistiques."""
+        self._scale_used = self._ret_scale()   # échelle utilisée par la critique pendant ce rollout
+        n_ep0 = len(self.episodes)
+        t0 = time.time()
+        data = self.collect()
+        t_col = time.time() - t0
+        st = self.learn(data)
+        if self.cfg.normaliser_obs:
+            self.obs_rms.update(data["raw_obs"])
+            self.model.set_obs_stats(self.obs_rms.mean, self.obs_rms.var)
+        self.update += 1
+        new = self.episodes[n_ep0:]
+        st.update({
+            "mise_a_jour": self.update, "transitions": self.global_step, "duree_collecte_s": t_col,
+            "duree_s": time.time() - t0, "decisions_par_s": data["act"].size / max(t_col, 1e-9),
+            "episodes": len(new),
+            "score_moyen": float(np.mean([e.get("score", 0) for e in new])) if new else None,
+            "erreurs_moyennes": float(np.mean([e.get("errors") or 0 for e in new])) if new else None,
+            "recompense_rollout": float(data["rew"].sum() / max(1, data["rew"].shape[1])),
+        })
+        return st
 
-        Path(save_path_pt).parent.mkdir(parents=True, exist_ok=True)
-        Path(save_path_onnx).parent.mkdir(parents=True, exist_ok=True)
+    # ───────── évaluation / champion ─────────
+    def evaluate_and_select(self, base: Path, eval_sampler: ScenarioSampler, info_extra: Optional[dict] = None) -> dict:
+        from trainer.export_onnx import export_all
+        c = self.cfg
+        scs = eval_sampler.fixed(c.eval_matchs, c.eval_graine)
+        ev = evaluate(self.model, self.pool, scs, self.device, deterministic=True, log=self.log)
+        # le pool d'entraînement doit repartir de zéro (les environnements ont servi à l'évaluation)
+        self._obs = None
+        ev["protocole"] = {"matchs": c.eval_matchs, "graine": c.eval_graine, **eval_sampler.describe(), "glouton": True,
+                           "obs_version": self.pool.obs_version, "catalogue_version": self.pool.catalogue_version}
+        ev["mise_a_jour"] = self.update
+        self.log("Évaluation : " + resume(ev))
+        champion_pt = Path(str(base) + ".pt")
+        best = self.best_eval
+        if best is None and champion_pt.exists():
+            try:
+                _, old = load_checkpoint(champion_pt)
+                if (old.get("evaluation") or {}).get("protocole") == ev["protocole"]:
+                    best = old["evaluation"]
+            except Exception:
+                best = None
+        better = best is None or ev["score"]["moyenne"] > best["score"]["moyenne"]
+        ev["champion"] = bool(better)
+        if better:
+            self.best_eval = ev
+            extra = {"evaluation": ev}
+            extra.update(info_extra or {})
+            self.save(champion_pt, extra)
+            info = self.state()
+            info["evaluation"] = ev
+            export_all(self.model, base, info)
+            Path(str(base) + ".eval.json").write_text(json.dumps(ev, ensure_ascii=False, indent=2), encoding="utf-8")
+            self.log(f"Nouveau champion : {champion_pt}")
+        else:
+            self.best_eval = best
+            self.log(f"Champion conservé (score {best['score']['moyenne']:.1f} ≥ {ev['score']['moyenne']:.1f}).")
+        return ev
 
-        current_obs = self.env.reset(curriculum=self.use_curriculum)
-        current_hidden = self.model.init_hidden(self.batch_size, device=self.device)
-        current_done = torch.zeros(self.batch_size, dtype=torch.bool, device=self.device)
-
-        transitions_per_rollout = self.batch_size * self.rollout_len
-        num_rollouts = math.ceil(total_steps / transitions_per_rollout)
-
-        best_score = -float("inf")
-        best_effective = -float("inf")
-        start_time = time.perf_counter()
-        total_transitions_done = 0
-
-        for r in range(1, num_rollouts + 1):
-            t0 = time.perf_counter()
-
-            # 1. Collecte des transitions
-            rollout_data, current_obs, current_hidden, current_done = self.collect_rollouts(
-                current_obs, current_hidden, current_done
-            )
-
-            # 2. Mise à jour PPO
-            metrics = self.train_step(rollout_data)
-
-            total_transitions_done += transitions_per_rollout
-            elapsed = time.perf_counter() - start_time
-            sps = int(total_transitions_done / elapsed)
-
-            # 3. Log régulier
-            recent_scores = self.finished_scores[-100:] if self.finished_scores else [0.0]
-            avg_sc = np.mean(recent_scores)
-
-            print(
-                f"[Rollout {r:3d}/{num_rollouts}] Steps: {total_transitions_done:7,d} | "
-                f"SPS: {sps:,} | PG Loss: {metrics['pg_loss']:+.3f} | "
-                f"V Loss: {metrics['v_loss']:.3f} | Ent: {metrics['entropy']:.2f} | "
-                f"Train Score 100: {avg_sc:.1f} pts"
-            )
-
-            # 4. Évaluation greedy périodique
-            if r % eval_every_rollouts == 0 or r == num_rollouts:
-                eval_res = self.evaluate_greedy(num_episodes=128)
-                effective_score = eval_res["mean_score"] - 15.0 * eval_res["mean_errors"]
-                print(
-                    f"  >>> EVAL GREEDY : Score Moyen = {eval_res['mean_score']:.1f} pts "
-                    f"(Max = {eval_res['max_score']:.1f} pts, Min = {eval_res['min_score']:.1f} pts) | "
-                    f"Erreurs = {eval_res['mean_errors']:.2f} | Score effectif = {effective_score:.1f}"
-                )
-
-                if effective_score > best_effective:
-                    best_effective = effective_score
-                    best_score = eval_res["mean_score"]
-                    print(f"  [+] Nouveau record retenu (Score: {best_score:.1f} pts, Err: {eval_res['mean_errors']:.2f}) ! Sauvegarde...")
-
-                    # Sauvegarde PyTorch
-                    torch.save({
-                        "model_state": self.model.state_dict(),
-                        "score": best_score,
-                        "step": total_transitions_done,
-                    }, save_path_pt)
-
-                    # Export automatique ONNX pour Pi 5
-                    export_pi5_onnx(self.model, save_path_onnx, hidden_dim=self.hidden_dim)
-
-        print(f"\nEntraînement terminé en {time.perf_counter() - start_time:.1f} s.")
-        print(f"Meilleur score validé : {best_score:.1f} pts")
-        print(f"Modèle PyTorch : {save_path_pt}")
-        print(f"Modèle ONNX pour Raspberry Pi 5 : {save_path_onnx}")
-
-
-def main():
-    parser = argparse.ArgumentParser(description="Entraînement PPO récurrent GPU pour Eurobot 2027")
-    parser.add_argument("--steps", type=int, default=150_000, help="Nombre total de transitions")
-    parser.add_argument("--batch-size", type=int, default=256, help="Taille du batch d'environnements parallèles")
-    parser.add_argument("--rollout-len", type=int, default=32, help="Longueur d'un rollout par env")
-    parser.add_argument("--lr", type=float, default=3e-4, help="Taux d'apprentissage")
-    parser.add_argument("--hidden-dim", type=int, default=128, help="Dimension de la mémoire GRU (défaut: 128)")
-    parser.add_argument("--eval-every", type=int, default=5, help="Fréquence d'évaluation (en rollouts)")
-    parser.add_argument("--pretrain-imitation", action="store_true", default=True, help="Pré-entraîner par imitation avant PPO")
-    parser.add_argument("--no-imitation", dest="pretrain_imitation", action="store_false", help="Désactiver le pré-entraînement par imitation")
-    parser.add_argument("--out-pt", type=str, default=".data/weights/ppo_best.pt", help="Fichier de sortie .pt")
-    parser.add_argument("--out-onnx", type=str, default=".data/weights/best_brain_pi5.onnx", help="Fichier de sortie .onnx")
-    args = parser.parse_args()
-
-    trainer = PPOTrainer(
-        env_batch_size=args.batch_size,
-        rollout_len=args.rollout_len,
-        hidden_dim=args.hidden_dim,
-        lr=args.lr,
-    )
-
-    if args.pretrain_imitation:
-        trainer.pretrain_imitation(epochs=150)
-
-    trainer.train(
-        total_steps=args.steps,
-        eval_every_rollouts=args.eval_every,
-        save_path_pt=args.out_pt,
-        save_path_onnx=args.out_onnx,
-    )
+    def run(self, base: Path, eval_sampler: Optional[ScenarioSampler] = None,
+            on_update: Optional[Callable[[dict], bool]] = None) -> dict:
+        """Boucle complète. on_update(stats) peut renvoyer True pour arrêter. Écrit <base>.dernier.pt
+        (reprise) et, après évaluation, <base>.pt (champion) + exports."""
+        c = self.cfg
+        base = Path(base)
+        eval_sampler = eval_sampler or self.sampler
+        t0 = time.time()
+        last_eval = None
+        while self.update < c.mises_a_jour:
+            st = self.train_iteration()
+            self.log(f"Mise à jour {self.update}/{c.mises_a_jour} — transitions {self.global_step} · "
+                     f"épisodes {st['episodes']} · score moyen {st['score_moyen'] if st['score_moyen'] is None else round(st['score_moyen'], 1)} · "
+                     f"π {st['perte_politique']:.3f} · V {st['perte_valeur']:.3f} · H {st['entropie']:.3f} · "
+                     f"KL {st['kl_approx']:.4f} · {st['decisions_par_s']:.1f} décisions/s")
+            stop = bool(on_update and on_update(st))
+            if c.checkpoint_tous_les and self.update % c.checkpoint_tous_les == 0:
+                self.save(Path(str(base) + ".dernier.pt"))
+            if c.eval_tous_les and self.update % c.eval_tous_les == 0 and c.eval_matchs:
+                last_eval = self.evaluate_and_select(base, eval_sampler)
+                last_eval["_update"] = self.update
+            if stop:
+                self.log("Arrêt demandé.")
+                break
+            if c.transitions_max and self.global_step >= c.transitions_max:
+                self.log("Nombre maximal de transitions atteint.")
+                break
+            if c.duree_max_s and time.time() - t0 > c.duree_max_s:
+                self.log("Durée maximale atteinte.")
+                break
+        self.save(Path(str(base) + ".dernier.pt"))
+        if c.eval_matchs and (last_eval is None or last_eval.get("_update") != self.update):
+            last_eval = self.evaluate_and_select(base, eval_sampler)
+        return {"evaluation": last_eval, "best_eval": self.best_eval, "mises_a_jour": self.update,
+                "transitions": self.global_step, "duree_s": time.time() - t0}
 
 
-compute_multihead_loss = PPOTrainer.compute_multihead_loss
-joint_policy_loss = PPOTrainer.joint_policy_loss
-multihead_entropy = PPOTrainer.multihead_entropy
+def main(argv=None):
+    from trainer.evaluation import build_sampler
+    from trainer.imitation import collect_demos, example_program, imitation_train
+
+    ap = argparse.ArgumentParser(description="PPO récurrent sur le moteur JS de référence.")
+    d = PPOConfig()
+    ap.add_argument("--processus", type=int, default=default_procs())
+    ap.add_argument("--envs-par-processus", type=int, default=d.envs_par_processus)
+    ap.add_argument("--rollout", type=int, default=d.rollout)
+    ap.add_argument("--mises-a-jour", type=int, default=d.mises_a_jour)
+    ap.add_argument("--transitions-max", type=int, default=0)
+    ap.add_argument("--duree-max", type=float, default=0.0, help="secondes (0 = sans limite)")
+    ap.add_argument("--lr", type=float, default=d.lr)
+    ap.add_argument("--lr-fin", type=float, default=d.lr_fin)
+    ap.add_argument("--gamma", type=float, default=d.gamma)
+    ap.add_argument("--lambda-gae", type=float, default=d.gae_lambda)
+    ap.add_argument("--entropie", type=float, default=d.entropie)
+    ap.add_argument("--entropie-fin", type=float, default=d.entropie_fin)
+    ap.add_argument("--epoques", type=int, default=d.epoques)
+    ap.add_argument("--mini-lots", type=int, default=d.mini_lots)
+    ap.add_argument("--sans-clip-valeur", action="store_true")
+    ap.add_argument("--penalite-erreur", type=float, default=d.penalite_erreur)
+    ap.add_argument("--penalite-invalide", type=float, default=d.penalite_invalide)
+    ap.add_argument("--hidden", type=int, default=d.hidden)
+    ap.add_argument("--intensites", nargs="+", default=d.intensites)
+    ap.add_argument("--strategie", action="append", default=[], help="stratégie adverse (répétable)")
+    ap.add_argument("--dossier-strategies", help="toutes les stratégies d'un dossier comme adversaires")
+    ap.add_argument("--cerveau", nargs=2, action="append", default=[], metavar=("CONFIG", "POIDS"))
+    ap.add_argument("--graine", type=int, default=d.graine)
+    ap.add_argument("--eval-matchs", type=int, default=d.eval_matchs)
+    ap.add_argument("--eval-tous-les", type=int, default=d.eval_tous_les)
+    ap.add_argument("--imitation-exemple", action="store_true", help="démarrage à chaud sur ENV.EXAMPLE")
+    ap.add_argument("--imitation-strategies", help="démarrage à chaud sur les stratégies d'un dossier")
+    ap.add_argument("--imitation-epoques", type=int, default=200)
+    ap.add_argument("--imitation-scenarios", type=int, default=4)
+    ap.add_argument("--reprendre", help="point de sauvegarde .pt à reprendre (poids, optimiseur, statistiques)")
+    ap.add_argument("--env-config", help="configuration ENV.create (JSON)")
+    ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    ap.add_argument("--sortie", default=str(ROOT / ".data" / "modeles" / "ppo"))
+    a = ap.parse_args(argv)
+    torch.manual_seed(a.graine)
+    np.random.seed(a.graine)
+    cfg = PPOConfig(processus=a.processus, envs_par_processus=a.envs_par_processus, rollout=a.rollout,
+                    mises_a_jour=a.mises_a_jour, transitions_max=a.transitions_max, duree_max_s=a.duree_max,
+                    lr=a.lr, lr_fin=a.lr_fin, gamma=a.gamma, gae_lambda=a.lambda_gae, entropie=a.entropie,
+                    entropie_fin=a.entropie_fin, epoques=a.epoques, mini_lots=a.mini_lots,
+                    clip_valeur=not a.sans_clip_valeur, penalite_erreur=a.penalite_erreur,
+                    penalite_invalide=a.penalite_invalide, hidden=a.hidden, intensites=a.intensites,
+                    graine=a.graine, eval_matchs=a.eval_matchs, eval_tous_les=a.eval_tous_les)
+    env_cfg = json.loads(Path(a.env_config).read_text()) if a.env_config else {"skipContacts": True}
+    sampler = build_sampler([Path(p) for p in a.strategie], Path(a.dossier_strategies) if a.dossier_strategies else None,
+                            a.cerveau, a.intensites, a.graine)
+    device = torch.device(a.device)
+    with JsEnvPool(cfg.processus, cfg.envs_par_processus, env_cfg, max_decisions=cfg.max_decisions,
+                   opponents=sampler.registry()) as pool:
+        print(f"Pool : {pool.describe()}", flush=True)
+        model = None
+        ck = None
+        if a.reprendre:
+            model, ck = load_checkpoint(a.reprendre, device)
+            if ck.get("catalogue_version") != pool.catalogue_version or ck.get("obs_version") != pool.obs_version:
+                raise SystemExit("Le point de sauvegarde ne correspond pas aux versions d'observation/catalogue de l'environnement.")
+        tr = PPOTrainer(cfg, pool, sampler, device, model)
+        if ck:
+            tr.load_state(ck)
+            tr.cfg.mises_a_jour = tr.update + a.mises_a_jour
+            print(f"Reprise à la mise à jour {tr.update}.", flush=True)
+        elif a.imitation_exemple or a.imitation_strategies:
+            from trainer.scenarios import load_strategies
+            progs = []
+            if a.imitation_strategies:
+                progs += [{"nom": p["nom"], "program": p["spec"]["program"]} for p in load_strategies(Path(a.imitation_strategies))]
+            if a.imitation_exemple:
+                progs.append({"nom": "ENV.EXAMPLE", "program": example_program(pool)})
+            scs = [{"seed": a.graine + k, "intensite": "aucun"} for k in range(a.imitation_scenarios)]
+            demos = collect_demos(pool, progs, scs)
+            print(f"Démonstrations : {len(demos)} (scores {[d.score for d in demos]})", flush=True)
+            imitation_train(tr.model, demos, epochs=a.imitation_epoques, gamma=cfg.gamma, device=device,
+                            obs_rms=tr.obs_rms, ret_rms=tr.ret_rms, log=lambda s: print(s, flush=True))
+        res = tr.run(Path(a.sortie))
+        print(json.dumps({k: v for k, v in res.items() if k != "best_eval"}, ensure_ascii=False, default=str)[:4000])
+        print(f"Statistiques du pool : {pool.stats}")
 
 
 if __name__ == "__main__":

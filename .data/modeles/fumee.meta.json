@@ -1,0 +1,1426 @@
+{
+ "format": "icamlot-modele-meta",
+ "version": 1,
+ "n_in": 56,
+ "n_out": 130,
+ "hidden": 128,
+ "obs_version": "empreinte:0674f241f0ab4e76",
+ "catalogue_version": "empreinte:229f666a3de8854e",
+ "onnx": {
+  "opset": 17,
+  "entrees": {
+   "obs": [
+    "B",
+    56
+   ],
+   "hidden": [
+    "B",
+    128
+   ]
+  },
+  "sorties": {
+   "logits": [
+    "B",
+    130
+   ],
+   "next_hidden": [
+    "B",
+    128
+   ]
+  },
+  "type": "float32"
+ },
+ "normalisation": {
+  "integree_au_graphe": true,
+  "formule": "obs_n = clip((obs - mean) / std, -clip, +clip)",
+  "clip": 5.0,
+  "mean": [
+   0.727977991104126,
+   0.20419664680957794,
+   0.43946099281311035,
+   -0.07946085929870605,
+   -0.3495427370071411,
+   0.1347087174654007,
+   0.99635910987854,
+   0.9599513411521912,
+   0.9490290284156799,
+   0.8349513411521912,
+   0.9890775680541992,
+   0.9999998807907104,
+   0.9999998807907104,
+   0.20509706437587738,
+   0.9429610371589661,
+   0.2593041658401489,
+   0.25849512219429016,
+   0.0012135921278968453,
+   0.25647246837615967,
+   0.24878637492656708,
+   0.094660185277462,
+   0.342839777469635,
+   0.34223297238349915,
+   0.2955096662044525,
+   0.27366501092910767,
+   0.0455097034573555,
+   0.0024271842557936907,
+   0.03640776127576828,
+   0.04126213118433952,
+   0.03276698663830757,
+   0.6359222531318665,
+   0.09587377309799194,
+   0.26820385456085205,
+   0.20115289092063904,
+   0.08252426236867905,
+   0.42696329951286316,
+   0.2639238238334656,
+   0.2597087025642395,
+   0.2597087025642395,
+   0.2597087025642395,
+   0.009708737023174763,
+   0.5055824518203735,
+   0.3470873236656189,
+   0.2560679316520691,
+   0.26092231273651123,
+   0.01820388063788414,
+   0.5077149271965027,
+   0.6714285016059875,
+   0.4655945897102356,
+   0.46826449036598206,
+   0.5011528730392456,
+   0.5782159566879272,
+   0.6053397059440613,
+   0.7330703139305115,
+   0.5748785734176636,
+   0.535133421421051
+  ],
+  "std": [
+   0.30610743165016174,
+   0.1257341355085373,
+   0.17856024205684662,
+   0.5786756277084351,
+   0.732557475566864,
+   0.34141236543655396,
+   0.06023099645972252,
+   0.19607369601726532,
+   0.21993879973888397,
+   0.37122461199760437,
+   0.10393883287906647,
+   0.0005027110455557704,
+   0.0005027110455557704,
+   0.4037726819515228,
+   0.23191730678081512,
+   0.437945157289505,
+   0.4378076195716858,
+   0.03481739014387131,
+   0.43358689546585083,
+   0.4323098957538605,
+   0.2927452325820923,
+   0.23212261497974396,
+   0.23236438632011414,
+   0.3198404610157013,
+   0.2721691131591797,
+   0.14381881058216095,
+   0.04920797049999237,
+   0.1873028725385666,
+   0.19889619946479797,
+   0.17802652716636658,
+   0.48117074370384216,
+   0.2944182753562927,
+   0.4430244565010071,
+   0.33226844668388367,
+   0.275162011384964,
+   0.41653546690940857,
+   0.30176469683647156,
+   0.4384748935699463,
+   0.4384748935699463,
+   0.4384748935699463,
+   0.09805411100387573,
+   0.07679692655801773,
+   0.4760439693927765,
+   0.4364599287509918,
+   0.4391377866268158,
+   0.1336885541677475,
+   0.08208530396223068,
+   0.0004313582321628928,
+   0.2723331153392792,
+   0.2853475511074066,
+   0.2626681923866272,
+   0.29560208320617676,
+   0.3421388864517212,
+   0.24933524429798126,
+   0.29567086696624756,
+   0.3239162564277649
+  ]
+ },
+ "masque": "non intégré : mettre à -inf les logits des actions invalides (masque de l'environnement) avant argmax/softmax",
+ "etat_cache": "zéros (B, hidden) au début de chaque match ; réinjecter next_hidden à chaque décision",
+ "architecture": {
+  "n_in": 56,
+  "n_out": 130,
+  "hidden": 128,
+  "encodeur": [
+   128
+  ],
+  "acteur": [],
+  "critique": [
+   128
+  ],
+  "activation": "silu",
+  "layernorm": true,
+  "clip_obs": 5.0
+ },
+ "groupes": [
+  "temps",
+  "robot",
+  "paquets",
+  "faces",
+  "constructions",
+  "graal",
+  "boulets",
+  "adversaire",
+  "proprioception",
+  "spatial"
+ ],
+ "catalogue": [
+  {
+   "i": 0,
+   "famille": "prendre",
+   "a": "prendre",
+   "f": "A",
+   "p": "P1",
+   "label": "Prendre P1 · face A"
+  },
+  {
+   "i": 1,
+   "famille": "prendre",
+   "a": "prendre",
+   "f": "A",
+   "p": "P2",
+   "label": "Prendre P2 · face A"
+  },
+  {
+   "i": 2,
+   "famille": "prendre",
+   "a": "prendre",
+   "f": "A",
+   "p": "P3",
+   "label": "Prendre P3 · face A"
+  },
+  {
+   "i": 3,
+   "famille": "prendre",
+   "a": "prendre",
+   "f": "A",
+   "p": "P4",
+   "label": "Prendre P4 · face A"
+  },
+  {
+   "i": 4,
+   "famille": "prendre",
+   "a": "prendre",
+   "f": "A",
+   "p": "P5",
+   "label": "Prendre P5 · face A"
+  },
+  {
+   "i": 5,
+   "famille": "prendre",
+   "a": "prendre",
+   "f": "A",
+   "p": "P6",
+   "label": "Prendre P6 · face A"
+  },
+  {
+   "i": 6,
+   "famille": "prendre",
+   "a": "prendre",
+   "f": "A",
+   "p": "P7",
+   "label": "Prendre P7 · face A"
+  },
+  {
+   "i": 7,
+   "famille": "prendre",
+   "a": "prendre",
+   "f": "A",
+   "p": "P8",
+   "label": "Prendre P8 · face A"
+  },
+  {
+   "i": 8,
+   "famille": "prendre",
+   "a": "prendre",
+   "f": "A",
+   "p": "P9",
+   "label": "Prendre P9 · face A"
+  },
+  {
+   "i": 9,
+   "famille": "prendre",
+   "a": "prendre",
+   "f": "A",
+   "p": "P10",
+   "label": "Prendre P10 · face A"
+  },
+  {
+   "i": 10,
+   "famille": "prendre",
+   "a": "prendre",
+   "f": "B",
+   "p": "P1",
+   "label": "Prendre P1 · face B"
+  },
+  {
+   "i": 11,
+   "famille": "prendre",
+   "a": "prendre",
+   "f": "B",
+   "p": "P2",
+   "label": "Prendre P2 · face B"
+  },
+  {
+   "i": 12,
+   "famille": "prendre",
+   "a": "prendre",
+   "f": "B",
+   "p": "P3",
+   "label": "Prendre P3 · face B"
+  },
+  {
+   "i": 13,
+   "famille": "prendre",
+   "a": "prendre",
+   "f": "B",
+   "p": "P4",
+   "label": "Prendre P4 · face B"
+  },
+  {
+   "i": 14,
+   "famille": "prendre",
+   "a": "prendre",
+   "f": "B",
+   "p": "P5",
+   "label": "Prendre P5 · face B"
+  },
+  {
+   "i": 15,
+   "famille": "prendre",
+   "a": "prendre",
+   "f": "B",
+   "p": "P6",
+   "label": "Prendre P6 · face B"
+  },
+  {
+   "i": 16,
+   "famille": "prendre",
+   "a": "prendre",
+   "f": "B",
+   "p": "P7",
+   "label": "Prendre P7 · face B"
+  },
+  {
+   "i": 17,
+   "famille": "prendre",
+   "a": "prendre",
+   "f": "B",
+   "p": "P8",
+   "label": "Prendre P8 · face B"
+  },
+  {
+   "i": 18,
+   "famille": "prendre",
+   "a": "prendre",
+   "f": "B",
+   "p": "P9",
+   "label": "Prendre P9 · face B"
+  },
+  {
+   "i": 19,
+   "famille": "prendre",
+   "a": "prendre",
+   "f": "B",
+   "p": "P10",
+   "label": "Prendre P10 · face B"
+  },
+  {
+   "i": 20,
+   "famille": "mur",
+   "a": "mur",
+   "f": "A",
+   "z": "M1",
+   "side": "ext",
+   "label": "Mur M1 · ext · face A"
+  },
+  {
+   "i": 21,
+   "famille": "mur",
+   "a": "mur",
+   "f": "A",
+   "z": "M1",
+   "side": "int",
+   "label": "Mur M1 · int · face A"
+  },
+  {
+   "i": 22,
+   "famille": "mur",
+   "a": "mur",
+   "f": "A",
+   "z": "M2",
+   "side": "ext",
+   "label": "Mur M2 · ext · face A"
+  },
+  {
+   "i": 23,
+   "famille": "mur",
+   "a": "mur",
+   "f": "A",
+   "z": "M2",
+   "side": "int",
+   "label": "Mur M2 · int · face A"
+  },
+  {
+   "i": 24,
+   "famille": "mur",
+   "a": "mur",
+   "f": "A",
+   "z": "M3",
+   "side": "ext",
+   "label": "Mur M3 · ext · face A"
+  },
+  {
+   "i": 25,
+   "famille": "mur",
+   "a": "mur",
+   "f": "A",
+   "z": "M3",
+   "side": "int",
+   "label": "Mur M3 · int · face A"
+  },
+  {
+   "i": 26,
+   "famille": "mur",
+   "a": "mur",
+   "f": "A",
+   "z": "M4",
+   "side": "ext",
+   "label": "Mur M4 · ext · face A"
+  },
+  {
+   "i": 27,
+   "famille": "mur",
+   "a": "mur",
+   "f": "A",
+   "z": "M4",
+   "side": "int",
+   "label": "Mur M4 · int · face A"
+  },
+  {
+   "i": 28,
+   "famille": "mur",
+   "a": "mur",
+   "f": "A",
+   "z": "M5",
+   "side": "ext",
+   "label": "Mur M5 · ext · face A"
+  },
+  {
+   "i": 29,
+   "famille": "mur",
+   "a": "mur",
+   "f": "A",
+   "z": "M5",
+   "side": "int",
+   "label": "Mur M5 · int · face A"
+  },
+  {
+   "i": 30,
+   "famille": "mur",
+   "a": "mur",
+   "f": "B",
+   "z": "M1",
+   "side": "ext",
+   "label": "Mur M1 · ext · face B"
+  },
+  {
+   "i": 31,
+   "famille": "mur",
+   "a": "mur",
+   "f": "B",
+   "z": "M1",
+   "side": "int",
+   "label": "Mur M1 · int · face B"
+  },
+  {
+   "i": 32,
+   "famille": "mur",
+   "a": "mur",
+   "f": "B",
+   "z": "M2",
+   "side": "ext",
+   "label": "Mur M2 · ext · face B"
+  },
+  {
+   "i": 33,
+   "famille": "mur",
+   "a": "mur",
+   "f": "B",
+   "z": "M2",
+   "side": "int",
+   "label": "Mur M2 · int · face B"
+  },
+  {
+   "i": 34,
+   "famille": "mur",
+   "a": "mur",
+   "f": "B",
+   "z": "M3",
+   "side": "ext",
+   "label": "Mur M3 · ext · face B"
+  },
+  {
+   "i": 35,
+   "famille": "mur",
+   "a": "mur",
+   "f": "B",
+   "z": "M3",
+   "side": "int",
+   "label": "Mur M3 · int · face B"
+  },
+  {
+   "i": 36,
+   "famille": "mur",
+   "a": "mur",
+   "f": "B",
+   "z": "M4",
+   "side": "ext",
+   "label": "Mur M4 · ext · face B"
+  },
+  {
+   "i": 37,
+   "famille": "mur",
+   "a": "mur",
+   "f": "B",
+   "z": "M4",
+   "side": "int",
+   "label": "Mur M4 · int · face B"
+  },
+  {
+   "i": 38,
+   "famille": "mur",
+   "a": "mur",
+   "f": "B",
+   "z": "M5",
+   "side": "ext",
+   "label": "Mur M5 · ext · face B"
+  },
+  {
+   "i": 39,
+   "famille": "mur",
+   "a": "mur",
+   "f": "B",
+   "z": "M5",
+   "side": "int",
+   "label": "Mur M5 · int · face B"
+  },
+  {
+   "i": 40,
+   "famille": "tour",
+   "a": "tour",
+   "f": "A",
+   "z": "T1",
+   "rank": 0,
+   "label": "Tour T1 · pierre 1 · face A"
+  },
+  {
+   "i": 41,
+   "famille": "tour",
+   "a": "tour",
+   "f": "A",
+   "z": "T1",
+   "rank": 1,
+   "label": "Tour T1 · pierre 2 · face A"
+  },
+  {
+   "i": 42,
+   "famille": "tour",
+   "a": "tour",
+   "f": "A",
+   "z": "T1",
+   "rank": 2,
+   "label": "Tour T1 · pierre 3 · face A"
+  },
+  {
+   "i": 43,
+   "famille": "tour",
+   "a": "tour",
+   "f": "A",
+   "z": "T2",
+   "rank": 0,
+   "label": "Tour T2 · pierre 1 · face A"
+  },
+  {
+   "i": 44,
+   "famille": "tour",
+   "a": "tour",
+   "f": "A",
+   "z": "T2",
+   "rank": 1,
+   "label": "Tour T2 · pierre 2 · face A"
+  },
+  {
+   "i": 45,
+   "famille": "tour",
+   "a": "tour",
+   "f": "A",
+   "z": "T2",
+   "rank": 2,
+   "label": "Tour T2 · pierre 3 · face A"
+  },
+  {
+   "i": 46,
+   "famille": "tour",
+   "a": "tour",
+   "f": "A",
+   "z": "T3",
+   "rank": 0,
+   "label": "Tour T3 · pierre 1 · face A"
+  },
+  {
+   "i": 47,
+   "famille": "tour",
+   "a": "tour",
+   "f": "A",
+   "z": "T3",
+   "rank": 1,
+   "label": "Tour T3 · pierre 2 · face A"
+  },
+  {
+   "i": 48,
+   "famille": "tour",
+   "a": "tour",
+   "f": "A",
+   "z": "T3",
+   "rank": 2,
+   "label": "Tour T3 · pierre 3 · face A"
+  },
+  {
+   "i": 49,
+   "famille": "tour",
+   "a": "tour",
+   "f": "A",
+   "z": "T4",
+   "rank": 0,
+   "label": "Tour T4 · pierre 1 · face A"
+  },
+  {
+   "i": 50,
+   "famille": "tour",
+   "a": "tour",
+   "f": "A",
+   "z": "T4",
+   "rank": 1,
+   "label": "Tour T4 · pierre 2 · face A"
+  },
+  {
+   "i": 51,
+   "famille": "tour",
+   "a": "tour",
+   "f": "A",
+   "z": "T4",
+   "rank": 2,
+   "label": "Tour T4 · pierre 3 · face A"
+  },
+  {
+   "i": 52,
+   "famille": "tour",
+   "a": "tour",
+   "f": "B",
+   "z": "T1",
+   "rank": 0,
+   "label": "Tour T1 · pierre 1 · face B"
+  },
+  {
+   "i": 53,
+   "famille": "tour",
+   "a": "tour",
+   "f": "B",
+   "z": "T1",
+   "rank": 1,
+   "label": "Tour T1 · pierre 2 · face B"
+  },
+  {
+   "i": 54,
+   "famille": "tour",
+   "a": "tour",
+   "f": "B",
+   "z": "T1",
+   "rank": 2,
+   "label": "Tour T1 · pierre 3 · face B"
+  },
+  {
+   "i": 55,
+   "famille": "tour",
+   "a": "tour",
+   "f": "B",
+   "z": "T2",
+   "rank": 0,
+   "label": "Tour T2 · pierre 1 · face B"
+  },
+  {
+   "i": 56,
+   "famille": "tour",
+   "a": "tour",
+   "f": "B",
+   "z": "T2",
+   "rank": 1,
+   "label": "Tour T2 · pierre 2 · face B"
+  },
+  {
+   "i": 57,
+   "famille": "tour",
+   "a": "tour",
+   "f": "B",
+   "z": "T2",
+   "rank": 2,
+   "label": "Tour T2 · pierre 3 · face B"
+  },
+  {
+   "i": 58,
+   "famille": "tour",
+   "a": "tour",
+   "f": "B",
+   "z": "T3",
+   "rank": 0,
+   "label": "Tour T3 · pierre 1 · face B"
+  },
+  {
+   "i": 59,
+   "famille": "tour",
+   "a": "tour",
+   "f": "B",
+   "z": "T3",
+   "rank": 1,
+   "label": "Tour T3 · pierre 2 · face B"
+  },
+  {
+   "i": 60,
+   "famille": "tour",
+   "a": "tour",
+   "f": "B",
+   "z": "T3",
+   "rank": 2,
+   "label": "Tour T3 · pierre 3 · face B"
+  },
+  {
+   "i": 61,
+   "famille": "tour",
+   "a": "tour",
+   "f": "B",
+   "z": "T4",
+   "rank": 0,
+   "label": "Tour T4 · pierre 1 · face B"
+  },
+  {
+   "i": 62,
+   "famille": "tour",
+   "a": "tour",
+   "f": "B",
+   "z": "T4",
+   "rank": 1,
+   "label": "Tour T4 · pierre 2 · face B"
+  },
+  {
+   "i": 63,
+   "famille": "tour",
+   "a": "tour",
+   "f": "B",
+   "z": "T4",
+   "rank": 2,
+   "label": "Tour T4 · pierre 3 · face B"
+  },
+  {
+   "i": 64,
+   "famille": "porte",
+   "a": "porte",
+   "f": "A",
+   "z": "M1",
+   "side": "ext",
+   "label": "Porte M1 · ext · face A"
+  },
+  {
+   "i": 65,
+   "famille": "porte",
+   "a": "porte",
+   "f": "A",
+   "z": "M1",
+   "side": "int",
+   "label": "Porte M1 · int · face A"
+  },
+  {
+   "i": 66,
+   "famille": "porte",
+   "a": "porte",
+   "f": "A",
+   "z": "M2",
+   "side": "ext",
+   "label": "Porte M2 · ext · face A"
+  },
+  {
+   "i": 67,
+   "famille": "porte",
+   "a": "porte",
+   "f": "A",
+   "z": "M2",
+   "side": "int",
+   "label": "Porte M2 · int · face A"
+  },
+  {
+   "i": 68,
+   "famille": "porte",
+   "a": "porte",
+   "f": "A",
+   "z": "M3",
+   "side": "ext",
+   "label": "Porte M3 · ext · face A"
+  },
+  {
+   "i": 69,
+   "famille": "porte",
+   "a": "porte",
+   "f": "A",
+   "z": "M3",
+   "side": "int",
+   "label": "Porte M3 · int · face A"
+  },
+  {
+   "i": 70,
+   "famille": "porte",
+   "a": "porte",
+   "f": "A",
+   "z": "M4",
+   "side": "ext",
+   "label": "Porte M4 · ext · face A"
+  },
+  {
+   "i": 71,
+   "famille": "porte",
+   "a": "porte",
+   "f": "A",
+   "z": "M4",
+   "side": "int",
+   "label": "Porte M4 · int · face A"
+  },
+  {
+   "i": 72,
+   "famille": "porte",
+   "a": "porte",
+   "f": "A",
+   "z": "M5",
+   "side": "ext",
+   "label": "Porte M5 · ext · face A"
+  },
+  {
+   "i": 73,
+   "famille": "porte",
+   "a": "porte",
+   "f": "A",
+   "z": "M5",
+   "side": "int",
+   "label": "Porte M5 · int · face A"
+  },
+  {
+   "i": 74,
+   "famille": "porte",
+   "a": "porte",
+   "f": "B",
+   "z": "M1",
+   "side": "ext",
+   "label": "Porte M1 · ext · face B"
+  },
+  {
+   "i": 75,
+   "famille": "porte",
+   "a": "porte",
+   "f": "B",
+   "z": "M1",
+   "side": "int",
+   "label": "Porte M1 · int · face B"
+  },
+  {
+   "i": 76,
+   "famille": "porte",
+   "a": "porte",
+   "f": "B",
+   "z": "M2",
+   "side": "ext",
+   "label": "Porte M2 · ext · face B"
+  },
+  {
+   "i": 77,
+   "famille": "porte",
+   "a": "porte",
+   "f": "B",
+   "z": "M2",
+   "side": "int",
+   "label": "Porte M2 · int · face B"
+  },
+  {
+   "i": 78,
+   "famille": "porte",
+   "a": "porte",
+   "f": "B",
+   "z": "M3",
+   "side": "ext",
+   "label": "Porte M3 · ext · face B"
+  },
+  {
+   "i": 79,
+   "famille": "porte",
+   "a": "porte",
+   "f": "B",
+   "z": "M3",
+   "side": "int",
+   "label": "Porte M3 · int · face B"
+  },
+  {
+   "i": 80,
+   "famille": "porte",
+   "a": "porte",
+   "f": "B",
+   "z": "M4",
+   "side": "ext",
+   "label": "Porte M4 · ext · face B"
+  },
+  {
+   "i": 81,
+   "famille": "porte",
+   "a": "porte",
+   "f": "B",
+   "z": "M4",
+   "side": "int",
+   "label": "Porte M4 · int · face B"
+  },
+  {
+   "i": 82,
+   "famille": "porte",
+   "a": "porte",
+   "f": "B",
+   "z": "M5",
+   "side": "ext",
+   "label": "Porte M5 · ext · face B"
+  },
+  {
+   "i": 83,
+   "famille": "porte",
+   "a": "porte",
+   "f": "B",
+   "z": "M5",
+   "side": "int",
+   "label": "Porte M5 · int · face B"
+  },
+  {
+   "i": 84,
+   "famille": "boulets",
+   "a": "boulets",
+   "label": "Lâcher les boulets"
+  },
+  {
+   "i": 85,
+   "famille": "prendreGraal",
+   "a": "prendreGraal",
+   "f": "A",
+   "label": "Prendre le Graal · face A"
+  },
+  {
+   "i": 86,
+   "famille": "prendreGraal",
+   "a": "prendreGraal",
+   "f": "B",
+   "label": "Prendre le Graal · face B"
+  },
+  {
+   "i": 87,
+   "famille": "poserGraal",
+   "a": "poserGraal",
+   "f": "A",
+   "z": "M1",
+   "label": "Poser le Graal sur M1 · face A"
+  },
+  {
+   "i": 88,
+   "famille": "poserGraal",
+   "a": "poserGraal",
+   "f": "A",
+   "z": "M2",
+   "label": "Poser le Graal sur M2 · face A"
+  },
+  {
+   "i": 89,
+   "famille": "poserGraal",
+   "a": "poserGraal",
+   "f": "A",
+   "z": "M3",
+   "label": "Poser le Graal sur M3 · face A"
+  },
+  {
+   "i": 90,
+   "famille": "poserGraal",
+   "a": "poserGraal",
+   "f": "A",
+   "z": "M4",
+   "label": "Poser le Graal sur M4 · face A"
+  },
+  {
+   "i": 91,
+   "famille": "poserGraal",
+   "a": "poserGraal",
+   "f": "A",
+   "z": "M5",
+   "label": "Poser le Graal sur M5 · face A"
+  },
+  {
+   "i": 92,
+   "famille": "poserGraal",
+   "a": "poserGraal",
+   "f": "A",
+   "z": "T1",
+   "label": "Poser le Graal sur T1 · face A"
+  },
+  {
+   "i": 93,
+   "famille": "poserGraal",
+   "a": "poserGraal",
+   "f": "A",
+   "z": "T2",
+   "label": "Poser le Graal sur T2 · face A"
+  },
+  {
+   "i": 94,
+   "famille": "poserGraal",
+   "a": "poserGraal",
+   "f": "A",
+   "z": "T3",
+   "label": "Poser le Graal sur T3 · face A"
+  },
+  {
+   "i": 95,
+   "famille": "poserGraal",
+   "a": "poserGraal",
+   "f": "A",
+   "z": "T4",
+   "label": "Poser le Graal sur T4 · face A"
+  },
+  {
+   "i": 96,
+   "famille": "poserGraal",
+   "a": "poserGraal",
+   "f": "B",
+   "z": "M1",
+   "label": "Poser le Graal sur M1 · face B"
+  },
+  {
+   "i": 97,
+   "famille": "poserGraal",
+   "a": "poserGraal",
+   "f": "B",
+   "z": "M2",
+   "label": "Poser le Graal sur M2 · face B"
+  },
+  {
+   "i": 98,
+   "famille": "poserGraal",
+   "a": "poserGraal",
+   "f": "B",
+   "z": "M3",
+   "label": "Poser le Graal sur M3 · face B"
+  },
+  {
+   "i": 99,
+   "famille": "poserGraal",
+   "a": "poserGraal",
+   "f": "B",
+   "z": "M4",
+   "label": "Poser le Graal sur M4 · face B"
+  },
+  {
+   "i": 100,
+   "famille": "poserGraal",
+   "a": "poserGraal",
+   "f": "B",
+   "z": "M5",
+   "label": "Poser le Graal sur M5 · face B"
+  },
+  {
+   "i": 101,
+   "famille": "poserGraal",
+   "a": "poserGraal",
+   "f": "B",
+   "z": "T1",
+   "label": "Poser le Graal sur T1 · face B"
+  },
+  {
+   "i": 102,
+   "famille": "poserGraal",
+   "a": "poserGraal",
+   "f": "B",
+   "z": "T2",
+   "label": "Poser le Graal sur T2 · face B"
+  },
+  {
+   "i": 103,
+   "famille": "poserGraal",
+   "a": "poserGraal",
+   "f": "B",
+   "z": "T3",
+   "label": "Poser le Graal sur T3 · face B"
+  },
+  {
+   "i": 104,
+   "famille": "poserGraal",
+   "a": "poserGraal",
+   "f": "B",
+   "z": "T4",
+   "label": "Poser le Graal sur T4 · face B"
+  },
+  {
+   "i": 105,
+   "famille": "trone",
+   "a": "trone",
+   "label": "Aller dans la salle du trône"
+  },
+  {
+   "i": 106,
+   "famille": "staging",
+   "a": "staging",
+   "f": "A",
+   "z": "SN",
+   "label": "Déposer relais SN · face A"
+  },
+  {
+   "i": 107,
+   "famille": "staging",
+   "a": "staging",
+   "f": "A",
+   "z": "SS",
+   "label": "Déposer relais SS · face A"
+  },
+  {
+   "i": 108,
+   "famille": "staging",
+   "a": "staging",
+   "f": "A",
+   "z": "SC",
+   "label": "Déposer relais SC · face A"
+  },
+  {
+   "i": 109,
+   "famille": "staging",
+   "a": "staging",
+   "f": "B",
+   "z": "SN",
+   "label": "Déposer relais SN · face B"
+  },
+  {
+   "i": 110,
+   "famille": "staging",
+   "a": "staging",
+   "f": "B",
+   "z": "SS",
+   "label": "Déposer relais SS · face B"
+  },
+  {
+   "i": 111,
+   "famille": "staging",
+   "a": "staging",
+   "f": "B",
+   "z": "SC",
+   "label": "Déposer relais SC · face B"
+  },
+  {
+   "i": 112,
+   "famille": "repickup",
+   "a": "reprendre",
+   "f": "A",
+   "z": "SN",
+   "label": "Reprendre relais SN · face A"
+  },
+  {
+   "i": 113,
+   "famille": "repickup",
+   "a": "reprendre",
+   "f": "A",
+   "z": "SS",
+   "label": "Reprendre relais SS · face A"
+  },
+  {
+   "i": 114,
+   "famille": "repickup",
+   "a": "reprendre",
+   "f": "A",
+   "z": "SC",
+   "label": "Reprendre relais SC · face A"
+  },
+  {
+   "i": 115,
+   "famille": "repickup",
+   "a": "reprendre",
+   "f": "B",
+   "z": "SN",
+   "label": "Reprendre relais SN · face B"
+  },
+  {
+   "i": 116,
+   "famille": "repickup",
+   "a": "reprendre",
+   "f": "B",
+   "z": "SS",
+   "label": "Reprendre relais SS · face B"
+  },
+  {
+   "i": 117,
+   "famille": "repickup",
+   "a": "reprendre",
+   "f": "B",
+   "z": "SC",
+   "label": "Reprendre relais SC · face B"
+  },
+  {
+   "i": 118,
+   "famille": "traj",
+   "a": "traj",
+   "w": "W1",
+   "tx": 1050,
+   "ty": 450,
+   "th": 0,
+   "label": "Trajet Sortie Nord Château (1050, 450)"
+  },
+  {
+   "i": 119,
+   "famille": "traj",
+   "a": "traj",
+   "w": "W2",
+   "tx": 1050,
+   "ty": 1550,
+   "th": 0,
+   "label": "Trajet Sortie Sud Château (1050, 1550)"
+  },
+  {
+   "i": 120,
+   "famille": "traj",
+   "a": "traj",
+   "w": "W3",
+   "tx": 1050,
+   "ty": 1000,
+   "th": 0,
+   "label": "Trajet Carrefour Ouest Centre (1050, 1000)"
+  },
+  {
+   "i": 121,
+   "famille": "traj",
+   "a": "traj",
+   "w": "W4",
+   "tx": 1500,
+   "ty": 280,
+   "th": 0,
+   "label": "Trajet Couloir Nord (1500, 280)"
+  },
+  {
+   "i": 122,
+   "famille": "traj",
+   "a": "traj",
+   "w": "W5",
+   "tx": 1500,
+   "ty": 1720,
+   "th": 0,
+   "label": "Trajet Couloir Sud (1500, 1720)"
+  },
+  {
+   "i": 123,
+   "famille": "traj",
+   "a": "traj",
+   "w": "W6",
+   "tx": 1500,
+   "ty": 1000,
+   "th": 0,
+   "label": "Trajet Point Central (1500, 1000)"
+  },
+  {
+   "i": 124,
+   "famille": "traj",
+   "a": "traj",
+   "w": "W7",
+   "tx": 500,
+   "ty": 220,
+   "th": 0,
+   "label": "Trajet Flanc Nord (500, 220)"
+  },
+  {
+   "i": 125,
+   "famille": "traj",
+   "a": "traj",
+   "w": "W8",
+   "tx": 500,
+   "ty": 1780,
+   "th": 0,
+   "label": "Trajet Flanc Sud (500, 1780)"
+  },
+  {
+   "i": 126,
+   "famille": "tournerPince",
+   "a": "tournerPince",
+   "f": "A",
+   "r": 0,
+   "label": "Tourner pince face A"
+  },
+  {
+   "i": 127,
+   "famille": "tournerPince",
+   "a": "tournerPince",
+   "f": "B",
+   "r": 0,
+   "label": "Tourner pince face B"
+  },
+  {
+   "i": 128,
+   "famille": "deposerZone",
+   "a": "deposerZone",
+   "f": "A",
+   "label": "Déposer zone face A"
+  },
+  {
+   "i": 129,
+   "famille": "deposerZone",
+   "a": "deposerZone",
+   "f": "B",
+   "label": "Déposer zone face B"
+  }
+ ],
+ "moteur": "1.3.0",
+ "bareme": "2027-1.0",
+ "evaluation": {
+  "matchs": 24,
+  "score": {
+   "moyenne": 76.0,
+   "ecart_type": 0.0,
+   "min": 76.0,
+   "max": 76.0,
+   "ic95": 0.0
+  },
+  "erreurs_par_match": {
+   "moyenne": 0.0,
+   "ecart_type": 0.0,
+   "min": 0.0,
+   "max": 0.0,
+   "ic95": 0.0
+  },
+  "erreurs_moteur": [
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0
+  ],
+  "matchs_sans_erreur": 24,
+  "duels": 12,
+  "victoires": 12,
+  "egalites": 0,
+  "defaites": 0,
+  "taux_victoire": 1.0,
+  "score_adversaire": {
+   "moyenne": 54.0,
+   "ecart_type": 0.0,
+   "min": 54.0,
+   "max": 54.0,
+   "ic95": 0.0
+  },
+  "crashs": 0,
+  "tronques": 0,
+  "actions_invalides": 0,
+  "detail_moyen": {
+   "boulets": 20.0,
+   "graal": 20.0,
+   "murs": 20.0,
+   "pierres": 6.0,
+   "porte": 0.0,
+   "roi": 10.0,
+   "tours": 0.0
+  },
+  "par_adversaire": {
+   "sans adversaire · aucun": {
+    "matchs": 12,
+    "score": {
+     "moyenne": 76.0,
+     "ecart_type": 0.0,
+     "min": 76.0,
+     "max": 76.0,
+     "ic95": 0.0
+    },
+    "taux_victoire": null
+   },
+   "strategie:exemple · realiste": {
+    "matchs": 12,
+    "score": {
+     "moyenne": 76.0,
+     "ecart_type": 0.0,
+     "min": 76.0,
+     "max": 76.0,
+     "ic95": 0.0
+    },
+    "taux_victoire": 1.0
+   }
+  },
+  "duree_s": 17.344154596328735,
+  "matchs_par_s": 1.383751503522698,
+  "decisions": 216,
+  "decisions_par_s": 12.453763531704281,
+  "protocole": {
+   "matchs": 24,
+   "graine": 10000,
+   "adversaires": [
+    "strategie:exemple"
+   ],
+   "intensites": [
+    "aucun",
+    "realiste"
+   ],
+   "graine_tirage": 1,
+   "glouton": true,
+   "obs_version": "empreinte:0674f241f0ab4e76",
+   "catalogue_version": "empreinte:229f666a3de8854e"
+  },
+  "mise_a_jour": 6,
+  "champion": true
+ },
+ "verification_onnx": {
+  "entrees": [
+   "obs",
+   "hidden"
+  ],
+  "sorties": [
+   "logits",
+   "next_hidden"
+  ],
+  "ecart_max": 2.384185791015625e-06,
+  "ok": true,
+  "pas": 5,
+  "lot": 4
+ }
+}
