@@ -21,7 +21,7 @@ function msgs(R) { return R.errors.map(function (e) { return e.step + ': ' + e.m
 titre('Spécification');
 var gen = require(path.join(ROOT, 'tools', 'gen_spec.js'));
 ok(fs.readFileSync(path.join(ROOT, 'spec', 'spec.js'), 'utf8') === gen.contenu(), 'spec/spec.js à jour avec spec/*.json', 'sinon : node tools/gen_spec.js');
-ok(E.DEF.v === 0.5 && E.DEF.w === 120 && E.DEF.vz === 100 && E.DEF.trot === 1.5 && E.DEF.tvac === 0.5 && E.DEF.trel === 0.4, 'durées et vitesses lues dans la spec');
+ok(E.DEF.v === 0.5 && E.DEF.w === 120 && E.DEF.vz === L.SPEC.robot.mecanismes.pince_A_et_B.vitesse_chariot_mm_s && E.DEF.trot === 1.5 && E.DEF.tvac === 0.5 && E.DEF.trel === 0.4, 'durées et vitesses lues dans la spec');
 ok(L.BAREME.pierre === L.SPEC.regles.bareme.pierre && L.BAREME.mur === L.SPEC.regles.bareme.mur && L.BAREME.tour === L.SPEC.regles.bareme.tour && L.BAREME.porte === L.SPEC.regles.bareme.porte &&
   L.BAREME.graalPresent === L.SPEC.regles.bareme.graal_present && L.BAREME.graalNiveau === L.SPEC.regles.bareme.graal_par_niveau && L.BAREME.retourPartiel === L.SPEC.regles.bareme.trone_partiel &&
   L.BAREME.retourComplet === L.SPEC.regles.bareme.trone_complet && L.BAREME.boulet1 === L.SPEC.regles.bareme.boulet_au_moins_1 && L.BAREME.boulet3 === L.SPEC.regles.bareme.boulets_au_moins_3_supplement &&

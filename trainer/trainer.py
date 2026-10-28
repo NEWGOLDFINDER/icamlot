@@ -22,6 +22,8 @@ from pathlib import Path
 from typing import List, Optional
 
 ROOT = Path(__file__).resolve().parent.parent
+# Hypothèse : période minimale (s) entre deux messages de progression pendant la collecte du 1er rollout.
+MESSAGE_PERIODE_S = 2.0
 TRAINER_DIR = Path(__file__).resolve().parent
 # Éliminer le dossier trainer/ de sys.path pour éviter qu'un module trainer.py masque le package trainer
 while str(TRAINER_DIR) in sys.path:
@@ -306,7 +308,10 @@ def evaluate_and_export(job: Job, pool: JsEnvPool, model, cfg: dict, sampler: Sc
     save_checkpoint(Path(str(base) + ".pt"), model, info)
     exp = export_all(model, base, info)
     v = exp.get("verification") or {}
-    job.logline(f"Export ONNX : {exp['onnx']} (vérification ONNX Runtime : écart {v.get('ecart_max', float('nan')):.1e}).")
+    if exp.get("onnx_erreur"):
+        job.logline(f"Export ONNX ignoré ({exp['onnx_erreur']}) : poids web et .pt enregistrés ; installer onnx et onnxscript pour le Pi 5.")
+    else:
+        job.logline(f"Export ONNX : {exp['onnx']} (vérification ONNX Runtime : écart {v.get('ecart_max', float('nan')):.1e}).")
     return ev, exp
 
 
@@ -398,6 +403,7 @@ def run_ppo(job: Job, pool: JsEnvPool, cfg: dict, strats: List[dict], sampler: S
         tr.update = 0
         job.logline("Reprise des poids du modèle précédent.")
     elif regl.get("pretrain_imitation", True):
+        job.logline("Pré-entraînement par imitation…")
         demos = demos_for(job, pool, cfg, strats, sampler)
         if demos:
             imitation_train(tr.model, demos, epochs=int(regl.get("epoques") or 40),
@@ -419,7 +425,7 @@ def run_ppo(job: Job, pool: JsEnvPool, cfg: dict, strats: List[dict], sampler: S
         job.data["progress"] = {
             "methode": "ppo", "generation": st["mise_a_jour"], "generations": pc.mises_a_jour,
             "step": tr.global_step, "steps": pc.transitions_max, "loss": round(st["perte_politique"], 4),
-            "history": history[-200:], "eta_s": round(elapsed / max(frac, 1e-9) * (1 - frac)) if frac > 0 else None,
+            "history": history[-200:], "eta_s": (round(min(elapsed / max(frac, 1e-9) * (1 - frac), max(0.0, pc.duree_max_s - elapsed)) if pc.duree_max_s else elapsed / max(frac, 1e-9) * (1 - frac)) if frac > 0 else None),
             "elapsed_s": round(elapsed), "matches": len(tr.episodes),
             "matches_per_s": round(len(tr.episodes) / max(elapsed, 1e-9), 3),
             "decisions_per_s": round(st["decisions_par_s"], 1), "processus": pool.n_procs, "envs": pool.n_envs,
@@ -429,6 +435,20 @@ def run_ppo(job: Job, pool: JsEnvPool, cfg: dict, strats: List[dict], sampler: S
         job.save()
         return job.wait_if_paused()
 
+    # Message de progression pendant la collecte d'un rollout (sur 1 cœur, des dizaines de minutes sans mise à jour).
+    # Seul le message est publié ici ; la limite de durée est vérifiée par PPOTrainer pendant la collecte.
+    last_msg = [0.0]
+
+    def on_collect(done, total, dt):
+        if time.time() - last_msg[0] < MESSAGE_PERIODE_S and done < total:
+            return
+        last_msg[0] = time.time()
+        job.data.setdefault("progress", {})["message"] = (
+            f"Collecte du rollout {tr.update + 1} : {done}/{total} décisions · {done / max(dt, 1e-9):.1f} déc/s")
+        job.save()
+
+    job.logline(f"Collecte du rollout 1 : 0/{pc.rollout * pool.n_envs} décisions")
+    tr.on_collect = on_collect
     res = tr.run(base, sampler, on_update)
     ev = tr.best_eval
     info = tr.state()

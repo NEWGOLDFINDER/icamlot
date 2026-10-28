@@ -65,3 +65,18 @@ def test_json_web_reproduit_pytorch(model):
     with torch.no_grad():
         yt, ht = PolicyExport(model)(torch.as_tensor(x), torch.as_tensor(h))
     assert np.abs(y - yt.numpy()).max() < 1e-4 and np.abs(h2 - ht.numpy()).max() < 1e-4
+
+
+def test_echec_export_onnx_non_bloquant(tmp_path, model, monkeypatch):
+    """Exportateur indisponible (ex. torch récent sans onnxscript) : le JSON web et le meta sont quand même écrits."""
+    import trainer.export_onnx as X
+
+    def boom(*a, **k):
+        raise ModuleNotFoundError("No module named 'onnxscript'")
+    monkeypatch.setattr(X, "export_onnx", boom)
+    info = {"obs_version": "obs-test", "catalogue_version": "cat-test", "catalogue": [{"i": 0}]}
+    res = X.export_all(model, tmp_path / "cerveau", info)
+    assert res["onnx"] is None and "onnxscript" in res["onnx_erreur"]
+    assert (tmp_path / "cerveau.json").exists()
+    meta = json.loads((tmp_path / "cerveau.meta.json").read_text(encoding="utf-8"))
+    assert "onnxscript" in meta["onnx_erreur"]

@@ -17,7 +17,7 @@ Règle absolue de l'équipe : **ne rien inventer**. Une valeur absente de la spe
 | **entrainement** | `trainer/**`, `engine/env_worker.js`, `api/server.py`, `tests/test_api.py`, `tests/test_e2e_requirements.py`, `tests/test_empirical_challenger_m1_obs.py`, `pytest.ini`, `.data/**` |
 | **actions-env** | `engine/actions.js`, `engine/env.js`, `engine/duel_bridge.js`, `tests/test_engine.js`, `tests/test_champion_js.js` |
 | **web** | `cerveau/**`, `plateau/**`, `index.html`, `connexion/**`, `point-counter/**` |
-| **embarque** | `pi5_runner.py`, `esp32_bridge.py`, `lidar_tracker.py`, `tests/test_pi5_*.py` (nouveaux) |
+| **embarque** | `pi5_runner.py`, `esp32_bridge.py`, `lidar_tracker.py`, `embarque/*` (dont `bridge.js`), `tests/test_embarque_*.py`, `tests/embarque_fixtures.py` |
 | **docs-bench** | `README.md`, `README_PyTorch_GPU.md`, `PROJECT.md`, `TEST_INFRA.md`, `TEST_READY.md`, `BENCHMARK_REPORT.md`, `benchmark_duels.py` |
 
 ## 1. Spécification chargée par le code (chantier moteur)
@@ -150,3 +150,9 @@ Règle absolue de l'équipe : **ne rien inventer**. Une valeur absente de la spe
 - **Adversaire par défaut** (équipe, 2026-10-28) : le programme de référence en miroir est conservé. Le conflit avec notre robot (108 pts au lieu de 116) est voulu. Le but du réseau est de s'adapter à l'adversaire.
 - **Entraînement** : faire jouer le réseau contre plusieurs adversaires (référence miroir, stratégies enregistrées, réseaux en self-play), et non seul sur la table.
 - **Collisions** : l'évitement est obligatoire (`regles.robot.systeme_evitement_obligatoire` ; pénalité `evitement_non_fonctionnel` −30). Le moteur le modélise déjà (`oppBlocks` : le robot s'arrête, attend, et l'étape échoue). Deux réseaux face à face ne peuvent donc pas se percuter. Un adversaire scripté qui « fonce dessus » est hors règlement et n'est pas un cas d'entraînement visé.
+
+## 11. Embarqué livré (fusion 0e06319)
+- **Pont Node** `embarque/bridge.js`, utilisé par `embarque/pont.py`. Échange en JSON-lignes. Commandes : `hello`, `observe`, `mask`, `observe_mask`, `step`, `reference`, `sim_*`, `track_*`.
+- **`pi5_runner.py`** : refuse un modèle dont l'observation, le catalogue ou les dimensions ne correspondent pas au moteur (code de sortie 2). Modes `--simulation`, `--robot [--mock-esp]`, `--benchmark`.
+- **Protocole ESP32** : proposition dans `docs/PROTOCOLE_ESP32.md` (statut « proposé, à valider par l'équipe »), appliquée par `esp32_bridge.py` et le firmware simulé. NAV = base roulante, ACT = tous les actionneurs.
+- **Paramètres `.meta.json`** : la clé `env_config` y manque (embarqué et entraînement). Par défaut : `{skipContacts: true}`.

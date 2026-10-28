@@ -390,6 +390,19 @@
     "pierres_tenues_comptent_dans_le_perimetre": {
       "valeur": false,
       "source": "équipe, 2026-10-28"
+    },
+    "hauteur_max_exclusions": {
+      "_ref": "général F.3 (hauteur des robots)",
+      "valeur": "la limite de 350 mm exclut le mât du support de balise et les capteurs et circuits électroniques intégrés sous le mât"
+    },
+    "support_balise_evidement": {
+      "_ref": "général F.6 (support de balise embarquée)",
+      "valeur": "le moins évidé possible entre 350 mm et le sommet du mât ; dispositif tournant : portion retirée de hauteur < 2 cm (exception à l'enveloppe minimale), sans qu'on puisse voir à travers le mât",
+      "hauteur_max_ouverture_mm": 20
+    },
+    "support_balise_usage": {
+      "_ref": "général F.6",
+      "valeur": "ne peut accueillir que des systèmes de détection et de télécommunication ; supporte au moins 400 g sans fléchir"
     }
   },
   "penalites_utiles_simulation": {

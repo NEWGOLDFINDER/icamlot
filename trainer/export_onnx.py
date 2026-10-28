@@ -209,10 +209,18 @@ def export_all(model: RecurrentActorCritic, base: Union[str, Path], info: Option
     """Écrit <base>.onnx, <base>.meta.json et <base>.json ; renvoie un résumé (dont la vérification numérique)."""
     base = _base(base)
     base.parent.mkdir(parents=True, exist_ok=True)
-    onnx_path = export_onnx(model, _with(base, ".onnx"))
-    meta = meta_json(model, info, onnx_opset(onnx_path) or OPSET)
-    out = {"onnx": str(onnx_path), "meta": str(_with(base, ".meta.json")), "web": str(_with(base, ".json"))}
-    if verify:
+    # le JSON web et le meta ne dépendent pas de l'export ONNX : un échec de l'export (ex. onnxscript absent)
+    # ne doit pas faire perdre le modèle entraîné ; il est consigné dans le meta et le résumé.
+    try:
+        onnx_path = export_onnx(model, _with(base, ".onnx"))
+        onnx_err = None
+    except Exception as e:  # noqa: BLE001
+        onnx_path, onnx_err = None, f"{type(e).__name__}: {e}"
+    meta = meta_json(model, info, (onnx_opset(onnx_path) if onnx_path else None) or OPSET)
+    out = {"onnx": str(onnx_path) if onnx_path else None, "meta": str(_with(base, ".meta.json")), "web": str(_with(base, ".json"))}
+    if onnx_err:
+        out["onnx_erreur"] = meta["onnx_erreur"] = onnx_err
+    if verify and onnx_path:
         try:
             out["verification"] = verify_onnx(model, onnx_path)
         except ImportError:
