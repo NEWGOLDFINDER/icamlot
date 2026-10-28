@@ -115,3 +115,33 @@ Règle absolue de l'équipe : **ne rien inventer**. Une valeur absente de la spe
 1. **Temps masqué automatique** dans chaque macro-action, dès qu'il est faisable sans collision ni dépassement de 350 mm. Le moteur choisit le moment : pendant le trajet, en fin de trajet, ou à l'arrêt.
 2. **Action « préparer la pince »** (angle et hauteur) d'une face, exécutée pendant le trajet suivant.
 3. **Test de cohérence avec `esp32_bridge.py`** : les mouvements réalisés en parallèle doivent être les mêmes en simulation et sur le robot.
+
+## 8. API du moteur livré (fusionné le 2026-10-28, `tests/test_moteur.js` : 83 tests sur 83)
+- **Étapes**
+  - Supprimées : `prendreGraal`, `poserGraal` (renvoient « Action inconnue. »).
+  - Ajoutée : `{a:'monterGraal'}`.
+  - Inchangées : `prendre` (modes `pierre`/`deux`), `deposer`, `mur`, `tour`, `porte`, `tir`/`boulets`, `traj`, `lacher`, `deposerZone`, `seDeplacer`, `tourner`, `attendre`, `attendreJusqua`, `trone`.
+- **Sémantique**
+  - Une étape impossible (pas de position, pas de passage sans contact, rotation impossible sous 350 mm) est abandonnée : erreur, robot immobile, temps non avancé.
+  - M1 et M5 sont impossibles depuis l'extérieur.
+  - Une pile ne tourne à 90° que dans le château.
+- **`sim`**
+  - Nouveautés : `preconditions(step)`, `hullRadius()` (≈ 256 mm, jusqu'à ≈ 370 mm avec des pierres), `stockage()`, `portes()`, `errors()`, `covered(st, excl)`.
+  - `pose()` et les points `K` portent `C: {can, fx, fz}`.
+  - États du Graal : `home`, `ascenseur`, `toit`, `retire`.
+- **`ENGINE`**
+  - Ajouts : `T_ATTAQUE`, `castleOf`, `zoneRect`, `graalPoly`, `graalOnRobot`, `PROGRAMME_REFERENCE` (116 pts, 90,3 s, 0 erreur ; à utiliser à la place de `ENV.EXAMPLE`, qui fait maintenant 74 pts et 6 erreurs).
+  - `DEF` : ajoute `ga`, `tirDepuisTrone`, `t*Graal`, `tSortieFourche`, `tDescenteFourche` ; retire `zmin`, `zmax`, `cl`, `cw`. Graal par défaut en (70, 810).
+- **`geom.js`**
+  - `triPoly` est un alias de `robotPoly` (empreinte de 45 sommets) ; `cannonPoly(p, can)`.
+  - `GEO.rin` = 110,3 ; `GEO.R` = 212,35 ; nouveau global `GEOM`.
+- **`SCORE`**
+  - `scoreAt` sans `t` évalue à 100 s ; avec t < 100, le trône, les boulets et le Graal valent 0.
+  - Nouveau `niveauGraal`.
+  - `graalPos` renvoie `{k, c, ang, bottom, top, poly}`.
+- **Chargement** : `loadIcamlot(root, { moteurSeul: true })` existe. `spec/spec.js` est chargé en premier, et se régénère avec `node tools/gen_spec.js`.
+- **Points ouverts**
+  - Les actionneurs atteignent 350,0 mm sans marge pendant certaines rotations (marge à décider par l'équipe).
+  - Le canon sort avant 85 s ; seuls les tirs sont limités à [85, 100] s.
+  - `deploy/install.sh` ne copie pas `spec/spec.js`.
+  - `plateau/app.js` dessine encore l'ancien triangle.
