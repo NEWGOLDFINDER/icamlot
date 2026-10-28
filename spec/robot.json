@@ -1,14 +1,15 @@
 {
   "_sources": {
     "chassis": "Structure_robot_p.STEP (SolidWorks 2025, export du 2026-10-28), mesuré par tools/mesure_step.py",
-    "equipe": "réponses de l'équipe du 2026-10-28",
+    "equipe": "réponses de l'équipe du 2026-10-28 (2 messages)",
     "simulateur_actuel": "engine/engine.js (DEF) et engine/geom.js : valeurs héritées, non justifiées par une mesure"
   },
   "statuts": {
     "mesure": "mesuré sur la CAO",
     "declare": "déclaré par l'équipe",
     "herite": "valeur actuelle du simulateur, à valider par l'équipe",
-    "a_definir": "information manquante : aucune valeur ne doit être inventée"
+    "a_definir": "information manquante : aucune valeur ne doit être inventée",
+    "propose": "conception proposée par l'audit, à valider par l'équipe"
   },
   "repere": {
     "origine": "centre géométrique du châssis (centre des 3 roues), projeté au sol",
@@ -74,16 +75,16 @@
       "tension_et_reference_exacte": "a_definir"
     },
     "vitesse_lineaire_mm_s": {
-      "statut": "herite",
+      "statut": "declare",
       "valeur": 500,
-      "note": "à mesurer sur le robot"
+      "note": "vitesse mesurée annoncée par l'équipe"
     },
     "vitesse_approche_mm_s": {
       "statut": "herite",
       "valeur": 200
     },
     "vitesse_rotation_deg_s": {
-      "statut": "herite",
+      "statut": "declare",
       "valeur": 120
     }
   },
@@ -97,14 +98,16 @@
   "calcul": {
     "statut": "declare",
     "entrainement": "AMD Ryzen 5 3600 (6 cœurs / 12 threads) + NVIDIA RTX 3060",
-    "embarque_cao": "carte nommée « rasberrypicot » dans la CAO ; rôle exact a_definir"
+    "embarque": {
+      "statut": "declare",
+      "valeur": "Raspberry Pi 5 + 2 ESP32 (non représentés dans la CAO)"
+    }
   },
   "mecanismes": {
     "pince_A_et_B": {
-      "statut": "herite",
-      "cao": "absente (à ajouter par l'équipe)",
-      "ventouses_par_face": 3,
-      "pas_ventouses": 110,
+      "statut": "declare",
+      "cao": "absente : seuls les actionneurs seront ajoutés à la CAO",
+      "ventouses_par_face": 6,
       "hauteur_chariot_min": 140,
       "hauteur_chariot_max": "non bornée dans le simulateur actuel",
       "vitesse_chariot_mm_s": 100,
@@ -116,7 +119,21 @@
       "rotation_duree_s_pour_90deg": 1.5,
       "prise_vide_s": 0.5,
       "relache_s": 0.4,
-      "saillie_hors_face": "a_definir"
+      "saillie_hors_face": {
+        "statut": "a_definir",
+        "contrainte": "<= 30 mm environ au départ, mécanismes repliés, pour rester sous 1200 mm de périmètre"
+      },
+      "ventouses_par_pierre": 2,
+      "pierres_par_face": 3,
+      "pas_vertical_pierres": 110,
+      "ventouses_pierres_1_et_2": "au centre vertical de chaque pierre, en façade, même écartement horizontal pour les 3 pierres",
+      "ventouse_pierre_3": {
+        "diametre": 20,
+        "position": "près du bord bas de la pierre 3, pour pouvoir lever le linteau au-dessus de 2 pierres debout (porte) sans dépasser 350 mm",
+        "contrainte_calculee": "centre de la ventouse <= 15 mm au-dessus du bord bas de la pierre 3 (linteau levé à 320 + 5 mm, ventouse Ø20 sous 350 mm) ; 12 mm recommandé pour garder 3 mm de marge",
+        "modele_simulateur": "barre à +70 mm du chariot (score.js BARS), soit 15 mm au-dessus du bord bas : cohérent avec la contrainte, sans marge"
+      },
+      "durees": "paramètres programmables ; valeurs par défaut = valeurs actuelles du simulateur"
     },
     "canon_C": {
       "statut": "herite",
@@ -128,29 +145,46 @@
       "cadence_boulets_s": 2,
       "elevation_deg": 35,
       "hauteur_bouche": 250,
-      "position_de_tir_imposee_dans_le_simulateur": "salle du trône (choix de conception, pas une règle)"
+      "position_de_tir_imposee_dans_le_simulateur": "salle du trône (choix de conception, pas une règle)",
+      "position_sur_face": {
+        "statut": "declare",
+        "valeur": "face C, à gauche de l'ascenseur (vue de face) ; largeur disponible ~120 mm"
+      }
     },
     "ascenseur_graal": {
-      "statut": "declare",
-      "description": "escalier 100 % vertical sur un bord de la face C (canon), avec crochets qui attrapent le Graal et le montent sur le toit",
-      "objectif": "Graal niveau 4 : sur le toit (> 300 mm), libre de tout actionneur et de tout moyen de fixation en fin de match",
-      "contraintes_reglementaires": [
-        "crochets et escalier <= 350 mm à tout instant (général F.3)",
-        "toit à 341.1 mm : condition > 300 mm remplie",
-        "le Graal peut dépasser 350 mm seulement dans le château (jeu E.2.b) : montée à faire dans la cour ou la salle du trône",
-        "le Graal ne doit jamais quitter la cour et les remparts : le robot ne doit pas sortir du château avec le Graal sur le toit",
-        "le support de balise (centre du toit, Ø 70 à 100 mm, jusqu'à 430 mm) doit laisser la place au Graal"
-      ],
-      "bord_exact_de_la_face_C": "a_definir",
-      "course_hauteur": "a_definir",
-      "duree_montee_s": "a_definir",
-      "position_graal_sur_toit": "a_definir",
-      "saillie_hors_face": "a_definir"
+      "statut": "propose",
+      "conception": "conception/ascenseur_graal.md, tools/conception_graal.py, conception/*.step",
+      "position": {
+        "statut": "declare",
+        "valeur": "face C, bord droit vu de face"
+      },
+      "principe": "rail vertical + chariot portant une coulisse horizontale et une fourche à 2 dents qui passent sous les 2 anses basses du Graal",
+      "duree_montee_s": {
+        "statut": "declare",
+        "valeur": 3.5,
+        "plage": [
+          3,
+          4
+        ]
+      },
+      "course_coulisse_horizontale": 87.0,
+      "dessus_des_dents_en_position_haute": 337.2,
+      "condition_bloquante": "toit <= 324 mm pour ces anses ; toit actuel 341.2 mm -> dents à 367 mm, interdit. Proposition : tubes de 290 mm au lieu de 320 (toit à 311.2 mm)"
     },
     "graal": {
-      "statut": "herite",
-      "cote_simulee": 60,
-      "note": "le règlement exige strictement plus grand qu'un cube de 60 mm : dimensions réelles a_definir",
+      "statut": "propose",
+      "conception": "conception/graal.step",
+      "base": [
+        70,
+        70
+      ],
+      "hauteur": 100,
+      "anses": "2 anses latérales basses (dessous à 22 mm du fond), lèvre de retenue extérieure",
+      "regles": [
+        "> cube de 60 mm (jeu E.2.b)",
+        "contraintes de construction d'un PAMI : périmètre <= 600 mm, altitude <= 175 mm, masse <= 1,5 kg",
+        "sommet <= 425 mm une fois sur le toit, pour ne pas masquer la balise adverse (430 mm)"
+      ],
       "position_depart_simulee": [
         100,
         1180

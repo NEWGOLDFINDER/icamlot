@@ -19,17 +19,81 @@
     "_ref": "jeu D.2"
   },
   "zones_depart": {
-    "trone_jaune": { "x": [0, 500], "y": [750, 1250] },
-    "trone_bleu": { "x": [2500, 3000], "y": [750, 1250] },
+    "trone_jaune": {
+      "x": [
+        0,
+        500
+      ],
+      "y": [
+        750,
+        1250
+      ]
+    },
+    "trone_bleu": {
+      "x": [
+        2500,
+        3000
+      ],
+      "y": [
+        750,
+        1250
+      ]
+    },
     "_ref": "jeu D.3 (carré de 500 x 500 mm, ligne incluse) ; table.svg calques Zone_jaune / Zone_bleu"
   },
   "ecuries_pami": {
-    "jaune": [{ "x": [5, 195], "y": [5, 295] }, { "x": [5, 195], "y": [1705, 1995] }],
-    "bleu": [{ "x": [2805, 2995], "y": [5, 295] }, { "x": [2805, 2995], "y": [1705, 1995] }],
+    "jaune": [
+      {
+        "x": [
+          5,
+          195
+        ],
+        "y": [
+          5,
+          295
+        ]
+      },
+      {
+        "x": [
+          5,
+          195
+        ],
+        "y": [
+          1705,
+          1995
+        ]
+      }
+    ],
+    "bleu": [
+      {
+        "x": [
+          2805,
+          2995
+        ],
+        "y": [
+          5,
+          295
+        ]
+      },
+      {
+        "x": [
+          2805,
+          2995
+        ],
+        "y": [
+          1705,
+          1995
+        ]
+      }
+    ],
     "_ref": "table.svg calque PAMI (zone_depart_*) ; jeu D.4 : 200 x 300 mm"
   },
   "pierres": {
-    "dimensions": [320, 110, 110],
+    "dimensions": [
+      320,
+      110,
+      110
+    ],
     "masse_g_environ": 90,
     "nombre": 30,
     "aruco_id": 13,
@@ -39,49 +103,213 @@
     "_ref": "table.svg calque stock (contours 319 x 109 mm) ; jeu D.4 : 3 pierres à plat empilées",
     "pierres_par_carriere": 3,
     "liste": [
-      { "id": "P1", "c": [750, 55], "axe_long": "x" },
-      { "id": "P2", "c": [1250, 55], "axe_long": "x" },
-      { "id": "P3", "c": [1750, 55], "axe_long": "x" },
-      { "id": "P4", "c": [2250, 55], "axe_long": "x" },
-      { "id": "P5", "c": [750, 1945], "axe_long": "x" },
-      { "id": "P6", "c": [1250, 1945], "axe_long": "x" },
-      { "id": "P7", "c": [1750, 1945], "axe_long": "x" },
-      { "id": "P8", "c": [2250, 1945], "axe_long": "x" },
-      { "id": "P9", "c": [1500, 500], "axe_long": "y" },
-      { "id": "P10", "c": [1500, 1500], "axe_long": "y" }
+      {
+        "id": "P1",
+        "c": [
+          750,
+          55
+        ],
+        "axe_long": "x"
+      },
+      {
+        "id": "P2",
+        "c": [
+          1250,
+          55
+        ],
+        "axe_long": "x"
+      },
+      {
+        "id": "P3",
+        "c": [
+          1750,
+          55
+        ],
+        "axe_long": "x"
+      },
+      {
+        "id": "P4",
+        "c": [
+          2250,
+          55
+        ],
+        "axe_long": "x"
+      },
+      {
+        "id": "P5",
+        "c": [
+          750,
+          1945
+        ],
+        "axe_long": "x"
+      },
+      {
+        "id": "P6",
+        "c": [
+          1250,
+          1945
+        ],
+        "axe_long": "x"
+      },
+      {
+        "id": "P7",
+        "c": [
+          1750,
+          1945
+        ],
+        "axe_long": "x"
+      },
+      {
+        "id": "P8",
+        "c": [
+          2250,
+          1945
+        ],
+        "axe_long": "x"
+      },
+      {
+        "id": "P9",
+        "c": [
+          1500,
+          500
+        ],
+        "axe_long": "y"
+      },
+      {
+        "id": "P10",
+        "c": [
+          1500,
+          1500
+        ],
+        "axe_long": "y"
+      }
     ],
     "attribution_equipe": "aucune (jeu D.4 : zones réparties sur la table)"
   },
   "remparts_jaune": {
     "_ref": "table.svg calque dépose (rectangles tracés à l'intérieur de la ligne) ; jeu D.4 : murs 200 x 400, tours Ø 200",
     "murs": [
-      { "id": "M1", "c": [250, 400], "grand_axe_deg": 0 },
-      { "id": "M2", "c": [679.3, 570.8], "grand_axe_deg": 45 },
-      { "id": "M3", "c": [850, 1000], "grand_axe_deg": 90 },
-      { "id": "M4", "c": [679.3, 1429.5], "grand_axe_deg": -45 },
-      { "id": "M5", "c": [250, 1600], "grand_axe_deg": 0 }
+      {
+        "id": "M1",
+        "c": [
+          250,
+          400
+        ],
+        "grand_axe_deg": 0
+      },
+      {
+        "id": "M2",
+        "c": [
+          679.3,
+          570.8
+        ],
+        "grand_axe_deg": 45
+      },
+      {
+        "id": "M3",
+        "c": [
+          850,
+          1000
+        ],
+        "grand_axe_deg": 90
+      },
+      {
+        "id": "M4",
+        "c": [
+          679.3,
+          1429.5
+        ],
+        "grand_axe_deg": -45
+      },
+      {
+        "id": "M5",
+        "c": [
+          250,
+          1600
+        ],
+        "grand_axe_deg": 0
+      }
     ],
     "tours": [
-      { "id": "T1", "c": [500, 400] },
-      { "id": "T2", "c": [850, 750] },
-      { "id": "T3", "c": [850, 1250] },
-      { "id": "T4", "c": [500, 1600] }
+      {
+        "id": "T1",
+        "c": [
+          500,
+          400
+        ]
+      },
+      {
+        "id": "T2",
+        "c": [
+          850,
+          750
+        ]
+      },
+      {
+        "id": "T3",
+        "c": [
+          850,
+          1250
+        ]
+      },
+      {
+        "id": "T4",
+        "c": [
+          500,
+          1600
+        ]
+      }
     ],
-    "mur_dimensions": [400, 200],
+    "mur_dimensions": [
+      400,
+      200
+    ],
     "tour_diametre": 200,
     "bleu": "symétrie x -> 3000 - x"
   },
   "aruco_table": {
     "_ref": "table.svg calque ArUcos (tags de 100 mm, bordure blanche de 120 mm)",
-    "centres": [[600, 600], [2400, 600], [600, 1400], [2400, 1400]],
+    "centres": [
+      [
+        600,
+        600
+      ],
+      [
+        2400,
+        600
+      ],
+      [
+        600,
+        1400
+      ],
+      [
+        2400,
+        1400
+      ]
+    ],
     "taille": 100,
     "ids": "non lisibles dans le SVG (motifs graphiques) : à relever sur la table réelle",
     "plages_reservees": {
-      "robots_bleu": [1, 5],
-      "robots_jaune": [6, 10],
-      "aire_de_jeu": [11, 50],
-      "equipe_bleue": [51, 70],
-      "equipe_jaune": [71, 90],
+      "robots_bleu": [
+        1,
+        5
+      ],
+      "robots_jaune": [
+        6,
+        10
+      ],
+      "aire_de_jeu": [
+        11,
+        50
+      ],
+      "equipe_bleue": [
+        51,
+        70
+      ],
+      "equipe_jaune": [
+        71,
+        90
+      ],
       "_ref": "général G.6"
     }
   },
@@ -150,13 +378,19 @@
     "perimetre_definition": "périmètre de l'enveloppe convexe de la projection verticale au sol",
     "hauteur_max_robot_et_objets_manipules": 350,
     "hauteur_max_bouton_arret_urgence": 375,
-    "support_balise_hauteur": [425, 435],
+    "support_balise_hauteur": [
+      425,
+      435
+    ],
     "support_balise_position": "dans un cercle de Ø 200 mm autour du centre du robot",
     "support_balise_section": "enveloppe convexe entre cercle Ø 70 et carré de 100 x 100 mm, du sommet du robot au support",
     "zone_autocollant": "100 x 70 mm libre sur une face verticale",
     "pieces_saillantes": "interdites",
     "systeme_evitement_obligatoire": true,
-    "pierres_tenues_comptent_dans_le_perimetre": "non précisé par les règlements fournis : à faire confirmer"
+    "pierres_tenues_comptent_dans_le_perimetre": {
+      "valeur": false,
+      "source": "équipe, 2026-10-28"
+    }
   },
   "penalites_utiles_simulation": {
     "_ref": "général H.4",

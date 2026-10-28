@@ -334,3 +334,11 @@ Ryzen 5 3600 (12 threads) + RTX 3060. Le moteur JS mesuré ici donne environ 0,1
 | mars 2027 | Phase 5 : runner embarqué (observation + masque uniques), croyance issue du lidar et des caméras, essais en rejeu | même décision en simulation et sur le robot pour des états enregistrés |
 | avr. 2027 | Recalage des durées et vitesses mesurées sur le robot, réentraînement, gel | écart de durée simulation/robot ≤ 10 % par action |
 | mai 2027 | Compétition | — |
+
+### 6.7 Mise à jour du 2026-10-28 (2ᵉ réponse de l'équipe)
+
+- **Pierres tenues** : elles ne comptent pas dans le périmètre. La stratégie double face est donc légale.
+- **Pinces** : 2 ventouses par pierre, soit 6 par face. Les pierres 1 et 2 sont prises en leur centre vertical. La pierre 3 est prise par une ventouse Ø 20 mm placée près de son bord bas, pour lever le linteau de la porte sous 350 mm. Contrainte calculée : centre de cette ventouse à 15 mm au plus du bord bas (12 mm recommandés).
+- **Vitesses** : 0,5 m/s et 120°/s, valeurs mesurées par l'équipe.
+- **Carte embarquée** : Pi 5 + 2 ESP32.
+- **Graal et ascenseur** : conception proposée dans `conception/ascenseur_graal.md`. **Point bloquant** : le toit à 341,2 mm rend le niveau 4 impossible sous 350 mm ; il faut un toit à 324 mm au plus (proposition : tubes de 290 mm).
