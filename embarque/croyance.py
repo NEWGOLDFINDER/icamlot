@@ -70,6 +70,27 @@ def miroir_adversaire(adv: Optional[dict], equipe: str) -> Optional[dict]:
     return out
 
 
+# Caractéristiques physiques de notre robot (observation « physique », icamlot-obs-3.1, docs/CONTRATS.md §14) : clés du moteur
+# (ADVERSAIRES.clesPhysiques dans engine/adversaires.js), en unités du moteur (v et va en m/s, w en °/s, vz en mm/s, durées en s,
+# brate en boulets/s). Sans fichier de calibration, le modèle interne garde les valeurs de la spec.
+CLES_PHYSIQUES = ("v", "va", "w", "vz", "trot", "tvac", "trel", "tMonteeGraal", "tDescenteFourche", "bdep", "bspin", "brate")
+
+
+def params_calibration(chemin: Optional[str]) -> dict:
+    """Valeurs mesurées sur le robot (fichier JSON { clé: valeur }, unités du moteur), pour le modèle interne et donc pour
+    belief.params (observation « physique », masque). Clés inconnues ignorées ; la descente de la fourche suit la montée du Graal
+    si elle n'est pas donnée (hypothèse du moteur)."""
+    if not chemin:
+        return {}
+    import json
+    with open(chemin, encoding="utf-8") as fh:
+        j = json.load(fh)
+    out = {k: float(v) for k, v in j.items() if k in CLES_PHYSIQUES and isinstance(v, (int, float)) and v >= 0}
+    if "tMonteeGraal" in out and "tDescenteFourche" not in out:
+        out["tDescenteFourche"] = out["tMonteeGraal"]
+    return out
+
+
 class ConstructeurCroyance:
     """Fusionne le modèle interne (moteur local) et les mesures des capteurs en une croyance pour le réseau."""
 
