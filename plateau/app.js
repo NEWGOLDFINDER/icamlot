@@ -116,7 +116,7 @@
     var f = st.f ? ' · face ' + st.f : '';
     switch (st.a) {
       case 'prendre': return st.mode === 'pierre' ? 'Prendre la pierre ' + st.s + f : st.mode === 'deux' ? 'Prendre les 2 pierres du dessus (' + st.s + ' et celle dessous)' + f : 'Prendre ' + st.p + f;
-      case 'deposer': var rd = rotOf(st); return 'Déposer ' + (st.q === 'pile' ? 'la pile' : st.q) + ' en ' + Math.round(st.x) + ', ' + Math.round(st.y) + ', ' + fmt(st.ang) + '° · ' + (rd === 90 ? 'debout' : rd === 180 ? 'à plat retournée' : 'à plat') + (st.drop ? ' · lâcher' : '') + f;
+      case 'deposer': var rd = rotOf(st); return 'Déposer ' + (st.q === 'pile' ? 'la pile' : st.q) + ' en ' + Math.round(st.x) + ', ' + Math.round(st.y) + ', ' + fmt(st.ang) + '° · ' + (rd === 90 || rd === -90 ? 'debout' : rd === 180 ? 'à plat retournée' : 'à plat') + (st.drop ? ' · lâcher' : '') + f;
       case 'traj': var tp = st.pts || [], la = tp.length ? tp[tp.length - 1] : null;
         return 'Trajectoire : ' + tp.length + ' point' + (tp.length > 1 ? 's' : '') + (la ? ' → ' + Math.round(la.x) + ', ' + Math.round(la.y) + (la.a != null && la.a !== '' ? ', face ' + (st.fa || 'A') + ' à ' + fmt(+la.a) + '°' : '') : '');
       case 'lacher': return 'Lâcher ' + (st.q === 'pile' ? 'la pile' : st.q) + ' sur place' + f;
@@ -204,7 +204,7 @@
       if (k === 'mode') d.appendChild(fld('Prendre', mkSeg('Prendre', [['paquet', 'Paquet (3)'], ['deux', 'Deux du dessus'], ['pierre', 'Une pierre (dessus)']], st.mode || 'paquet', function (v) { prog[i].mode = v; changed(true); })));
       if (k === 'v') d.appendChild(fld('Ventouse', mkSel('Ventouse', [['auto', 'Auto (pince au plus près de 165 mm)'], ['1', 'Ventouse 1 (bas)'], ['2', 'Ventouse 2 (milieu)'], ['3', 'Ventouse 3 (haut)']], st.v || 'auto', function (v) { setField(i, 'v', v); })));
       if (k === 'q') d.appendChild(fld('Quoi', mkSel('Pierres déposées', [['pile', 'Toute la pile tenue']].concat(SIDS.map(function (p) { return [p, 'Pierre ' + p]; })), st.q, function (v) { setField(i, 'q', v); })));
-      if (k === 'r') d.appendChild(fld(st.a === 'tourner' ? 'Angle' : 'Pince', mkSeg('Angle de la pince', st.a === 'tourner' ? [['0', '0°'], ['90', '90°'], ['180', '180°']] : [['0', '0° à plat'], ['90', '90° debout'], ['180', '180° retournée']], String(rotOf(st)), function (v) { delete prog[i].o; setField(i, 'r', +v); })));
+      if (k === 'r') d.appendChild(fld(st.a === 'tourner' ? 'Angle' : 'Pince', mkSeg('Angle de la pince', st.a === 'tourner' ? [['-90', '−90°'], ['0', '0°'], ['90', '90°'], ['180', '180°']] : [['-90', '−90° debout'], ['0', '0° à plat'], ['90', '90° debout'], ['180', '180° retournée']], String(rotOf(st)), function (v) { delete prog[i].o; setField(i, 'r', +v); })));
       if (k === 'pm') d.appendChild(fld('Placement', mkSeg('Placement de la construction', [['parfait', 'Parfait'], ['proche', 'Au plus proche'], ['manuel', 'Manuel']], st.pm || 'parfait', function (v) {
         var q = prog[i]; q.pm = v;
         if (v === 'manuel' && (q.x == null || q.y == null)) { var zz = ENGINE.zoneById(q.z); q.x = zz ? Math.round(zz.c[0]) : 1200; q.y = zz ? Math.round(zz.c[1]) : 1000; q.ang = zz && zz.tan !== undefined ? zz.tan : 0; }

@@ -9,7 +9,7 @@
      t: secondes depuis le départ,
      pose: { x, y, h },                         lidar (triangulation) ; h = normale de la face A ; B à h + 120, C à h + 240
                                                  (faces et cap RÉELS ; l'observation et le catalogue bleus échangent A et B, §15)
-     pinces: { A: { rot, hc, slots: [id|null, id|null, id|null], rotReelle }, B: {...} }   codeurs + vide : angle (0/90/180, angle
+     pinces: { A: { rot, hc, slots: [id|null, id|null, id|null], rotReelle }, B: {...} }   codeurs + vide : angle (-90/0/90/180, angle
                                                  demandé), hauteur d'axe, rotReelle = angle réel si une rotation préparée attend (sinon null),
                                                  pierre tenue par rangée (1, 2, 3) ; id = 'P6.3' (paquet d'origine . niveau 1..3)
      meca: { can, fx, fz },                     canon sorti (mm), fourche de l'ascenseur (position, hauteur) : codeurs
@@ -35,7 +35,9 @@
   var MATCH = 100;
   /* 3.1 (chantier adversaires, contrat §14) : groupe « physique » (caractéristiques effectives de notre robot pour ce match) */
   /* 3.2 (chantier symétrie, contrat §15) : en bleu, face « A » de l'équipe = vraie face B (cap, pinces, rayons) */
-  var OBS_VERSION = 'icamlot-obs-3.2';
+  /* 3.3 (chantier rotation -90°, contrat §16) : angle de pince codé (angle de l'équipe - min) / (max - min) sur la plage de la spec
+     [-90, 180] (l'ancien angle / 180 confondait -90 et 0) ; en bleu, angle de l'équipe = -angle réel (0 et 180 inchangés) */
+  var OBS_VERSION = 'icamlot-obs-3.3';
 
   /* Caméras des faces A et B (décision d'équipe, 2026-10-28) : elles ne servent qu'à lire les étiquettes ArUco des pierres pour
      l'ajustement (x, y, ω) de la préhension. Une carrière (et une pierre posée par l'adversaire) n'est donc mise à jour que
@@ -55,7 +57,7 @@
   var GROUPS = [
     { id: 'temps', label: 'Temps', vars: [{ id: 'temps', nom: 'Temps', desc: 'temps restant / 100 s ; phase d\'attaque ouverte (t >= 85 s)', n: 2 }] },
     { id: 'robot', label: 'Robot', vars: [{ id: 'robot', nom: 'Pose et enveloppe', desc: 'x / 3000, y / 2000, cos(cap A), sin(cap A) (repère de l\'équipe ; en bleu, la face A de l\'équipe est la vraie face B), dans le château, dans la salle du trône, équipe bleue, rayon de l\'enveloppe (châssis + pierres) / 500 mm', n: 8 }] },
-    { id: 'pinces', label: 'Pinces A et B', vars: [{ id: 'pinces', nom: 'État des pinces', desc: 'Pour A puis B (faces de l\'équipe ; en bleu, vraie B puis vraie A) : pierre en rangée 1, 2, 3 ; angle / 180 ; hauteur d\'axe (course 135-273 mm) ; pile de 3 à plat', n: 12 }] },
+    { id: 'pinces', label: 'Pinces A et B', vars: [{ id: 'pinces', nom: 'État des pinces', desc: 'Pour A puis B (faces de l\'équipe ; en bleu, vraie B puis vraie A) : pierre en rangée 1, 2, 3 ; angle de l\'équipe (bleu : -angle réel), (angle + 90) / 270 sur la plage [-90, 180] de la spec ; hauteur d\'axe (course 135-273 mm) ; pile de 3 à plat', n: 12 }] },
     { id: 'mecanismes', label: 'Canon et ascenseur', vars: [{ id: 'mecanismes', nom: 'Canon, fourche, tir', desc: 'canon sorti / course ; fourche : position, hauteur (normalisées) ; séance de tir faite', n: 4 }] },
     { id: 'graal', label: 'Graal', vars: [{ id: 'graal', nom: 'État du Graal', desc: 'au départ, sur la fourche, sur le toit, retiré', n: 4 }] },
     { id: 'paquets', label: 'Carrières (caméras)', vars: [{ id: 'paquets', nom: 'Pierres par carrière', desc: 'P1 à P10 (repère de l\'équipe) : pierres vues / 3, âge de l\'information / 100 s', n: 20 }] },
@@ -171,7 +173,13 @@
     m.team = b.team === 'blue' ? 'yellow' : 'blue';
     m.pose = { x: 3000 - b.pose.x, y: b.pose.y, h: ENGINE.mirrorCap(b.pose.h) };
     m.pinces = {};
-    ['A', 'B'].forEach(function (f) { var g = JSON.parse(JSON.stringify(b.pinces[f])); g.slots = (g.slots || [null, null, null]).map(function (id) { return id ? mid(id) : null; }); m.pinces[ENGINE.mirrorFace(f)] = g; });
+    ['A', 'B'].forEach(function (f) {
+      var g = JSON.parse(JSON.stringify(b.pinces[f])); g.slots = (g.slots || [null, null, null]).map(function (id) { return id ? mid(id) : null; });
+      /* angles de nacelle en miroir (contrat §16) : +θ <-> -θ */
+      if (g.rot != null) g.rot = root.GEOM.mirrorRot(g.rot);
+      if (g.rotReelle != null) g.rotReelle = root.GEOM.mirrorRot(g.rotReelle);
+      m.pinces[ENGINE.mirrorFace(f)] = g;
+    });
     if (b.adversaire) { m.adversaire.x = 3000 - b.adversaire.x; m.adversaire.vx = -(b.adversaire.vx || 0); }
     m.pierres = (b.pierres || []).map(function (s) { var o = JSON.parse(JSON.stringify(s)); o.id = mid(s.id); o.pk = ids.indexOf(mirrorId(ENGINE.PK[s.pk].id)); o.foot = foot(s.foot); return o; });
     m.portes = (b.portes || []).map(mid);
@@ -206,7 +214,9 @@
       } else if (id === 'pinces') {
         FACES_EQ.forEach(function (f) {
           var g = b.pinces[f], sl = g.slots || [null, null, null];
-          push(sl[0] ? 1 : 0, sl[1] ? 1 : 0, sl[2] ? 1 : 0, clamp01(g.rot / 180), clamp01((g.hc - GE.hcMin) / (GE.hcMax - GE.hcMin)), sl[0] && sl[1] && sl[2] && Math.abs(g.rot) < 0.5 ? 1 : 0);
+          var rq = blue ? G.mirrorRot(g.rot) : g.rot;
+          push(sl[0] ? 1 : 0, sl[1] ? 1 : 0, sl[2] ? 1 : 0, clamp01((rq - GE.rotMin) / (GE.rotMax - GE.rotMin)), clamp01((g.hc - GE.hcMin) / (GE.hcMax - GE.hcMin)), sl[0] && sl[1] && sl[2] && Math.abs(g.rot) < 0.5 ? 1 : 0);
+
         });
       } else if (id === 'mecanismes') {
         var F = GE.fourche;

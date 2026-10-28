@@ -1,6 +1,6 @@
 # Nacelle de préhension (faces A et B) : dimensionnement, rotations, hauteurs
 
-Calculs : `tools/conception_pince.py` (sortie complète dans `pince_calculs.txt`). Schéma : `pince_rotation.png`.
+Calculs : `tools/conception_pince.py` (angles −90, 0, 90 et 180°) (sortie complète dans `pince_calculs.txt`). Schéma : `pince_rotation.png`.
 
 Statut :
 - règle de la porte validée par l'équipe : le linteau est la pierre du haut d'une pile de 3 ;
@@ -45,6 +45,23 @@ Hypothèses à vérifier par essai : frottement ventouse/carton 0,5 ; accéléra
 | 1 pierre tenue par la rangée 3, 0 → 90° (tour), hors du château | **impossible** (à faire dans le château) | −53,4 mm |
 | Retournement à 180° d'une pierre tenue par la rangée 3 | **impossible** | −53,4 mm |
 | Linteau posé (dessous à 325 mm) | haut des ventouses à 347 mm | 3 mm |
+
+### Rotation à −90° (décision de l'équipe du 2026-10-28, `spec/robot.json` `rotation_moins_90`)
+
+Angles de la nacelle : −90, 0, 90 et 180° ; plage des rotations coordonnées [−90, 180] (jamais par −180°). À −90°, la pierre tenue part de l'autre côté de la face (décalage latéral opposé à celui de +90°) : c'est le miroir exact de +90°, utilisé par l'équipe bleue.
+
+| Geste | Résultat | Marge |
+|---|---|---|
+| Nacelle vide 0 → −90°, 90 → −90° (par 0), −90 → 180° (270°, par 0 et 90) | faisable | 65,4 mm |
+| 1 pierre tenue par la rangée 1, 0 → −90° (tour), hors du château | faisable | 4,1 mm |
+| 1 pierre tenue par la rangée 2, 0 → −90°, hors du château | faisable | 6,6 mm |
+| 1 pierre tenue par la rangée 3, 0 → −90°, hors du château | **impossible** (à faire dans le château) | −53,4 mm |
+| 1 pierre tenue par la rangée 3, 0 → −90°, dans le château | faisable | 65,0 mm |
+| Pile de 3 pierres 0 → −90°, hors du château | **impossible** (à faire dans le château) | −114,7 mm |
+| Pile de 3 pierres 0 → −90° (piliers de porte), dans le château | faisable | 4,1 mm |
+| 1 pierre tenue par la rangée 1, 90 → −90° (par 0), hors du château | faisable | 4,1 mm |
+
+Les marges à −a sont exactement celles à +a (écart calculé : 0 mm sur 5 charges, dans et hors du château) : la nacelle et les pierres sont symétriques de part et d'autre de l'axe vertical de la face. Le moteur réutilise donc les mêmes tables de faisabilité pour ±a (`GEOM.corridor`). Seuls changent la position latérale de la pierre et le balayage horizontal (contacts), vérifiés par le moteur.
 
 Conséquence validée : chaque porte utilise une pile complète (2 piliers + le linteau du haut). Les marges en rotation sont faibles (2 à 4 mm). Il faut donc programmer les rotations avec le mouvement vertical coordonné calculé par le script, et les vérifier sur le robot.
 
