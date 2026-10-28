@@ -14,24 +14,43 @@
     return { total: n, detail: detail, sizes: s };
   }
   function actName(a) { return a === 'tanh' ? 'Tanh' : a === 'sigmoid' ? 'Sigmoid' : 'ReLU'; }
-  function pytorchCode(name, nIn, couches, nOut, arch) {
-    if (arch === 'transformer') {
+  /* Valeurs par défaut du réseau récurrent : miroir de api/server.py (REC_*) et de trainer/models.py (RecurrentActorCritic). */
+  var REC = { HIDDEN: 128, ENCODEUR: 128, CRITIQUE: 128, MIN_HIDDEN: 8, MAX_HIDDEN: 512 };
+  function countParamsRecurrent(nIn, nOut, hidden, enc, crit) {
+    hidden = hidden || REC.HIDDEN; enc = enc || REC.ENCODEUR; crit = crit || REC.CRITIQUE;
+    var encoder = nIn * enc + enc + 2 * enc;
+    var gru = 3 * hidden * (enc + hidden) + 6 * hidden;
+    var actor = hidden * nOut + nOut;
+    var critic = hidden * crit + crit + crit + 1;
+    var detail = [
+      { n: encoder, txt: 'encodeur ' + nIn + '→' + enc + ' + LayerNorm = ' + encoder },
+      { n: gru, txt: 'GRU ' + enc + '→' + hidden + ' = ' + gru },
+      { n: actor, txt: 'acteur ' + hidden + '→' + nOut + ' = ' + actor },
+      { n: critic, txt: 'critique ' + hidden + '→' + crit + '→1 = ' + critic + ' (entraînement seulement)' }
+    ];
+    return { total: encoder + gru + actor + critic, detail: detail, sizes: [nIn, enc, hidden, nOut] };
+  }
+  function pytorchCode(name, nIn, couches, nOut, arch, hidden) {
+    var cls = (name || 'Cerveau').replace(/[^A-Za-z0-9_]/g, '_');
+    if (arch === 'recurrent') {
       return [
         'import torch',
         'import torch.nn as nn',
-        'from trainer.models import FactorizedEncoder, RecurrentActorCritic',
+        'from trainer.models import RecurrentActorCritic',
         '',
-        '# Modèle Eurobot 2027 Entity-Transformer (22 entités + GRU 128)',
-        'class ' + (name || 'Cerveau').replace(/[^A-Za-z0-9_]/g, '_') + '(nn.Module):',
+        '# Réseau récurrent : encodeur + GRU + tête acteur (une seule politique), tête critique pour le PPO.',
+        'class ' + cls + '(nn.Module):',
         '    def __init__(self):',
         '        super().__init__()',
-        '        self.model = RecurrentActorCritic(n_in=' + nIn + ', n_out=' + nOut + ', hidden_dim=128)',
+        '        self.model = RecurrentActorCritic(n_in=' + nIn + ', n_out=' + nOut + ', hidden=' + (hidden || REC.HIDDEN) + ')',
         '',
-        '    def forward(self, obs, hidden=None, mask=None):',
+        '    def forward(self, obs, hidden=None):',
         '        if hidden is None:',
-        '            hidden = self.model.init_hidden(obs.shape[0], device=obs.device)',
-        '        logits, val, next_h = self.model(obs, hidden, mask=mask)',
-        '        return logits, next_h',
+        '            hidden = torch.zeros(obs.shape[0], self.model.hidden_dim)  # remis à zéro au début de chaque match',
+        '        h = self.model.core(obs, hidden)',
+        '        return self.model.actor(h), h  # logits non masqués, état caché suivant',
+        '',
+        '# Le masque d\'actions est appliqué à l\'exécution (-inf sur les actions impossibles).'
       ].join('\n');
     }
     var lines = [
@@ -73,111 +92,6 @@
       h = next;
     }
     return h;
-  }
-  function silu(x) {
-    return x / (1 + Math.exp(-Math.max(-30, Math.min(30, x))));
-  }
-  function sigmoid(x) {
-    return 1 / (1 + Math.exp(-Math.max(-30, Math.min(30, x))));
-  }
-  function layerNorm(x, gamma, beta, eps) {
-    eps = eps || 1e-5;
-    var n = x.length, sum = 0;
-    for (var i = 0; i < n; i++) sum += x[i];
-    var mean = sum / n, varSum = 0;
-    for (var i = 0; i < n; i++) { var diff = x[i] - mean; varSum += diff * diff; }
-    var invStd = 1 / Math.sqrt(varSum / n + eps);
-    var out = new Float32Array(n);
-    for (var i = 0; i < n; i++) {
-      out[i] = (x[i] - mean) * invStd * (gamma ? gamma[i] : 1) + (beta ? beta[i] : 0);
-    }
-    return out;
-  }
-  function linear(x, w, b, actFn) {
-    var outDim = b ? b.length : (w[0] ? w[0].length : 0);
-    var inDim = x.length;
-    var out = new Float32Array(outDim);
-    var wIsTransposed = (w.length === outDim);
-    for (var j = 0; j < outDim; j++) {
-      var s = b ? b[j] : 0;
-      if (wIsTransposed) {
-        var row = w[j];
-        for (var k = 0; k < inDim; k++) s += x[k] * row[k];
-      } else {
-        for (var k = 0; k < inDim; k++) s += x[k] * w[k][j];
-      }
-      out[j] = actFn ? actFn(s) : s;
-    }
-    return out;
-  }
-  function gruCell(x, h, W_ih, W_hh, b_ih, b_hh) {
-    var hiddenDim = h.length;
-    var gi = linear(x, W_ih, b_ih);
-    var gh = linear(h, W_hh, b_hh);
-    var next_h = new Float32Array(hiddenDim);
-    for (var i = 0; i < hiddenDim; i++) {
-      var r = sigmoid(gi[i] + gh[i]);
-      var z = sigmoid(gi[hiddenDim + i] + gh[hiddenDim + i]);
-      var n = Math.tanh(gi[2 * hiddenDim + i] + r * gh[2 * hiddenDim + i]);
-      next_h[i] = (1 - z) * n + z * h[i];
-    }
-    return next_h;
-  }
-  function forwardFactorizedGRU(model, obs, hidden) {
-    var enc = model.encoder || {};
-    var geo = [obs[1], obs[2], obs[3], obs[4], obs[35] || 0, obs[36] || 0];
-    var g_feat = linear(geo, enc.geo_w, enc.geo_b, silu);
-
-    var table = [];
-    for (var i = 5; i < 15; i++) table.push(obs[i] || 0);
-    for (var i = 21; i < 34; i++) table.push(obs[i] || 0);
-    var t_feat = linear(table, enc.table_w, enc.table_b, silu);
-
-    var mech = [obs[0] || 0];
-    for (var i = 15; i < 21; i++) mech.push(obs[i] || 0);
-    mech.push(obs[34] || 0);
-    var m_feat = linear(mech, enc.mech_w, enc.mech_b, silu);
-
-    var concat = new Float32Array(g_feat.length + t_feat.length + m_feat.length);
-    concat.set(g_feat, 0);
-    concat.set(t_feat, g_feat.length);
-    concat.set(m_feat, g_feat.length + t_feat.length);
-
-    var fused_lin = linear(concat, enc.fusion_w, enc.fusion_b);
-    var feat = layerNorm(fused_lin, enc.ln_gamma, enc.ln_beta);
-    for (var i = 0; i < feat.length; i++) feat[i] = silu(feat[i]);
-
-    var h_prev = hidden || new Float32Array(model.hidden_dim || 128);
-    var next_h = model.gru ? gruCell(feat, h_prev, model.gru.w_ih, model.gru.w_hh, model.gru.b_ih, model.gru.b_hh) : feat;
-
-    var actHead = model.actor || {};
-    var h_dense = linear(next_h, actHead.dense_w, actHead.dense_b, silu);
-    var h_res = new Float32Array(next_h.length);
-    for (var i = 0; i < next_h.length; i++) h_res[i] = next_h[i] + h_dense[i];
-    var logits = linear(h_res, actHead.out_w, actHead.out_b);
-
-    return { logits: logits, hidden: next_h };
-  }
-  function chooserFromRecurrent(model) {
-    var hidden = new Float32Array(model.hidden_dim || 128);
-    var lastObs = null, lastRes = null;
-    return function (obs, mask) {
-      var isSameObs = false;
-      if (lastObs && lastObs.length === obs.length) {
-        isSameObs = true;
-        for (var i = 0; i < obs.length; i++) {
-          if (obs[i] !== lastObs[i]) { isSameObs = false; break; }
-        }
-      }
-      if (isSameObs && lastRes) {
-        return choose(lastRes.logits, mask);
-      }
-      var res = forwardFactorizedGRU(model, obs, hidden);
-      lastObs = obs.slice ? obs.slice() : new Float32Array(obs);
-      lastRes = res;
-      hidden = res.hidden;
-      return choose(res.logits, mask);
-    };
   }
   function choose(logits, mask) {
     var best = -1, bestv = -1e99;
@@ -234,7 +148,6 @@
     MAX_LAYERS: MAX_LAYERS, MAX_NEURONS: MAX_NEURONS, MAX_PARAMS: MAX_PARAMS,
     sizes: sizes, countParams: countParams, pytorchCode: pytorchCode,
     forward: forward, choose: choose, randomWeights: randomWeights, draw: draw,
-    silu: silu, sigmoid: sigmoid, layerNorm: layerNorm, linear: linear, gruCell: gruCell,
-    forwardFactorizedGRU: forwardFactorizedGRU, chooserFromRecurrent: chooserFromRecurrent
+    REC: REC, countParamsRecurrent: countParamsRecurrent
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
