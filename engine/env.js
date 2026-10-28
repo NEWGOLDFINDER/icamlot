@@ -546,7 +546,7 @@
         else {
           syncOpp();
           var info = exec(brick);
-          updateMemory(mem, sim, t0, sim.time(), brick, info);
+          updateMemory(mem, sim, t0, sim.time(), ACTIONS.realStep(brick, sim.params().team), info);
           err = info.err || null;
           if (err) { reward -= PEN.erreur; penalties += PEN.erreur; }
           var s1 = scoreNow(); reward += s1 - lastScore; lastScore = s1;
@@ -616,7 +616,7 @@
         if (idx < 0) {
           syncOpp();
           var t0 = sim.time(), info = exec(st);
-          updateMemory(mem, sim, t0, sim.time(), st, info);
+          updateMemory(mem, sim, t0, sim.time(), ACTIONS.realStep(st, sim.params().team), info);
           var s1 = scoreNow(), r = s1 - lastScore; lastScore = s1;
           if (sim.time() >= MATCH - 0.05) r += finishEpisode();
           if (prev) prev.reward += r; else score0 += r;
