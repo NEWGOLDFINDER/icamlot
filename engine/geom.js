@@ -12,6 +12,7 @@
   if (!SPEC || !SPEC.robot || !SPEC.regles) throw new Error('SPEC absente : charger spec/spec.js (généré par node tools/gen_spec.js) avant engine/geom.js.');
   var RG = SPEC.regles, RB = SPEC.robot, CH = RB.chassis, MEC = RB.mecanismes;
   var NAC = MEC.pince_A_et_B, CAN = MEC.canon_C, ASC = MEC.ascenseur_graal, GRA = MEC.graal;
+  var VERINS = MEC.actionneurs_carte.verins;
   function val(x) { return x !== null && typeof x === 'object' && 'valeur' in x ? x.valeur : x; }
   var D2R = Math.PI / 180;
 
@@ -91,23 +92,41 @@
     return o;
   }
 
+  var BAL = new Map();
   /* ---- faisabilité des rotations (portage de balayage, tools/conception_pince.py) ----
      Pour une charge (masque de rangées) et un angle, plage de hauteurs d'axe admissibles [lo, hi] :
      actionneurs <= 350 mm, actionneurs et pierres >= GARDE_SOL, pierres <= 350 mm hors château et hors zones de construction,
      axe dans sa course [HC_MIN, HC_MAX]. Tables au degré, angles 0 à 180 (charge et nacelle symétriques en u). */
-  var CORR = [];
-  (function () {
+  var CORR = [], HC_GEO = [HC_MIN, HC_MAX], MARGE_H = 0, COURSE_V = 0;
+  function buildCorr() {
+    var HM = H_MAX - MARGE_H;
     for (var mask = 0; mask < 8; mask++) for (var ch = 0; ch < 2; ch++) {
       var lo = new Float64Array(181), hi = new Float64Array(181);
       for (var a = 0; a <= 180; a++) {
         var A = actExt(a), Ld = loadExt(mask, a), bas = Math.min(A.zmin, mask ? Ld.zmin : 1e9);
-        var h1 = Math.min(H_MAX - A.zmax, HC_MAX);
-        if (mask && !ch) h1 = Math.min(h1, H_MAX - Ld.zmax);
+        var h1 = Math.min(HM - A.zmax, HC_MAX);
+        if (mask && !ch) h1 = Math.min(h1, HM - Ld.zmax);
         lo[a] = Math.max(GARDE_SOL - bas, HC_MIN); hi[a] = h1;
       }
       CORR[mask * 2 + ch] = { lo: lo, hi: hi };
     }
-  })();
+  }
+  buildCorr();
+  /* Course réelle de l'axe et marge sous 350 mm (paramètres d'équipe, chantier moteur-2) :
+     - course : spec actionneurs_carte.verins.course_mm (100 mm déclarés) ; hcBas : hauteur de l'axe en butée basse (décalage de
+       montage, hypothèse non tranchée) ; l'axe va alors de max(hcBas, 135) à min(hcBas + course, 273) (bornes géométriques) ;
+     - margeHauteur : marge sous 350 mm pendant les rotations (0 par défaut : la règle dit « au plus 350 mm »).
+     configurerCourse(null) rétablit la course géométrique [135, 273] et une marge nulle. Réglage global (même robot pour tous). */
+  function configurerCourse(o) {
+    o = o || {};
+    HC_MIN = o.hcBas != null ? Math.max(HC_GEO[0], +o.hcBas) : HC_GEO[0];
+    HC_MAX = o.hcBas != null ? Math.min(HC_GEO[1], +o.hcBas + (o.course != null ? +o.course : val(VERINS.course_mm))) : HC_GEO[1];
+    MARGE_H = o.margeHauteur > 0 ? +o.margeHauteur : 0;
+    GEO.hcMin = HC_MIN; GEO.hcMax = HC_MAX; GEO.margeHauteur = MARGE_H;
+    buildCorr(); BAL.clear(); COURSE_V++;
+    return { hcMin: HC_MIN, hcMax: HC_MAX, margeHauteur: MARGE_H };
+  }
+  function courseVersion() { return COURSE_V; }
   function normAng(a) { a = ((a % 360) + 360) % 360; return a > 180 ? 360 - a : a; }
   /* plage admissible à l'angle a (prudente entre deux degrés) */
   function corridor(mask, chateau, a) {
@@ -115,7 +134,6 @@
     return [Math.max(T.lo[i0], T.lo[i1]), Math.min(T.hi[i0], T.hi[i1])];
   }
   /* balayage de a0 à a1 : { ok, marge } (marge = min(hi - lo), comme tools/conception_pince.py, course de l'axe comprise) */
-  var BAL = new Map();
   function balayage(mask, chateau, a0, a1) {
     var key = mask + (chateau ? 'c' : 'h') + a0 + ',' + a1, r = BAL.get(key);
     if (r) return { ok: r.ok, marge: r.marge };
@@ -304,7 +322,7 @@
   var api = {
     GEO: GEO, nv: nv, lv: lv, heldFoot: heldFoot, rectPoly: rectPoly, robotPoly: robotPoly, triPoly: triPoly, cannonPoly: cannonPoly, overlap: overlap,
     hullHit: hullHit, hullsHit: hullsHit, convexHull: convexHull, hullPer: hullPer, perimetre: perimetre, robotPtsR: robotPtsR, robotFootprint: robotFootprint,
-    actExt: actExt, loadExt: loadExt, actTop: actTop, stoneRect: stoneRect, stoneZc: stoneZc, corridor: corridor, balayage: balayage, normAng: normAng,
+    actExt: actExt, loadExt: loadExt, actTop: actTop, stoneRect: stoneRect, stoneZc: stoneZc, corridor: corridor, balayage: balayage, normAng: normAng, configurerCourse: configurerCourse, courseVersion: courseVersion,
     nacPtsR: nacPtsR, canonPtsR: canonPtsR, canonReach: canonReach, fourchePtsR: fourchePtsR, fourcheZ: fourcheZ, faceToRobot: faceToRobot, toTable: toTable, cState: cState
   };
   root.GEOM = api;

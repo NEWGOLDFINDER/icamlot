@@ -4,7 +4,7 @@
 (function (root) {
   var SPEC = root.SPEC, G = root.GEOM;
   if (!SPEC || !G) throw new Error('SPEC ou GEOM absents : charger spec/spec.js puis engine/geom.js avant engine/engine.js.');
-  var RG = SPEC.regles, RB = SPEC.robot, NAC = RB.mecanismes.pince_A_et_B, CAN = RB.mecanismes.canon_C, ASC = RB.mecanismes.ascenseur_graal, ENT = RB.entrainement;
+  var RG = SPEC.regles, RB = SPEC.robot, NAC = RB.mecanismes.pince_A_et_B, CAN = RB.mecanismes.canon_C, ASC = RB.mecanismes.ascenseur_graal, ENT = RB.entrainement, VER = RB.mecanismes.actionneurs_carte.verins;
   function val(x) { return x !== null && typeof x === 'object' && 'valeur' in x ? x.valeur : x; }
   var GE = G.GEO, D_P = GE.dPierre, FACE = GE.face, HULL_R = GE.hullR, H_MAX = GE.hMax, HC_MIN = GE.hcMin, HC_MAX = GE.hcMax, BORDURE = GE.bordure;
   var GR = GE.graal, FO = GE.fourche, D2R = Math.PI / 180;
@@ -14,6 +14,9 @@
   var DEF = {
     v: val(ENT.vitesse_lineaire_mm_s) / 1000, va: val(ENT.vitesse_approche_mm_s) / 1000, w: val(ENT.vitesse_rotation_deg_s),
     vz: NAC.vitesse_chariot_mm_s, trot: NAC.rotation_duree_s_pour_90deg, tvac: NAC.prise_vide_s, trel: NAC.relache_s,
+    /* rampes des vérins Z, ajoutées à chaque mouvement d'axe : 1,25 s pour 100 mm avec rampes contre 100 / 84 = 1,19 s à vide
+       (spec actionneurs_carte.verins), soit 0,06 s */
+    trz: val(VER.duree_100mm_avec_rampes_s) - val(VER.course_mm) / val(VER.vitesse_a_vide_mm_s),
     /* hypothèse héritée : départ au centre de la salle du trône, face A vers +x */
     x0: 250, y0: 1000, h0: 0,
     /* Graal au départ (repère jaune) : centre (gx, gy), ga = angle (repère table) de l'axe perpendiculaire aux anses.
@@ -129,7 +132,9 @@
   function makeSim(P, opts) {
     opts = opts || {};
     P = Object.assign({}, DEF, P || {});
-    var V = P.v * 1000, VA = P.va * 1000, WR = P.w, VZ = P.vz, TV = P.tvac, TL = P.trel, TR = P.trot, WROT = 90 / TR;
+    /* course de l'axe des nacelles : celle de GEOM au moment de la création (GEOM.configurerCourse) */
+    var HC_MIN = GE.hcMin, HC_MAX = GE.hcMax;
+    var V = P.v * 1000, VA = P.va * 1000, WR = P.w, VZ = P.vz, TRZ = P.trz > 0 ? P.trz : 0, TV = P.tvac, TL = P.trel, TR = P.trot, WROT = 90 / TR;
     var OWN_CASTLE = castleOf(P.team), OWN_COUR = P.team === 'blue' ? COUR_B : COUR;
     function oppAt(t) { return opts.oppPoseAt ? opts.oppPoseAt(t) : null; }
     function lidarXY(p) { var n = nv(p.h); return [p.x - 30 * n[0], p.y - 30 * n[1]]; }
@@ -380,16 +385,16 @@
     var pathCache = PATH_CACHE;
     /* profil (rot, hc) de a0 à a1 en partant de h0 : la hauteur ne bouge que si le couloir l'impose ; points clés simplifiés */
     function rotPath(mask, ch, a0, h0, a1) {
-      var key = mask + ',' + (ch ? 1 : 0) + ',' + a0.toFixed(1) + ',' + h0.toFixed(1) + ',' + a1.toFixed(1) + ',' + VZ + ',' + WROT, r = pathCache.get(key);
+      var key = mask + ',' + (ch ? 1 : 0) + ',' + a0.toFixed(1) + ',' + h0.toFixed(1) + ',' + a1.toFixed(1) + ',' + VZ + ',' + TRZ + ',' + WROT + ',' + G.courseVersion(), r = pathCache.get(key);
       if (r) return r;
       var n = Math.max(1, Math.ceil(Math.abs(a1 - a0))), A = [], H = [], LO = [], HI = [], m = 1e9, h = h0, i, j, kk;
       for (i = 0; i <= n; i++) { var a = a0 + (a1 - a0) * i / n, c = G.corridor(mask, ch, a); m = Math.min(m, c[1] - c[0]); h = Math.max(c[0], Math.min(c[1], h)); A.push(a); H.push(h); LO.push(c[0]); HI.push(c[1]); }
       if (m < 0) { r = { ok: false, marge: m }; pathCache.set(key, r); return r; }
       var keys = [];
-      if (Math.abs(H[0] - h0) > 0.05) keys.push({ rot: a0, hc: H[0], d: Math.max(Math.abs(H[0] - h0) / VZ, 0.1) });
+      if (Math.abs(H[0] - h0) > 0.05) keys.push({ rot: a0, hc: H[0], d: Math.max(Math.abs(H[0] - h0) / VZ + TRZ, 0.1) });
       function fits(i0, j0) { for (var q = i0 + 1; q < j0; q++) { var hl = H[i0] + (H[j0] - H[i0]) * (q - i0) / (j0 - i0); if (hl < LO[q] - 1e-6 || hl > HI[q] + 1e-6) return false; } return true; }
       i = 0;
-      while (i < n) { j = i + 1; while (j < n && fits(i, j + 1)) j++; keys.push({ rot: A[j], hc: H[j], d: Math.max(Math.abs(A[j] - A[i]) / WROT, Math.abs(H[j] - H[i]) / VZ) }); i = j; }
+      while (i < n) { j = i + 1; while (j < n && fits(i, j + 1)) j++; keys.push({ rot: A[j], hc: H[j], d: Math.max(Math.abs(A[j] - A[i]) / WROT, Math.abs(H[j] - H[i]) / VZ + (Math.abs(H[j] - H[i]) > 0.05 ? TRZ : 0)) }); i = j; }
       for (kk = 0; kk < keys.length; kk++) keys[kk].d = Math.max(keys[kk].d, 0.02);
       r = { ok: true, marge: m, keys: keys };
       if (pathCache.size > 2000) pathCache.clear();
@@ -421,7 +426,7 @@
         }
         if (q.hc != null && Math.abs(q.hc - cur.hc) > 0.5) {
           var why = hcMsg(f, q.hc, cur.rot, ch); if (why) return { err: q.label ? q.label + ' : ' + why + '.' : why + '.', at: i };
-          t += Math.max(Math.abs(q.hc - cur.hc) / VZ, 0.1); cur = { hc: q.hc, rot: cur.rot }; keys.push({ t: t, hc: cur.hc, rot: cur.rot });
+          t += Math.max(Math.abs(q.hc - cur.hc) / VZ + TRZ, 0.1); cur = { hc: q.hc, rot: cur.rot }; keys.push({ t: t, hc: cur.hc, rot: cur.rot });
         }
       }
       return { keys: keys, D: t, end: cur };
@@ -1141,7 +1146,7 @@
       var why = hcMsg(f, hc, s[f].rot, heldInCastle(poseNow(), f, [s[f].rot]));
       if (why) { err((label || 'Pince ' + f) + ' : ' + why + '.'); throw ABORT; }
       gripCheck(f, [{ hc: hc, rot: s[f].rot }], label);
-      var d = Math.max(Math.abs(hc - s[f].hc) / VZ, 0.1); s[f].hc = hc; adv(d, label);
+      var d = Math.max(Math.abs(hc - s[f].hc) / VZ + TRZ, 0.1); s[f].hc = hc; adv(d, label);
     }
     function rr(f, deg, label) {
       flushPend(); if (Math.abs(deg - s[f].rot) < 0.5) return;

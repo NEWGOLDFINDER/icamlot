@@ -59,7 +59,7 @@ ok(/rotation impossible sous 350 mm/.test(r1.infos[1].err || ''), 'pile tournée
 var r2 = run([{ a: 'prendre', f: 'B', mode: 'pierre', s: 'P1.3' }, { a: 'tourner', f: 'B', r: 180 }]);
 ok(/rotation impossible sous 350 mm/.test(r2.infos[1].err || '') && r2.infos[1].dt === 0, 'retournement à 180° d\'une pierre en rangée 3 refusé sans avancer le temps', r2.infos[1].err);
 var r3 = run([{ a: 'tourner', f: 'A', r: 180 }, { a: 'tourner', f: 'A', r: 0 }]);
-ok(!r3.infos[0].err && !r3.infos[1].err && proche(r3.infos[0].dt, 3, 0.05), 'nacelle vide 0 → 180° exécutée (3 s)', r3.infos[0].dt.toFixed(2) + ' s');
+ok(!r3.infos[0].err && !r3.infos[1].err && r3.infos[0].dt >= 3 - 0.05 && r3.infos[0].dt <= 3 + 4 * E.DEF.trz + 0.05, 'nacelle vide 0 → 180° exécutée (3 s + rampes des vérins Z)', r3.infos[0].dt.toFixed(2) + ' s');
 
 /* ------------------------------------------------------------------ */
 titre('Programme de référence (golden)');
@@ -206,6 +206,7 @@ ok(!excD, 'makeDuel + run sans exception', excD && excD.message);
 
 /* ------------------------------------------------------------------ */
 titre('Chantier moteur-2');
+ok(proche(E.DEF.trz, 1.25 - 100 / 84, 1e-9) && E.DEF.vz === L.SPEC.robot.mecanismes.pince_A_et_B.vitesse_chariot_mm_s, 'vérins Z : vitesse et rampes lues dans la spec', E.DEF.vz + ' mm/s, ' + E.DEF.trz.toFixed(3) + ' s par mouvement');
 /* mirrorStep : dépôt et trajectoire en repère réel mis en miroir (comme ACTIONS.realStep) */
 var mD = E.mirrorStep({ a: 'deposer', f: 'A', q: 'pile', x: 300, y: 620, ang: 30, r: 0 }), mT = E.mirrorStep({ a: 'traj', pts: [{ x: 500, y: 400, a: 10 }, { x: 600, y: 700 }] });
 ok(mD.x === 2700 && mD.ang === 150 && mD.y === 620 && mT.pts[0].x === 2500 && mT.pts[0].a === 170 && mT.pts[1].x === 2400 && mT.pts[1].a === undefined, 'mirrorStep : deposer.x/ang et points de traj en miroir');
