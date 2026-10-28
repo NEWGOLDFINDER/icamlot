@@ -515,7 +515,7 @@
       "largeur": 60,
       "deploiement_s": 2.0,
       "mise_en_route_s": 0.0,
-      "cadence_boulets_s": 0.8,
+      "cadence_boulets_s": 1.25,
       "elevation_deg": 35,
       "position_de_tir_imposee_dans_le_simulateur": "salle du trône (choix de conception, pas une règle)",
       "position_sur_face": {
@@ -538,7 +538,8 @@
         "statut": "declare",
         "source": "équipe, 2026-10-28",
         "valeur": "une seule sortie « séance de tir » à activer ; l'ESP32 gère le reste"
-      }
+      },
+      "cadence_unite": "boulets par seconde (nom de clé historique, lu ainsi par engine/engine.js) ; 1,25 tir/s déclaré par l'équipe = 0,8 s entre deux boulets"
     },
     "ascenseur_graal": {
       "statut": "propose",
@@ -670,7 +671,7 @@
         "vitesse_approche_mm_s": 200,
         "sortie_canon_s": 2.0,
         "mise_en_route_canon_s": 0.0,
-        "cadence_tir": "1,25 tir/s → 0,8 s entre deux boulets"
+        "cadence_tir": "1,25 tir/s (cadence_boulets_s = 1,25 boulets/s)"
       },
       "non_fourni": "temps de lâcher (relache_s = 0,4 s, hérité)"
     }
