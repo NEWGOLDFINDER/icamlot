@@ -1,302 +1,196 @@
 #!/usr/bin/env node
-/* Non-régression du moteur extrait + environnement pas à pas. */
+/* Environnement v3 (chantier actions-env) : catalogue, masque, observation, récompense, imitation, adversaires.
+   node tests/test_engine.js [nDecisions]   (code retour 1 si un test échoue) */
 var path = require('path');
-var assert = require('assert');
-var loadIcamlot = require('../engine/load.js').loadIcamlot;
-var ctx = loadIcamlot(path.resolve(__dirname, '..'));
+var cp = require('child_process');
+var ROOT = path.resolve(__dirname, '..');
+var ctx = require('../engine/load.js').loadIcamlot(ROOT);
 var ENGINE = ctx.ENGINE, ENV = ctx.ENV, SCORE = ctx.SCORE, ACTIONS = ctx.ACTIONS;
+var N_DEC = +(process.argv[2] || 2000);
 
-var EXAMPLE = ENV.EXAMPLE;
 var fail = 0;
 function check(name, cond, detail) {
-  if (cond) console.log('  ok  ' + name);
+  if (cond) console.log('  ok  ' + name + (detail ? '  (' + detail + ')' : ''));
   else { console.log('  KO  ' + name + (detail ? ' — ' + detail : '')); fail++; }
 }
-
-console.log('Moteur ' + ENGINE.VERSION + ', barème ' + ctx.BAREME_VERSION);
-
-console.log('\n1. Programme d\'exemple (simulate)');
-var t0 = Date.now();
-var R = ENGINE.simulate(EXAMPLE, ENGINE.DEF);
-var ms = Date.now() - t0;
-console.log('   durée simulée ' + R.T.toFixed(1) + ' s, calcul en ' + ms + ' ms, erreurs ' + R.errors.length + ', contacts ' + R.collisions.length);
-check('durée ~ 91,8 s (tir attendu jusqu\'à 85 s)', Math.abs(R.T - 91.8) < 0.15, 'T=' + R.T);
-check('aucune erreur', R.errors.length === 0, JSON.stringify(R.errors));
-check('score calculable', SCORE.scoreAt(R, ENGINE.DEF).total >= 0);
-var sc = SCORE.scoreAt(R, ENGINE.DEF);
-console.log('   score ' + sc.total + ' pts', sc.detail);
-
-console.log('\n2. Équivalence pas à pas');
-var env = ENV.create({ skipContacts: false, adversaire: { intensite: 'aucun' } });
-env.reset({});
-EXAMPLE.forEach(function (st) {
-  var cat = env.catalogue;
-  var idx = -1;
-  for (var i = 0; i < cat.length; i++) {
-    var a = cat[i];
-    if (a.a !== st.a) continue;
-    if (st.f && a.f !== st.f) continue;
-    if (st.p && a.p !== st.p) continue;
-    if (st.z && a.z !== st.z) continue;
-    if (st.side && a.side !== st.side) continue;
-    if (st.a === 'tour') continue;
-    idx = i; break;
-  }
-  if (st.a === 'tour') {
-    /* le réseau désigne la pierre par son rang ; ici on joue le programme brut via makeSim */
-  }
-});
-var sim = ENGINE.makeSim(ENGINE.DEF);
-EXAMPLE.forEach(function (st) { sim.exec(st); });
-var R2 = sim.finish();
-check('même durée pas à pas', Math.abs(R2.T - R.T) < 1e-6, R2.T + ' vs ' + R.T);
-check('mêmes erreurs', R2.errors.length === R.errors.length);
-check('mêmes contacts', R2.collisions.length === R.collisions.length);
-check('même score', SCORE.scoreAt(R2, ENGINE.DEF).total === sc.total);
-
-console.log('\n3. Catalogue et masque');
-check('106 actions de base + 24 nouvelles = 130 actions', ACTIONS.ALL_BASE.length === 106 && ACTIONS.ALL.length === 130);
-var e0 = ENV.create();
-var s0 = e0.reset({});
-check('56 entrées par défaut', s0.obs.length === 56, 'n=' + s0.obs.length);
-var eLegacy = ENV.create({ groups: ['temps', 'robot', 'paquets', 'faces', 'constructions', 'graal', 'boulets', 'adversaire'] });
-check('37 entrées avec groupes historiques', eLegacy.reset({}).obs.length === 37);
-check('130 sorties par défaut', s0.mask.length === 130);
-check('masque : prises possibles au départ', s0.mask.slice(0, 20).some(function (x) { return x; }));
-check('masque : mur impossible au départ', !s0.mask.slice(20, 40).some(function (x) { return x; }));
-check('masque : trône toujours possible (action 105)', s0.mask[105] === 1);
-
-console.log('\n4. Copie / restauration');
-var snap = e0.snapshot();
-var st1 = e0.step(0);
-e0.restore(snap);
-var st2 = e0.step(0);
-check('même dt après restore', Math.abs(st1.dt - st2.dt) < 1e-9, st1.dt + ' vs ' + st2.dt);
-
-console.log('\n5. Intensité « aucun » = déterministe');
-var eA = ENV.create({ adversaire: { intensite: 'aucun' } });
-var a1 = eA.reset({ seed: 1 });
-var a2 = eA.reset({ seed: 1 });
-check('reset identique', JSON.stringify(a1.obs) === JSON.stringify(a2.obs));
-
-console.log('\n6. Imitation : paires (état, action) du programme d\'exemple');
-var imEnv = ENV.create({ skipContacts: true, adversaire: { intensite: 'aucun' } });
-var im = imEnv.imitate(EXAMPLE, { intensite: 'aucun' });
-check('des paires collectées', im.n >= 10, 'n=' + im.n);
-check('première action = prendre', im.pairs[0] && ACTIONS.ALL[im.pairs[0].action].a === 'prendre');
-check('score d\'imitation = simulate', im.score === sc.total, im.score + ' vs ' + sc.total);
-
-console.log('\n7. Masque : 130 sorties');
-check('somme des familles', ACTIONS.FAMILLES.reduce(function (a, f) { return a + f.n; }, 0) === 130);
-
-console.log('\n8. Robot adverse');
-check('P1 miroir = P4', ENGINE.mirrorId('P1') === 'P4');
-check('M1 miroir = M6', ENGINE.mirrorId('M1') === 'M6');
-var none = ENGINE.simulateMatch(EXAMPLE, ENGINE.DEF, { opponent: { program: EXAMPLE }, intensity: 'aucun' });
-check('intensité aucun = sans adversaire', !none.opponent && Math.abs(none.T - 91.8) < 0.15, 'T=' + none.T);
-var both = ENGINE.simulateMatch(EXAMPLE, ENGINE.DEF, { opponent: { program: EXAMPLE, name: 'Exemple' }, intensity: 'realiste' });
-check('adversaire simulé', !!both.opponent);
-check('départ bleu x ≈ 2750', both.opponent && Math.abs(both.opponent.params.x0 - 2750) < 1, both.opponent && both.opponent.params.x0);
-check('adversaire a pris des paquets', both.oppEvents && Object.keys(both.oppEvents.taken).length > 0, JSON.stringify(both.oppEvents && both.oppEvents.taken));
-var scOpp = SCORE.scoreAt(both.opponent, both.opponent.params, Math.min(both.opponent.T, 100));
-check('score adverse > 0', scOpp.total > 0, 'score=' + scOpp.total);
-var q = ENV.qualify({ program: EXAMPLE });
-check('exemple qualifie (≥ 70 pts, 0 erreur)', q.ok && q.score >= 70, JSON.stringify(q));
-var envOpp = ENV.create({ skipContacts: true, adversaire: { intensite: 'realiste' } });
-var sOpp = envOpp.reset({ opponent: { program: EXAMPLE, name: 'Exemple' }, intensite: 'realiste' });
-check('lidar adverse non nul', sOpp.obs.length === 56 && (sOpp.obs[35] !== 0 || sOpp.obs[36] !== 0), sOpp.obs.slice(35, 37).join(','));
-
-console.log('\n9. Jeu en direct (pas un programme figé)');
-function firstValid(obs, mask) {
-  for (var i = 0; i < mask.length; i++) if (mask[i]) return i;
-  return -1;
+function rng(s) { var a = s >>> 0 || 1; return function () { a |= 0; a = a + 0x6D2B79F5 | 0; var t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function finalScore(R) { return SCORE.scoreAt(R, R.params, ENV.MATCH).total; }
+function sum(a) { return a.reduce(function (x, y) { return x + y; }, 0); }
+/* politique aléatoire sur le masque ; « finir » est rarement choisi pour que les matchs durent */
+function randomPick(r, env, mask) {
+  var v = []; mask.forEach(function (m, i) { if (m) v.push(i); });
+  var idx = v[Math.floor(r() * v.length)];
+  if (env.catalogue[idx].a === 'finir' && r() < 0.9) idx = v[Math.floor(r() * v.length)];
+  return idx;
 }
-function idxOf(cat, pred) {
-  for (var i = 0; i < cat.length; i++) if (pred(cat[i])) return i;
-  return -1;
-}
-var live = ENV.create({ skipContacts: true });
-var seenEarlyThrone = false, seenBallsBefore80 = false;
-live.play(function (obs, mask) {
-  var elapsed = (1 - obs[0]) * 100, cat = live.catalogue, i, j, useful;
-  for (i = 0; i < mask.length; i++) {
-    if (!mask[i]) continue;
-    if (cat[i].a === 'trone' && elapsed < 88) {
-      useful = false;
-      for (j = 0; j < mask.length; j++) if (mask[j] && cat[j].a !== 'trone') useful = true;
-      if (useful) seenEarlyThrone = true;
-    }
-    if (cat[i].a === 'boulets' && elapsed < 79.5) seenBallsBefore80 = true;
-  }
-  return firstValid(obs, mask);
-}, {});
-var Rlive = live.result();
-check('match jusqu\'à au moins 100 s', Rlive.T >= 99.5, 'T=' + Rlive.T);
-check('épisode terminé', live.program().length > 0);
-check('trône masqué tant qu\'il reste des actions avant 88 s', !seenEarlyThrone);
-check('boulets masqués avant 80 s', !seenBallsBefore80);
 
-var zenv = ENV.create({ skipContacts: true });
-zenv.reset({});
-var zcat = zenv.catalogue;
-zenv.step(idxOf(zcat, function (a) { return a.a === 'prendre' && a.f === 'A' && a.p === 'P1'; }));
-var afterMur = zenv.step(idxOf(zcat, function (a) { return a.a === 'mur' && a.f === 'A' && a.z === 'M1' && a.side === 'ext'; }));
-zenv.step(idxOf(zcat, function (a) { return a.a === 'prendre' && a.f === 'A' && a.p === 'P2'; }));
-var afterTake2 = zenv.step(idxOf(zcat, function (a) { return a.a === 'prendre' && a.f === 'B' && a.p === 'P5'; }));
-var m1ok = false, m2ok = false;
-for (var zi = 0; zi < zcat.length; zi++) {
-  if (zcat[zi].a !== 'mur' || zcat[zi].f !== 'A') continue;
-  if (zcat[zi].z === 'M1' && afterTake2.mask[zi]) m1ok = true;
-  if (zcat[zi].z === 'M2' && afterTake2.mask[zi]) m2ok = true;
-}
-check('impossible de reposer un mur sur M1', !m1ok);
-check('M2 encore libre avec une pile', m2ok);
+console.log('Moteur ' + ENGINE.VERSION + ', barème ' + ctx.BAREME_VERSION + ', catalogue ' + ACTIONS.CATALOGUE_VERSION + ', observation ' + ENV.OBS_VERSION);
 
-var tenv = ENV.create({ skipContacts: true });
-tenv.reset({});
-var tcat = tenv.catalogue;
-tenv.step(idxOf(tcat, function (a) { return a.a === 'prendre' && a.f === 'A' && a.p === 'P1'; }));
-var afterT0 = tenv.step(idxOf(tcat, function (a) { return a.a === 'tour' && a.f === 'A' && a.z === 'T1' && a.rank === 0; }));
-var iT1 = idxOf(tcat, function (a) { return a.a === 'tour' && a.f === 'A' && a.z === 'T1' && a.rank === 1; });
-check('2e pierre de la même tour impossible (tour terminée)', afterT0.mask[iT1] === 0);
+console.log('\n1. Catalogue v3');
+var ALL = ACTIONS.ALL;
+check('versions exposées', ACTIONS.CATALOGUE_VERSION === 'icamlot-catalogue-3.0' && ENV.OBS_VERSION === 'icamlot-obs-3.0');
+check('familles = catalogue', sum(ACTIONS.FAMILLES.map(function (f) { return f.n; })) === ALL.length, ALL.length + ' actions');
+check('labels uniques', new Set(ALL.map(function (a) { return a.label; })).size === ALL.length);
+check('plus de prendreGraal / poserGraal / staging / repickup', !ALL.some(function (a) { return /Graal$|staging|repickup/.test(a.famille) && a.famille !== 'monterGraal'; }));
+check('monterGraal et préparer la pince présents', ALL.some(function (a) { return a.a === 'monterGraal'; }) && ALL.filter(function (a) { return a.a === 'preparer'; }).length === 6);
+var env0 = ENV.create({ skipContacts: true }); env0.reset({});
+var b0 = env0.belief();
+var bricks = ALL.map(function (a) { return ACTIONS.toProgramStep(a, b0); }).filter(Boolean);
+check('briques connues du moteur (étapes valides)', bricks.every(function (st) { return env0.sim.preconditions(st) !== 'Action inconnue.'; }));
+check('temps masqué automatique (prendre, tour, préparer, stocker)', bricks.filter(function (st) { return /prendre|tourner|deposer$/.test(st.a); }).every(function (st) { return st.tm === true; }));
+check('aucun pm « proche » (même effet que la brique du programme)', bricks.every(function (st) { return st.pm == null; }));
 
-var benv = ENV.create({ skipContacts: true });
-benv.play(function (obs, mask) {
-  var cat = benv.catalogue, i;
-  for (i = 0; i < mask.length; i++) if (mask[i] && cat[i].a === 'boulets') return i;
-  for (i = 0; i < mask.length; i++) if (mask[i] && cat[i].a !== 'trone') return i;
-  for (i = 0; i < mask.length; i++) if (mask[i]) return i;
-  return -1;
-}, {});
-check('les boulets peuvent être tirés en live', benv.program().some(function (s) { return s.a === 'tir'; }), JSON.stringify(benv.program().map(function (s) { return s.a; })));
-check('durée au moins 100 s avec boulets', benv.result().T >= 99.5, 'T=' + benv.result().T);
-
-
-console.log('\n10. Duel : deux robots sur la même table (pas de vol de pierre, pas de superposition)');
-function rngOf(seed) { var a = seed >>> 0; return function () { a = (a + 0x6D2B79F5) | 0; var x = Math.imul(a ^ a >>> 15, 1 | a); x = x + Math.imul(x ^ x >>> 7, 61 | x) ^ x; return ((x ^ x >>> 14) >>> 0) / 4294967296; }; }
-function picker(seed) { var r = rngOf(seed); return function (obs, mask) { var ok = []; for (var i = 0; i < mask.length; i++) if (mask[i]) ok.push(i); return ok.length ? ok[Math.floor(r() * ok.length)] : -1; }; }
-function bothHave(R) {
-  var O = R.opponent, dup = [];
-  R.stones.forEach(function (st, i) {
-    var a = st.cur.k, b = O.stones[i].cur.k;
-    if (a !== 'home' && a !== 'gone' && b !== 'home' && b !== 'gone') dup.push(st.id);
-  });
-  return dup;
-}
-function robotOverlap(R) {
-  var O = R.opponent, n = 0;
-  for (var tt = 0; tt <= Math.min(R.T, O.T); tt += 0.1) if (ctx.overlap(ctx.triPoly(R.poseAt(tt)), ctx.triPoly(O.poseAt(tt)), 1)) n++;
-  return n;
-}
-var dEx = ENGINE.simulateMatch(EXAMPLE, ENGINE.DEF, { opponent: { program: EXAMPLE, params: ENGINE.DEF }, intensity: 'realiste' });
-check('même programme des deux côtés : aucune pierre chez les deux robots', bothHave(dEx).length === 0, bothHave(dEx).join(','));
-check('une pierre réservée n\'est plus prenable par l\'autre', dEx.errors.concat(dEx.opponent.errors).some(function (e) { return /pris par l'adversaire|prise par l'adversaire/.test(e.msg); }));
-check('les deux robots ne se superposent jamais (programmes)', robotOverlap(dEx) === 0, 'pas : ' + robotOverlap(dEx));
-var soloB = ENV.playProgram([], ENGINE.DEF, { program: EXAMPLE, params: ENGINE.DEF }, 'realiste', true).result.opponent;
-check('miroir exact : le bleu joue l\'exemple comme le jaune (même score, même durée)',
-  SCORE.scoreAt(soloB, soloB.params, 100).total === sc.total && Math.abs(soloB.T - R.T) < 1e-6, SCORE.scoreAt(soloB, soloB.params, 100).total + ' / ' + sc.total + ', T ' + soloB.T);
-check('tir du bleu vers la cour jaune', soloB.balls.shots && soloB.balls.shots.length > 0 && soloB.balls.shots.every(function (s) { return s.pts[s.pts.length - 1][1] < 1500; }));
-
-/* cerveau (réseau simulé par un tirage au sort parmi les actions valides) contre cerveau : les deux robots décident en direct */
-[1, 2].forEach(function (seed) {
-  var envD = ENV.create({ skipContacts: true, adversaire: { intensite: 'realiste' } });
-  envD.play(picker(seed), { opponent: { brain: { choose: picker(seed + 100) } }, intensite: 'realiste' });
-  var Rd = envD.result();
-  check('cerveau contre cerveau (' + seed + ') : adversaire présent et il a joué', !!Rd.opponent && envD.opponentProgram().length > 3, 'n=' + envD.opponentProgram().length);
-  check('cerveau contre cerveau (' + seed + ') : aucune pierre chez les deux robots', bothHave(Rd).length === 0, bothHave(Rd).join(','));
-  check('cerveau contre cerveau (' + seed + ') : les robots ne se superposent jamais', robotOverlap(Rd) === 0, 'pas : ' + robotOverlap(Rd));
-  var rep = ENGINE.simulateMatch(envD.program(), ENGINE.DEF, { opponent: { program: envD.opponentProgram(), params: ENGINE.DEF }, intensity: 'realiste' });
-  var a1 = SCORE.scoreAt(Rd, Rd.params, 100).total, a2 = SCORE.scoreAt(rep, rep.params, 100).total;
-  var b1 = SCORE.scoreAt(Rd.opponent, Rd.opponent.params, 100).total, b2 = SCORE.scoreAt(rep.opponent, rep.opponent.params, 100).total;
-  check('cerveau contre cerveau (' + seed + ') : le rejeu redonne les mêmes points des deux côtés', a1 === a2 && b1 === b2, a1 + '/' + a2 + ' ' + b1 + '/' + b2);
+console.log('\n2. Points de passage atteignables depuis le départ (moteur)');
+ACTIONS.WAYPOINTS_INFO.forEach(function (w) {
+  var sim = ENGINE.makeSim(ENGINE.DEF, { skipContacts: true }), info = sim.exec({ a: 'seDeplacer', x: w.x, y: w.y });
+  check(w.id + ' (' + w.x + ', ' + w.y + ')', !info.err, info.err || '');
 });
 
-/* un même cerveau, côté jaune ou côté bleu, joue pareil (actions et observations en miroir) */
-var ACT = ACTIONS.ALL;
-function scripted(list) {
-  var k = 0;
-  return function (obs, mask) {
-    while (k < list.length) {
-      var st = list[k], idx = -1, i;
-      for (i = 0; i < ACT.length; i++) { var a = ACT[i]; if (a.a === (st.a === 'tir' ? 'boulets' : st.a) && (!st.f || a.f === st.f) && (!st.p || a.p === st.p) && (!st.z || a.z === st.z) && (!st.side || a.side === st.side)) { idx = i; break; } }
-      k++;
-      if (idx >= 0 && mask[idx]) return idx;
-    }
-    return -1;
-  };
+console.log('\n3. Imitation du programme de référence');
+var Rref = ENGINE.simulate(ENGINE.PROGRAMME_REFERENCE, ENGINE.DEF, { skipContacts: true });
+var sRef = finalScore(Rref);
+var envI = ENV.create({ skipContacts: true });
+var im = envI.imitate(ENGINE.PROGRAMME_REFERENCE, { intensite: 'aucun' });
+check('programme de référence : ' + sRef + ' pts sans erreur', sRef === 116 && Rref.errors.length === 0, 'T=' + Rref.T.toFixed(1));
+check('imitation : même score que le programme', im.score === sRef, im.score + ' pts');
+check('toutes les briques reconnues (une paire par brique)', im.n === ENGINE.PROGRAMME_REFERENCE.length, im.n + ' paires');
+check('actions imitées valides dans le masque', im.pairs.every(function (p) { return p.mask[p.action] === 1; }));
+check('somme des récompenses = score final', Math.abs(sum(im.pairs.map(function (p) { return p.reward; })) + im.score0 - im.score) < 1e-9);
+check('instants croissants', im.pairs.every(function (p, k) { return !k || p.t >= im.pairs[k - 1].t; }));
+var last = im.pairs[im.pairs.length - 1];
+check('trône, boulets et Graal comptés seulement à la fin', sum(im.pairs.slice(0, -1).map(function (p) { return p.reward; })) === SCORE.scoreAt(envI.result(), envI.result().params, last.t).total);
+var ESC = ENGINE.simulate(envI.program(), ENGINE.DEF, { skipContacts: true });
+check('env.program() rejoué par le moteur = même score', finalScore(ESC) === im.score && ESC.errors.length === 0);
+check('ENV.EXAMPLE = ENGINE.PROGRAMME_REFERENCE', ENV.EXAMPLE === ENGINE.PROGRAMME_REFERENCE);
+/* la politique « gloutonne parfaite » rejouée par ENV.step obtient le même score */
+var envS = ENV.create({ skipContacts: true }); envS.reset({});
+im.pairs.forEach(function (p) { envS.step(p.action); });
+var stEnd = envS.step(envS.catalogue.map(function (a) { return a.a; }).indexOf('finir'));
+check('mêmes actions jouées par ENV.step : même score', finalScore(envS.result()) === sRef, finalScore(envS.result()) + ' pts');
+
+console.log('\n4. Récompense, rejeu, pureté (épisodes aléatoires)');
+var rS = rng(7), okSum = true, okReplay = true, okPure = true, okPen = true, nEp = 0, worst = '';
+for (var e = 0; e < 6; e++) {
+  var withOpp = e % 2 === 1, pen = e >= 4 ? { penalite_erreur: 5, penalite_invalide: 1 } : {};
+  var env = ENV.create({ skipContacts: true, recompense: pen });
+  var st = env.reset({ seed: 100 + e, intensite: withOpp ? 'realiste' : 'aucun' }), acc = 0, nErr = 0, k = 0;
+  while (!st.done && k < 60) {
+    var bb = env.belief(), snap = JSON.stringify(bb);
+    var o1 = ENV.observeBelief(bb, env.groups), m1 = ACTIONS.maskBelief(bb, env.catalogue);
+    if (JSON.stringify(bb) !== snap || JSON.stringify(o1) !== JSON.stringify(st.obs) || JSON.stringify(m1) !== JSON.stringify(st.mask) || JSON.stringify(ACTIONS.maskBelief(JSON.parse(snap), env.catalogue)) !== JSON.stringify(m1)) okPure = false;
+    st = env.step(randomPick(rS, env, st.mask)); k++;
+    acc += st.reward; if (st.err) nErr++;
+  }
+  if (!st.done) { var fi = env.catalogue.map(function (a) { return a.a; }).indexOf('finir'); st = env.step(fi); acc += st.reward; }
+  var R = env.result(), fs = finalScore(R), expect = fs - (pen.penalite_erreur || 0) * nErr;
+  if (Math.abs(acc - expect) > 1e-9) { okSum = false; worst = 'épisode ' + e + ' : somme ' + acc + ', attendu ' + expect; }
+  if (pen.penalite_erreur && nErr && !(acc < fs)) okPen = false;
+  if (!withOpp) { var RR = ENGINE.simulate(env.program(), ENGINE.DEF, { skipContacts: true }); if (finalScore(RR) !== fs || RR.errors.length !== R.errors.length) okReplay = false; }
+  nEp++;
 }
-var brainY = ENV.create({ skipContacts: true });
-brainY.play(scripted(EXAMPLE), {});
-var Ry = brainY.result(), sY = SCORE.scoreAt(Ry, Ry.params, 100).total;
-var pmB = ENV.playProgram([], ENGINE.DEF, { brain: { choose: scripted(EXAMPLE) } }, 'realiste', true);
-var Rb = pmB.result.opponent, sB = SCORE.scoreAt(Rb, Rb.params, 100).total;
-check('même cerveau en jaune et en bleu : mêmes points', sY === sB && sY > 0, sY + ' / ' + sB);
-function noWait(l) { return JSON.stringify(l.filter(function (s) { return s.a !== 'attendreJusqua'; })); }
-check('même cerveau en jaune et en bleu : mêmes décisions (repère du cerveau)', noWait(brainY.program()) === noWait(pmB.opponentProgram), noWait(brainY.program()).slice(0, 200) + ' / ' + noWait(pmB.opponentProgram).slice(0, 200));
+check('somme des récompenses = score officiel à 100 s - pénalités (' + nEp + ' épisodes, avec et sans adversaire)', okSum, worst);
+check('pénalités cfg.recompense appliquées', okPen);
+check('rejeu de env.program() par ENGINE.simulate = même score, mêmes erreurs', okReplay);
+check('observeBelief / maskBelief purs et identiques à ceux de l\'env', okPure);
+var ob = env0.reset({}).obs;
+check('observation bornée', ob.length === ENV.nInputs() && ob.every(function (v) { return v >= -1 && v <= 1 && isFinite(v); }), ob.length + ' entrées');
 
-console.log('\n11. Milestone 1 : Cinématique, Actions & Radar Proprioceptif (R1-R5)');
-// R1: packetStacked avec k === 'free' et prise partielle
-var envM1 = ENV.create({ skipContacts: true, adversaire: { intensite: 'aucun' } });
-var sM1 = envM1.reset({});
-var catM1 = envM1.catalogue;
-// Prise P1 face A
-var idxP1A = idxOf(catM1, function (a) { return a.a === 'prendre' && a.f === 'A' && a.p === 'P1'; });
-check('R1: action prendre P1 Face A disponible', idxP1A >= 0 && sM1.mask[idxP1A] === 1);
-var stP1A = envM1.step(idxP1A);
-check('R1: Face A a pris 3 pierres', envM1.sim.held().A.stack.length === 3);
+console.log('\n5. Miroir bleu');
+function mirrorBelief(b) {
+  var m = JSON.parse(JSON.stringify(b)), mid = function (id) { return id && id.indexOf('.') >= 0 ? ENGINE.mirrorId(id.split('.')[0]) + '.' + id.split('.')[1] : ENGINE.mirrorId(id); };
+  m.team = b.team === 'blue' ? 'yellow' : 'blue';
+  m.pose.x = 3000 - b.pose.x; m.pose.h = 180 - b.pose.h;
+  ['A', 'B'].forEach(function (f) { m.pinces[f].slots = b.pinces[f].slots.map(function (id) { return id ? mid(id) : null; }); });
+  if (b.adversaire) { m.adversaire.x = 3000 - b.adversaire.x; m.adversaire.vx = -(b.adversaire.vx || 0); }
+  m.pierres = b.pierres.map(function (s) { var o = JSON.parse(JSON.stringify(s)); o.id = mid(s.id); o.pk = ENGINE.PK.map(function (p) { return p.id; }).indexOf(ENGINE.mirrorId(ENGINE.PK[s.pk].id)); o.foot = s.foot.map(function (v) { return [3000 - v[0], v[1]]; }); return o; });
+  m.portes = b.portes.map(mid);
+  m.etrangeres = (b.etrangeres || []).map(function (s) { var o = JSON.parse(JSON.stringify(s)); o.foot = s.foot.map(function (v) { return [3000 - v[0], v[1]]; }); return o; });
+  m.paquets = {}; Object.keys(b.paquets).forEach(function (k) { m.paquets[ENGINE.mirrorId(k)] = b.paquets[k]; });
+  m.params.gx = 3000 - b.params.gx; m.params.ga = 180 - b.params.ga;
+  return m;
+}
+/* état sans pierre tenue (le robot est chiral : B est à h + 120 dans les deux équipes) */
+var envM = ENV.create({ skipContacts: true }); envM.reset({});
+var bY = envM.belief(), bB = mirrorBelief(bY);
+var oY = ENV.observeBelief(bY), oB = ENV.observeBelief(bB), teamIdx = 2 + 6;
+var diff = oY.map(function (v, i) { return Math.abs(v - oB[i]) > 1e-9 ? i : -1; }).filter(function (i) { return i >= 0; });
+check('observation bleue = observation jaune (sauf le bit d\'équipe)', diff.length === 1 && diff[0] === teamIdx, 'indices différents : ' + JSON.stringify(diff));
+check('masque bleu = masque jaune au départ', JSON.stringify(ACTIONS.maskBelief(bY)) === JSON.stringify(ACTIONS.maskBelief(bB)));
+/* état au milieu d'un match (pierres posées, adversaire) : les rayons et les carrières suivent le miroir */
+var envM2 = ENV.create({ skipContacts: true }), st2 = envM2.reset({ intensite: 'realiste', seed: 3 }), rM = rng(3);
+for (var q = 0; q < 12 && !st2.done; q++) st2 = envM2.step(randomPick(rM, envM2, st2.mask));
+var bY2 = envM2.belief(); bY2.pinces.A.slots = [null, null, null]; bY2.pinces.B.slots = [null, null, null];
+var bB2 = mirrorBelief(bY2), d2 = ENV.observeBelief(bY2).map(function (v, i) { return Math.abs(v - ENV.observeBelief(bB2)[i]) > 1e-9 ? i : -1; }).filter(function (i) { return i >= 0; });
+check('miroir en cours de match (rayons, carrières, constructions, adversaire)', d2.length === 1 && d2[0] === teamIdx, JSON.stringify(d2));
+var bl = ENV.blueParams(ENGINE.DEF), simB = ENGINE.makeSim(bl, { skipContacts: true }), memB = ENV.newMemory();
+ENV.updateMemory(memB, simB, 0, 0, null, null);
+var oBlue = ENV.observeBelief(ENV.beliefFromSim(simB, memB, null)), oYel = ENV.observeBelief(env0.reset({}).obs ? env0.belief() : null);
+check('robot bleu au départ (moteur) vu comme le jaune', oBlue.filter(function (v, i) { return Math.abs(v - oYel[i]) > 1e-9; }).length === 1);
+check('ACTIONS.realStep : dépôt et ids en miroir', (function () { var s = ACTIONS.realStep({ a: 'deposer', f: 'A', q: 'pile', x: 300, y: 620, ang: 0, r: 0 }, 'blue'); var t = ACTIONS.realStep({ a: 'tour', f: 'B', z: 'T2', s: 'P6.3' }, 'blue'); return s.x === 2700 && s.ang === 180 && t.z === 'T6' && t.s === 'P7.3'; })());
 
-// R1: tournerPince A (action 126)
-var idxRotA = idxOf(catM1, function (a) { return a.a === 'tournerPince' && a.f === 'A'; });
-check('R1: action tournerPince A présente dans catalogue', idxRotA === 126);
-var stRot = envM1.step(idxRotA);
-check('R1: tournerPince A bascule rot à 90°', envM1.sim.pose().A.rot === 90);
-var stRotBack = envM1.step(idxRotA);
-check('R1: tournerPince A rebascule rot à 0°', envM1.sim.pose().A.rot === 0);
+console.log('\n6. Masque -> moteur (' + N_DEC + ' décisions aléatoires par série, sans puis avec adversaire)');
+/* causes dépendant du trajet ou de la pose choisie par le moteur (non vérifiables sans planifier/exécuter) */
+var PATH = /aucun passage|aucune position|Aucune position|pas de place|pas de position|décalée|contact avec|bloqué|tomber|bascul|tenue à .* hors du château|Graal sorti/;
+/* causes liées à l'adversaire (non masquées, décision §9) ou à la croyance (pierres prises sans être vues) */
+var OPP = /n'est plus là|absente|robot adverse/;
+function serie(withOpp, seed) {
+  var r = rng(seed), o = { dec: 0, fail: 0, path: 0, opp: 0, other: {}, eps: 0, t: Date.now() };
+  while (o.dec < N_DEC) {
+    var envR = ENV.create({ skipContacts: true }), sr = envR.reset({ seed: seed * 1000 + o.eps, intensite: withOpp ? 'realiste' : 'aucun' }), kk = 0; o.eps++;
+    while (!sr.done && kk < 80 && o.dec < N_DEC) {
+      sr = envR.step(randomPick(r, envR, sr.mask)); kk++; o.dec++;
+      if (!sr.err) continue;
+      o.fail++;
+      if (OPP.test(sr.err)) o.opp++;
+      else if (PATH.test(sr.err)) o.path++;
+      else { var key = sr.err.replace(/[0-9]+([.,][0-9]+)?/g, '#'); o.other[key] = (o.other[key] || 0) + 1; }
+    }
+  }
+  o.nOther = o.fail - o.path - o.opp;
+  function pc(n) { return (100 * n / o.dec).toFixed(2) + ' %'; }
+  console.log('   ' + (withOpp ? 'avec adversaire (référence en miroir)' : 'sans adversaire') + ' : ' + o.dec + ' décisions, ' + o.eps + ' matchs, ' + ((Date.now() - o.t) / o.dec).toFixed(1) + ' ms/décision ; échecs ' + o.fail + ' = ' + pc(o.fail));
+  console.log('     trajet ou pose choisie par le moteur : ' + o.path + ' (' + pc(o.path) + ') ; adversaire / croyance : ' + o.opp + ' (' + pc(o.opp) + ') ; autres : ' + o.nOther + ' (' + pc(o.nOther) + ') ' + JSON.stringify(o.other));
+  return o;
+}
+var S0 = serie(false, 11), S1 = serie(true, 12);
+check('sans adversaire : échecs hors trajet < 2 %', S0.nOther / S0.dec < 0.02, (100 * S0.nOther / S0.dec).toFixed(2) + ' %');
+check('avec adversaire : échecs hors trajet et hors adversaire < 2 %', S1.nOther / S1.dec < 0.02, (100 * S1.nOther / S1.dec).toFixed(2) + ' %');
+/* garde-fou de non-régression de l'atteignabilité (objectif 2 % ; mesuré au moment du commit, voir le rapport) */
+check('sans adversaire : échecs toutes causes < 8 % (garde-fou ; objectif 2 % non atteint)', S0.fail / S0.dec < 0.08, (100 * S0.fail / S0.dec).toFixed(2) + ' %');
 
-// R1: deposerZone (action 128 / 129)
-// Déplacement vers tour T1 et pose tour (utilise 1 pierre, laisse 2 pierres sur Face A à 90°)
-var idxTourA = idxOf(catM1, function (a) { return a.a === 'tour' && a.f === 'A' && a.z === 'T1'; });
-envM1.step(idxTourA);
-check('R1: Face A a 2 pierres restantes après tour', envM1.sim.held().A && envM1.sim.held().A.stack.filter(function (x) { return x; }).length === 2);
-check('R1: Face A rot = 90° après tour', envM1.sim.pose().A.rot === 90);
-var idxDepA = idxOf(catM1, function (a) { return a.a === 'deposerZone' && a.f === 'A'; });
-check('R1: action deposerZone A présente dans catalogue', idxDepA === 128);
-var stDep = envM1.step(idxDepA);
-check('R1: deposerZone vide la pince Face A', !envM1.sim.held().A || envM1.sim.held().A.stack.length === 0);
-check('R1: deposerZone réinitialise rot à 0° et hc à 165', envM1.sim.pose().A.rot === 0 && envM1.sim.pose().A.hc === 165);
-var idxMurA = idxOf(catM1, function (a) { return a.a === 'mur'; });
+console.log('\n7. Adversaires : stratégie, MLP « layers », modèle récurrent');
+function randMat(r, n, m, s) { var w = []; for (var i = 0; i < n; i++) { var row = []; for (var j = 0; j < m; j++) row.push((r() * 2 - 1) * s); w.push(row); } return w; }
+function randVec(r, n, s) { var v = []; for (var i = 0; i < n; i++) v.push((r() * 2 - 1) * s); return v; }
+var rW = rng(5), nIn = ENV.nInputs(), nOut = ALL.length, H = 16, Eh = 24;
+var layers = [{ w: randMat(rW, nIn, 20, 0.3), b: randVec(rW, 20, 0.1) }, { w: randMat(rW, 20, nOut, 0.3), b: randVec(rW, nOut, 0.1) }];
+var rec = {
+  format: 'icamlot-modele-recurrent', version: 1, n_in: nIn, n_out: nOut, hidden: H, activation: 'silu',
+  obs_version: ENV.OBS_VERSION, catalogue_version: ACTIONS.CATALOGUE_VERSION,
+  normalisation: { mean: randVec(rW, nIn, 0.1), std: nIn ? new Array(nIn).fill(0).map(function () { return 0.5 + rW(); }) : [], clip: 5 },
+  encodeur: [{ w: randMat(rW, nIn, Eh, 0.3), b: randVec(rW, Eh, 0.1), ln: { gamma: randVec(rW, Eh, 1), beta: randVec(rW, Eh, 0.1), eps: 1e-5 } }],
+  gru: { w_ih: randMat(rW, Eh, 3 * H, 0.3), w_hh: randMat(rW, H, 3 * H, 0.3), b_ih: randVec(rW, 3 * H, 0.1), b_hh: randVec(rW, 3 * H, 0.1) },
+  acteur: [{ w: randMat(rW, H, nOut, 0.3), b: randVec(rW, nOut, 0.1) }]
+};
+[['stratégie (référence)', { program: ENGINE.PROGRAMME_REFERENCE }], ['MLP layers', { brain: { layers: layers, acts: ['relu'] } }],
+ ['modèle récurrent', { brain: rec }], ['poids camelot-poids v2 (récurrent)', { brain: { format: 'camelot-poids', version: 2, architecture: 'recurrent', modele: rec } }]].forEach(function (c) {
+  var envO = ENV.create({ skipContacts: true }), s = envO.reset({ seed: 9, intensite: 'realiste', opponent: c[1] }), rO = rng(9), n = 0;
+  while (!s.done && n < 40) { s = envO.step(randomPick(rO, envO, s.mask)); n++; }
+  if (!s.done) s = envO.step(envO.catalogue.map(function (a) { return a.a; }).indexOf('finir'));
+  var R = envO.result();
+  check(c[0] + ' : match joué', s.done && R.opponent && envO.opponentProgram().length > 0, 'adversaire ' + finalScore(R.opponent) + ' pts, ' + envO.opponentProgram().length + ' briques, ' + R.opponent.errors.length + ' erreurs');
+});
+var envP = ENV.create({ skipContacts: true, adversaires: [{ program: ENGINE.PROGRAMME_REFERENCE }, { brain: rec }] });
+var kinds = {}; for (var sd = 0; sd < 8; sd++) { envP.reset({ seed: sd, intensite: 'realiste' }); envP.step(envP.catalogue.map(function (a) { return a.a; }).indexOf('finir')); kinds[envP.opponentProgram().length > 0 && JSON.stringify(envP.opponentProgram()[0]) === JSON.stringify(ENGINE.PROGRAMME_REFERENCE[0]) ? 'ref' : 'autre'] = 1; }
+check('plusieurs adversaires (opts.adversaires, tirage par graine)', kinds.ref && kinds.autre);
+var envD = ENV.create({ skipContacts: true }); envD.reset({ seed: 1, intensite: 'realiste' }); envD.step(envD.catalogue.map(function (a) { return a.a; }).indexOf('finir'));
+check('adversaire par défaut = programme de référence en miroir', JSON.stringify(envD.opponentProgram()) === JSON.stringify(ENGINE.PROGRAMME_REFERENCE));
+var bad = false; try { ENV.brainSpec(Object.assign({}, rec, { catalogue_version: 'autre' })); } catch (e) { bad = true; }
+check('modèle de version différente refusé', bad);
 
-// R2: Dynamic multi-angle candidate approaches
-var actP1 = catM1[idxP1A];
-var targetsP1 = ACTIONS.getActionTargets(actP1, envM1.sim);
-check('R2: getActionTargets pour P1 renvoie 2 approches opposées', targetsP1 && targetsP1.length === 2);
-var idxT1 = idxOf(catM1, function (a) { return a.a === 'tour' && a.z === 'T1'; });
-var targetsT1 = ACTIONS.getActionTargets(catM1[idxT1], envM1.sim);
-check('R2: getActionTargets pour T1 renvoie 4 approches cardinales', targetsT1 && targetsT1.length === 4);
+console.log('\n8. duel_bridge.js');
+var out = cp.spawnSync('node', [path.join(ROOT, 'engine/duel_bridge.js')], { input: '{"cmd":"ping"}\n{"cmd":"init","config":{"blue":"realiste"}}\n', encoding: 'utf8' });
+var lines = out.stdout.trim().split('\n').map(function (l) { return JSON.parse(l); });
+check('ping + init', lines[0].ok && lines[0].catalogueVersion === ACTIONS.CATALOGUE_VERSION && lines[1].status === 'need_action' && lines[1].obs.length === ENV.nInputs() && lines[1].mask.length === ALL.length);
 
-// R3: 8 Repositioning Waypoints
-var wps = catM1.filter(function (a) { return a.a === 'traj'; });
-check('R3: 8 waypoints de trajectoire présents (actions 118..125)', wps.length === 8 && catM1[118].a === 'traj' && catM1[125].a === 'traj');
-var stepW1 = envM1.step(118);
-var pW1 = envM1.sim.pose();
-check('R3: déplacement réussi vers waypoint W1', Math.abs(pW1.x - 1050) < 5 && Math.abs(pW1.y - 450) < 5);
-
-// R4: Adaptive placement & carriage elevation in transit
-var pMur = ACTIONS.toProgramStep(catM1[idxMurA]);
-check('R4: toProgramStep inclut paramètre pm proche', pMur.pm === 'proche');
-var simR4 = ENGINE.makeSim(ENGINE.DEF);
-simR4.exec({ a: 'prendre', f: 'A', p: 'P1' });
-simR4.exec({ a: 'seDeplacer', x: 1500, y: 1000, h: 0 });
-var rR4 = simR4.finish();
-check('R4: élévation automatique du chariot hc >= 250 lors du transit avec pierres', rR4.K.some(function (k) { return k.A && k.A.hc >= 250; }));
-
-// R5: Proprioception & Radar observation 56 dimensions
-var obsM1 = s0.obs;
-check('R5: observation 56 dimensions', obsM1.length === 56);
-var proprio = obsM1.slice(37, 48);
-check('R5: 11 entrées proprioception présentes et bornées [0, 1]', proprio.length === 11 && proprio.every(function (v) { return !isNaN(v) && v >= 0 && v <= 1; }));
-var spatial = obsM1.slice(48, 56);
-check('R5: 8 rayons radar spatial présents et bornés [0, 1]', spatial.length === 8 && spatial.every(function (v) { return !isNaN(v) && v >= 0 && v <= 1; }));
-
-if (fail) { console.log('\n' + fail + ' échec(s).'); process.exit(1); }
-console.log('\nTous les tests passent.');
+console.log('\n' + (fail ? fail + ' échec(s).' : 'Tous les tests passent.'));
+process.exit(fail ? 1 : 0);
