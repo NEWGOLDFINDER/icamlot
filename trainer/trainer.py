@@ -35,7 +35,7 @@ sys.path.insert(0, str(ROOT))
 import numpy as np
 
 from trainer.js_env_pool import JsEnvPool, default_procs
-from trainer.scenarios import ROBOTS, SELF, ScenarioSampler, load_strategies
+from trainer.scenarios import ROBOTS, SELF, PART_BLEU_DEFAUT, ScenarioSampler, critere_selection, equipe_de_graine, load_strategies
 
 try:
     import torch
@@ -188,6 +188,9 @@ def sampler_of(cfg: dict, opponents: List[dict], pool: Optional[JsEnvPool] = Non
     adv = cfg.get("adversaire") or {}
     intensity = adv.get("intensite") or "aucun"
     seed = int((cfg.get("reglages") or {}).get("graine") or 1)
+    # proportion de matchs joués en bleu (contrat §16) : reglages.part_bleu, défaut PART_BLEU_DEFAUT (50 %) ; 0 = jaune seul
+    part_bleu = (cfg.get("reglages") or {}).get("part_bleu")
+    part_bleu = PART_BLEU_DEFAUT if part_bleu is None else part_bleu
     melange = adv.get("melange")
     if melange:
         m = {k: float(v) for k, v in melange.items() if v and float(v) > 0}
@@ -206,8 +209,8 @@ def sampler_of(cfg: dict, opponents: List[dict], pool: Optional[JsEnvPool] = Non
                     log(f"Adversaire « {k} » inconnu, retiré du mélange.")
                 m.pop(k)
         if m:
-            return ScenarioSampler(opponents, ["realiste"], seed, melange=m)
-    return ScenarioSampler(opponents if intensity != "aucun" else [], [intensity], seed)
+            return ScenarioSampler(opponents, ["realiste"], seed, melange=m, part_bleu=part_bleu)
+    return ScenarioSampler(opponents if intensity != "aucun" else [], [intensity], seed, part_bleu=part_bleu)
 
 
 # ───────────── évolution ─────────────
@@ -237,7 +240,8 @@ def run_evolution(job: Job, pool: JsEnvPool, cfg: dict, sampler: ScenarioSampler
     opps = sampler.opponents
 
     def scenario(g, k):
-        sc = {"seed": seed + g * 100 + k, "intensite": sampler.intensites[0]}
+        sc = {"seed": seed + g * 100 + k, "intensite": sampler.intensites[0],
+              "equipe": equipe_de_graine(seed + g * 100 + k, sampler.part_bleu)}
         if opps and sc["intensite"] != "aucun":
             sc["opponentRef"] = opps[(seed + g + k) % len(opps)]["id"]
         return sc
@@ -300,7 +304,7 @@ def model_of(cfg: dict, pool: JsEnvPool):
 
 
 def demos_for(job: Job, pool: JsEnvPool, cfg: dict, strats: List[dict], sampler: ScenarioSampler):
-    from trainer.imitation import collect_demos, example_program
+    from trainer.imitation import collect_demos, example_program, filtrer_demos_bleues, scenarios_deux_couleurs
     regl = cfg.get("reglages") or {}
     progs = [{"nom": s["nom"], "program": s["spec"]["program"]} for s in strats]
     # programmes de démonstration fournis par la tâche (entraînement des adversaires : trainer/adversaires.py)
@@ -308,14 +312,27 @@ def demos_for(job: Job, pool: JsEnvPool, cfg: dict, strats: List[dict], sampler:
     if regl.get("imitation_exemple", True):
         progs.append({"nom": "ENV.EXAMPLE", "program": example_program(pool)})
     n_sc = int(regl.get("imitation_scenarios") or 4)
-    scs = [{"seed": int(regl.get("graine") or 1) + k, "intensite": "aucun"} for k in range(n_sc)]
+    base = [{"seed": int(regl.get("graine") or 1) + k, "intensite": "aucun"} for k in range(n_sc)]
     if sampler.opponents or sampler.melange:
-        scs += [dict(sampler.sample()) for _ in range(n_sc)]
+        base += [{k: v for k, v in sampler.sample().items() if k != "equipe"} for _ in range(n_sc)]
+    # deux couleurs (contrat §16) : chaque scénario est joué en jaune et en bleu (selon reglages.part_bleu : 0 = jaune seul)
+    scs = scenarios_deux_couleurs(base, sampler.part_bleu)
     job.logline(f"Collecte des démonstrations : {len(progs)} programme(s) × {len(scs)} scénario(s)…")
     demos = collect_demos(pool, progs, scs)
     if demos:
         sc = [d.score for d in demos]
         job.logline(f"{len(demos)} démonstrations, score {np.mean(sc):.1f} en moyenne (min {min(sc):.0f}, max {max(sc):.0f}).")
+        # le programme jaune rejoué en miroir bleu peut contenir des actions interdites par le masque bleu (CONTRATS §15) :
+        # seules les démonstrations bleues sans cible invalide sont gardées (option reglages.imitation_bleu_prefixe : leur début)
+        demos, bilan = filtrer_demos_bleues(demos, bool(regl.get("imitation_bleu_prefixe", False)))
+        job.data["imitation_equipes"] = bilan
+        if bilan["bleu_total"]:
+            job.logline(f"Démonstrations bleues : {bilan['bleu_retenues']} retenues, {bilan['bleu_tronquees']} tronquées, "
+                        f"{bilan['bleu_exclues']} exclues (cible invalide sous le masque) sur {bilan['bleu_total']} ; "
+                        f"{bilan['jaune']} démonstrations jaunes.")
+            if not bilan["bleu_retenues"] and not bilan["bleu_tronquees"]:
+                job.logline("Imitation bleue impossible avec ces programmes (toutes les démonstrations bleues contiennent une action "
+                            "interdite par le masque bleu) : le côté bleu repose sur le PPO.")
     return demos
 
 
@@ -337,6 +354,8 @@ def evaluate_and_export(job: Job, pool: JsEnvPool, model, cfg: dict, sampler: Sc
         ev = evaluate(model, pool, sampler.fixed(n_eval), torch_device(), log=job.logline)
         ev["protocole"] = {"matchs": n_eval, **sampler.describe(), "glouton": True}
         job.logline("Évaluation : " + resume(ev))
+        # rapport complet (jaune / bleu, par adversaire) à côté du modèle, comme le fait le PPO pour son champion
+        atomic_write(Path(str(base) + ".eval.json"), ev)
     info = dict(info, evaluation=ev)
     save_checkpoint(Path(str(base) + ".pt"), model, info)
     exp = export_all(model, base, info)
@@ -410,9 +429,10 @@ def run_imitation(job: Job, pool: JsEnvPool, cfg: dict, strats: List[dict], samp
     base = model_base(out)
     info = pool_info(pool, sampler)
     info.update({"obs_rms": st["obs_rms"].state_dict(), "ret_rms": st["ret_rms"].state_dict(), "gamma": 1.0,
-                 "imitation": {k: v for k, v in st.items() if k not in ("historique", "obs_rms", "ret_rms")}})
+                 "imitation": dict({k: v for k, v in st.items() if k not in ("historique", "obs_rms", "ret_rms")},
+                                   demonstrations_equipes=job.data.get("imitation_equipes"))})
     ev, _ = evaluate_and_export(job, pool, model, cfg, sampler, base, info)
-    best = ev["score"]["moyenne"] if ev else None
+    best = critere_selection(ev)
     return recurrent_weights_doc(model, base, ev, info), best, history
 
 
@@ -455,6 +475,7 @@ def run_ppo(job: Job, pool: JsEnvPool, cfg: dict, strats: List[dict], sampler: S
     elif regl.get("pretrain_imitation", True):
         job.logline("Pré-entraînement par imitation…")
         demos = demos_for(job, pool, cfg, strats, sampler)
+        tr.info_extra["imitation_equipes"] = job.data.get("imitation_equipes")
         if demos:
             imitation_train(tr.model, demos, epochs=int(regl.get("epoques") or 40), batch_demos=int(regl.get("lot") or 16),
                             lr=float(regl.get("imitation_lr") or 1e-3), device=device,
@@ -505,6 +526,7 @@ def run_ppo(job: Job, pool: JsEnvPool, cfg: dict, strats: List[dict], sampler: S
             "elapsed_s": round(elapsed), "matches": len(tr.episodes),
             "matches_per_s": round(len(tr.episodes) / max(elapsed, 1e-9), 3),
             "decisions_per_s": round(st["decisions_par_s"], 1), "processus": pool.n_procs, "envs": pool.n_envs,
+            "score_jaune": st.get("score_jaune"), "score_bleu": st.get("score_bleu"),
             **device_info(),
         }
         job.data["status"] = "running"
@@ -534,7 +556,7 @@ def run_ppo(job: Job, pool: JsEnvPool, cfg: dict, strats: List[dict], sampler: S
     model_out = tr.model
     if champion.exists():
         model_out, info = load_checkpoint(champion)
-    best = ev["score"]["moyenne"] if ev else None
+    best = critere_selection(ev)
     job.logline(f"PPO terminé : {res['mises_a_jour']} mises à jour, {res['transitions']} transitions.")
     return recurrent_weights_doc(model_out, base, ev, info), best, history
 

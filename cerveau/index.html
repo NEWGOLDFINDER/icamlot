@@ -234,6 +234,7 @@ input[type=number], input[type=text], input[type=search] { background: var(--bg)
               <label>Taille de lot <input id="rBatch" type="number" min="1" max="256" value="16"></label>
               <label title="Scénarios joués par chaque stratégie enregistrée pour produire les démonstrations">Scénarios / stratégie <input id="rImiScen" type="number" min="1" max="64" value="4"></label>
               <label class="chk" style="grid-column: 1 / -1"><input id="rImiEx" type="checkbox" checked> Inclure la stratégie de référence du moteur</label>
+              <label class="chk" style="grid-column: 1 / -1" title="Les démonstrations sont jouées en jaune et en bleu. En bleu, un programme jaune rejoué en miroir peut contenir une action interdite par le masque : par défaut la démonstration bleue est exclue ; cochée, on garde ses décisions avant la première action interdite."><input id="rImiBleuPref" type="checkbox"> Démonstrations bleues : garder le début des démonstrations exclues</label>
             </div>
           </div>
           <div class="pgrid" style="margin-top:12px">
@@ -241,6 +242,7 @@ input[type=number], input[type=text], input[type=search] { background: var(--bg)
             <label>Graine <input id="rSeed" type="number" min="1" value="1"></label>
             <label title="Processus Node du simulateur ; 0 = automatique">Processus (0 = auto) <input id="rProc" type="number" min="0" max="64" value="0"></label>
             <label id="lEval" title="Matchs de l'évaluation finale dans le moteur JS (sélection du champion) ; 0 = pas d'évaluation">Matchs d'évaluation <input id="rEvalN" type="number" min="0" max="2000" value="200"></label>
+            <label title="Part des matchs joués côté bleu (entraînement, démonstrations, évaluation de sélection) ; l'équipe de chaque match est tirée par sa graine. Le champion est choisi sur la moyenne des scores jaune et bleu. 0 = jaune seul.">Matchs en bleu (%) <input id="rBleu" type="number" min="0" max="100" value="50"></label>
           </div>
           <h2 style="margin-top:16px">Adversaire</h2>
           <div class="segc" id="adv" role="group" aria-label="Intensité de l'adversaire">

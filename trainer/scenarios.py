@@ -6,10 +6,16 @@ Un scénario est l'objet passé à `ENV.reset(scenario)` (engine/env.js) :
 
 Intensités reconnues par le moteur (ENGINE.intensityParams) : « aucun », « faible », « realiste », « agressif ».
 « aucun » = pas d'adversaire.
+
+Équipe (docs/CONTRATS.md §16) : chaque scénario porte `equipe` = « yellow » | « blue » (équipe de NOTRE robot ; l'adversaire joue
+l'autre). Entraînement : tirée par la graine du scénario, avec la proportion `part_bleu` (défaut 50 %, `PART_BLEU_DEFAUT`).
+Évaluation (`fixed`) : répartition déterministe et équilibrée dans chaque adversaire (pas de tirage), pour que les deux couleurs
+soient comparées sur les mêmes adversaires.
 """
 from __future__ import annotations
 
 import json
+import math
 import random
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence
@@ -23,6 +29,45 @@ MELANGE_DEFAUT = {"batisseur": 0.2, "razzia": 0.2, "champion": 0.2, "intermediai
 # autres composantes acceptées : « reference » (programme de référence en miroir), « aucun » (seul sur la table),
 # et l'id d'un adversaire enregistré (stratégie « strategie:<nom> », cerveau…)
 SELF = "self"
+
+JAUNE, BLEU = "yellow", "blue"
+EQUIPES = (JAUNE, BLEU)
+# Proportion de scénarios joués en bleu (décision de l'équipe : 50 %) ; 0 = jaune seul (ancien comportement), 1 = bleu seul.
+PART_BLEU_DEFAUT = 0.5
+
+
+def normaliser_part_bleu(part) -> float:
+    p = PART_BLEU_DEFAUT if part is None else float(part)
+    if not 0.0 <= p <= 1.0:
+        raise ValueError(f"Proportion de matchs bleus hors de [0, 1] : {part}.")
+    return p
+
+
+def equipe_de_graine(seed: int, part_bleu: float = PART_BLEU_DEFAUT) -> str:
+    """Équipe tirée par la graine du scénario (reproductible : même graine, même équipe)."""
+    return BLEU if random.Random(f"equipe:{int(seed)}").random() < part_bleu else JAUNE
+
+
+def equipe_equilibree(k: int, part_bleu: float = PART_BLEU_DEFAUT) -> str:
+    """Équipe du k-ième match d'une suite répartie sans tirage : bleu si floor((k + 1) p) > floor(k p).
+    Sur n matchs consécutifs, floor(n p) sont bleus (p = 0,5 : jaune, bleu, jaune, bleu…)."""
+    return BLEU if math.floor((k + 1) * part_bleu + 1e-9) > math.floor(k * part_bleu + 1e-9) else JAUNE
+
+
+def equipe_scenario(sc: Optional[dict]) -> str:
+    """Équipe d'un scénario (jaune si le champ est absent : ancien format)."""
+    return (sc or {}).get("equipe") or JAUNE
+
+
+def critere_selection(ev: Optional[dict]) -> Optional[float]:
+    """Critère du champion : moyenne des scores moyens jaune et bleu (docs/CONTRATS.md §16). Une seule couleur jouée (ancien
+    rapport, ou proportion bleue 0 ou 1) : la moyenne de cette couleur."""
+    if not ev:
+        return None
+    sel = ev.get("selection") or {}
+    if sel.get("valeur") is not None:
+        return float(sel["valeur"])
+    return (ev.get("score") or {}).get("moyenne")
 
 
 def normaliser_melange(melange: Optional[Dict[str, float]]) -> Dict[str, float]:
@@ -97,7 +142,7 @@ class ScenarioSampler:
     """
 
     def __init__(self, opponents: Sequence[dict] = (), intensites: Sequence[str] = ("aucun",), seed: int = 1,
-                 melange: Optional[Dict[str, float]] = None):
+                 melange: Optional[Dict[str, float]] = None, part_bleu: Optional[float] = PART_BLEU_DEFAUT):
         for i in intensites:
             if i not in INTENSITES:
                 raise ValueError(f"Intensité inconnue : {i} (attendu : {', '.join(INTENSITES)}).")
@@ -107,23 +152,31 @@ class ScenarioSampler:
         self.seed = seed
         # mélange d'adversaires (proportions) : prioritaire sur opponents / intensites pour sample() et fixed()
         self.melange = normaliser_melange(melange) if melange else None
+        # proportion de scénarios joués en bleu (contrat §16)
+        self.part_bleu = normaliser_part_bleu(part_bleu)
 
-    def _composante(self, seed: int, comp: str) -> dict:
+    def _equipe(self, seed: int, k: Optional[int] = None) -> str:
+        """k donné : répartition équilibrée (évaluation) ; sinon tirage par la graine (entraînement)."""
+        return equipe_equilibree(k, self.part_bleu) if k is not None else equipe_de_graine(seed, self.part_bleu)
+
+    def _composante(self, seed: int, comp: str, k: Optional[int] = None) -> dict:
+        eq = self._equipe(seed, k)
         if comp == "aucun":
-            return {"seed": int(seed), "intensite": "aucun"}
+            return {"seed": int(seed), "equipe": eq, "intensite": "aucun"}
         if comp == "reference":
-            return {"seed": int(seed), "intensite": "realiste"}
+            return {"seed": int(seed), "equipe": eq, "intensite": "realiste"}
         if comp in ROBOTS:
-            return {"seed": int(seed), "intensite": "realiste", "opponent": {"robot": comp}}
-        return {"seed": int(seed), "intensite": "realiste", "opponentRef": comp}
+            return {"seed": int(seed), "equipe": eq, "intensite": "realiste", "opponent": {"robot": comp}}
+        return {"seed": int(seed), "equipe": eq, "intensite": "realiste", "opponentRef": comp}
 
     def registry(self) -> Dict[str, dict]:
         return {o["id"]: o["spec"] for o in self.opponents}
 
-    def _make(self, seed: int, intensite: str, opp: Optional[dict]) -> dict:
+    def _make(self, seed: int, intensite: str, opp: Optional[dict], k: Optional[int] = None) -> dict:
+        eq = self._equipe(seed, k)
         if intensite == "aucun" or opp is None:
-            return {"seed": int(seed), "intensite": "aucun"}
-        return {"seed": int(seed), "intensite": intensite, "opponentRef": opp["id"]}
+            return {"seed": int(seed), "equipe": eq, "intensite": "aucun"}
+        return {"seed": int(seed), "equipe": eq, "intensite": intensite, "opponentRef": opp["id"]}
 
     def sample(self) -> dict:
         if self.melange:
@@ -137,7 +190,9 @@ class ScenarioSampler:
     def fixed(self, n: int, base_seed: int = 10_000) -> List[dict]:
         """n scénarios déterministes (même liste à chaque appel) : adversaires et intensités en tourniquet.
         Sert à l'évaluation, pour que deux modèles soient comparés sur les mêmes matchs.
-        Avec un mélange : n_k = part de chaque adversaire (plus forts restes), matchs entrelacés."""
+        Avec un mélange : n_k = part de chaque adversaire (plus forts restes), matchs entrelacés.
+        Équipe : répartie (et non tirée) selon `part_bleu`, séparément pour chaque adversaire (déphasée d'un match par adversaire) :
+        chaque adversaire est affronté dans les deux couleurs dès qu'il a au moins 2 matchs."""
         if self.melange:
             comps = list(self.melange)
             quotas = {c: int(n * self.melange[c]) for c in comps}
@@ -150,12 +205,20 @@ class ScenarioSampler:
                     if quotas[c] > 0:
                         seq.append(c)
                         quotas[c] -= 1
-            return [self._composante(base_seed + k, c) for k, c in enumerate(seq)]
+            vus: Dict[str, int] = {}
+            out = []
+            for k, c in enumerate(seq):
+                j = vus.get(c, 0)
+                vus[c] = j + 1
+                out.append(self._composante(base_seed + k, c, k=j + comps.index(c)))
+            return out
         combos = [(i, o) for i in self.intensites for o in (self.opponents or [None])]
-        return [self._make(base_seed + k, combos[k % len(combos)][0], combos[k % len(combos)][1]) for k in range(n)]
+        return [self._make(base_seed + k, combos[k % len(combos)][0], combos[k % len(combos)][1],
+                           k=k // len(combos) + k % len(combos)) for k in range(n)]
 
     def describe(self) -> dict:
-        d = {"adversaires": [o["id"] for o in self.opponents], "intensites": self.intensites, "graine_tirage": self.seed}
+        d = {"adversaires": [o["id"] for o in self.opponents], "intensites": self.intensites, "graine_tirage": self.seed,
+             "part_bleu": self.part_bleu}
         if self.melange:
             d["melange"] = {k: round(v, 4) for k, v in self.melange.items()}
         return d

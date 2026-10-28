@@ -113,7 +113,7 @@
         population: 20, generations: 30, mutation: 0.1, scenarios_par_evaluation: 1, graine: 1, duree_max: 300, mode: 'rapide',
         epoques: 40, lot: 16, imitation_lr: 0.001, imitation_scenarios: 4, imitation_exemple: true,
         ppo_steps: 100000, ppo_batch_size: 256, ppo_rollout_len: 32, ppo_lr: 0.0003, ppo_penalite_erreur: 0, pretrain_imitation: true,
-        hidden: NET.REC.HIDDEN, processus: 0, eval_matchs: 200
+        hidden: NET.REC.HIDDEN, processus: 0, eval_matchs: 200, part_bleu: 0.5, imitation_bleu_prefixe: false
       },
       recompense: { base: 'score', penalite_erreur: 0, penalite_contact: 0, sur_erreur: 'penalite' },
       graine: 1
@@ -195,6 +195,8 @@
     r.hidden = ent('pHidden', NET.REC.HIDDEN, NET.REC.MIN_HIDDEN, NET.REC.MAX_HIDDEN);
     r.processus = ent('rProc', 0, 0, 64);
     r.eval_matchs = ent('rEvalN', 200, 0, 2000);
+    r.part_bleu = ent('rBleu', 50, 0, 100) / 100;
+    r.imitation_bleu_prefixe = $('rImiBleuPref').checked;
     cfg.recompense.penalite_erreur = parseFloat($('rPenE').value) || 0;
     cfg.recompense.penalite_contact = parseFloat($('rPenC').value) || 0;
     cfg.recompense.sur_erreur = $('rFinErr').checked ? 'fin' : 'penalite';
@@ -212,6 +214,7 @@
     $('rPpoSteps').value = r.ppo_steps; $('rPpoBatch').value = r.ppo_batch_size; $('rPpoRollout').value = r.ppo_rollout_len;
     $('rPpoLr').value = r.ppo_lr; $('rPpoPen').value = r.ppo_penalite_erreur; $('rPpoPretrain').checked = r.pretrain_imitation !== false;
     $('pHidden').value = r.hidden; $('rProc').value = r.processus; $('rEvalN').value = r.eval_matchs;
+    $('rBleu').value = Math.round(100 * (r.part_bleu == null ? 0.5 : r.part_bleu)); $('rImiBleuPref').checked = !!r.imitation_bleu_prefixe;
     $('rPenE').value = cfg.recompense.penalite_erreur; $('rPenC').value = cfg.recompense.penalite_contact;
     $('rFinErr').checked = cfg.recompense.sur_erreur === 'fin';
     document.querySelectorAll('#meth button').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.m === cfg.methode)); });
@@ -317,7 +320,7 @@
       updateDirty();
     });
   });
-  ['rPop', 'rGen', 'rMut', 'rScen', 'rMax', 'rSeed', 'rEp', 'rImiLr', 'rBatch', 'rImiScen', 'rImiEx', 'rPenE', 'rPenC', 'rFinErr', 'pHidden', 'rProc', 'rEvalN',
+  ['rPop', 'rGen', 'rMut', 'rScen', 'rMax', 'rSeed', 'rEp', 'rImiLr', 'rBatch', 'rImiScen', 'rImiEx', 'rPenE', 'rPenC', 'rFinErr', 'pHidden', 'rProc', 'rEvalN', 'rBleu', 'rImiBleuPref',
    'rPpoSteps', 'rPpoBatch', 'rPpoRollout', 'rPpoLr', 'rPpoPen', 'rPpoPretrain'].forEach(function (id) {
     var el = $(id);
     if (el) el.addEventListener('change', function () { readUi(); setMethode(cfg.methode, true); updateDirty(); });
@@ -635,12 +638,19 @@
   /* ---------- évaluation / rejouer ---------- */
   function pm(st, d) { return st ? fmt(st.moyenne, d) + ' ± ' + fmt(st.ecart_type, d) : '—'; }
   function tile(label, val, sub) { return '<div class="stat"><small>' + esc(label) + '</small><b>' + val + '</b>' + (sub ? '<small style="text-transform:none;letter-spacing:0">' + sub + '</small>' : '') + '</div>'; }
+  /* scores par couleur (équipe de notre robot) : jaune / bleu et critère du champion = moyenne des deux */
+  function equipesTxt(ev) {
+    var pe = ev.par_equipe || {}, y = pe.yellow, b = pe.blue;
+    if (!y && !b) return '';
+    return 'jaune ' + (y ? fmt(y.score.moyenne, 1) + ' (' + y.matchs + ')' : '—') + ' · bleu ' + (b ? fmt(b.score.moyenne, 1) + ' (' + b.matchs + ')' : '—') +
+      (ev.selection && ev.selection.valeur != null && y && b ? ' · critère ' + fmt(ev.selection.valeur, 1) : '');
+  }
   function showEvalSummary(ev) {
     var box = $('tEval');
     if (!ev) { box.hidden = true; return; }
     box.hidden = false;
     box.innerHTML = '<small class="muted">Évaluation finale (' + ev.matchs + ' matchs)</small><div class="stats" style="grid-template-columns:repeat(3,1fr)">' +
-      tile('Score', pm(ev.score)) + tile('Victoires', ev.duels ? ev.victoires + '/' + ev.duels : '—') + tile('Erreurs moteur', fmt(ev.erreurs_par_match && ev.erreurs_par_match.moyenne, 2), 'par match') + '</div>';
+      tile('Score', pm(ev.score), equipesTxt(ev)) + tile('Victoires', ev.duels ? ev.victoires + '/' + ev.duels : '—') + tile('Erreurs moteur', fmt(ev.erreurs_par_match && ev.erreurs_par_match.moyenne, 2), 'par match') + '</div>';
   }
   function renderServerEval(ev) {
     var box = $('svEval');
@@ -649,6 +659,13 @@
     showEvalSummary(ev);
     var sc = ev.score || {}, er = ev.erreurs_par_match || {}, h = '<div class="stats" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">';
     h += tile('Score moyen ± écart-type', pm(sc), ev.matchs + ' matchs · min ' + fmt(sc.min, 0) + ' · max ' + fmt(sc.max, 0) + (sc.ic95 != null ? ' · IC95 ± ' + fmt(sc.ic95) : ''));
+    if (ev.par_equipe && (ev.par_equipe.yellow || ev.par_equipe.blue)) {
+      ['yellow', 'blue'].forEach(function (e) {
+        var b = ev.par_equipe[e];
+        h += tile(e === 'yellow' ? 'Score jaune' : 'Score bleu', b ? pm(b.score) : '—', b ? b.matchs + ' matchs · min ' + fmt(b.score.min, 0) + ' · max ' + fmt(b.score.max, 0) + (b.taux_victoire != null ? ' · victoires ' + fmt(b.taux_victoire * 100, 0) + ' %' : '') : 'aucun match');
+      });
+      if (ev.selection && ev.selection.valeur != null) h += tile('Critère du champion', fmt(ev.selection.valeur, 1), ev.selection.regle || 'moyenne jaune / bleu');
+    }
     if (ev.duels) h += tile('Victoires', ev.victoires + ' / ' + ev.duels, fmt((ev.taux_victoire || 0) * 100, 0) + ' % · ' + (ev.egalites || 0) + ' égalités · ' + (ev.defaites || 0) + ' défaites');
     else h += tile('Victoires', '—', 'aucun duel (sans adversaire)');
     if (ev.score_adversaire && ev.score_adversaire.moyenne != null) h += tile('Score adverse', pm(ev.score_adversaire));
@@ -660,11 +677,15 @@
     if (keys.length) h += '<p class="note">Détail moyen : ' + keys.map(function (k) { return esc(k) + ' ' + fmt(dm[k]); }).join(' · ') + '</p>';
     var pa = ev.par_adversaire || {}, names = Object.keys(pa);
     if (names.length) {
-      h += '<div style="overflow:auto"><table class="table"><thead><tr><th>Adversaire · intensité</th><th class="num">Matchs</th><th class="num">Score moyen ± écart-type</th><th class="num">Victoires</th></tr></thead><tbody>' +
-        names.map(function (k) { var a = pa[k]; return '<tr><td>' + esc(k) + '</td><td class="num">' + a.matchs + '</td><td class="num">' + pm(a.score) + '</td><td class="num">' + (a.taux_victoire == null ? '—' : fmt(a.taux_victoire * 100, 0) + ' %') + '</td></tr>'; }).join('') + '</tbody></table></div>';
+      h += '<div style="overflow:auto"><table class="table"><thead><tr><th>Adversaire · intensité</th><th class="num">Matchs</th><th class="num">Score moyen ± écart-type</th><th class="num">Jaune</th><th class="num">Bleu</th><th class="num">Victoires</th></tr></thead><tbody>' +
+        names.map(function (k) {
+          var a = pa[k], q = a.par_equipe || {};
+          function eq(e) { return q[e] ? fmt(q[e].score.moyenne, 1) + ' <small class="muted">(' + q[e].matchs + ')</small>' : '—'; }
+          return '<tr><td>' + esc(k) + '</td><td class="num">' + a.matchs + '</td><td class="num">' + pm(a.score) + '</td><td class="num">' + eq('yellow') + '</td><td class="num">' + eq('blue') + '</td><td class="num">' + (a.taux_victoire == null ? '—' : fmt(a.taux_victoire * 100, 0) + ' %') + '</td></tr>';
+        }).join('') + '</tbody></table></div>';
     }
     var pr = ev.protocole;
-    if (pr) h += '<p class="note" style="margin-top:8px">Protocole : graine ' + pr.graine + ' · ' + (pr.glouton ? 'politique gloutonne' : 'politique échantillonnée') + ' · observation ' + esc(pr.obs_version || '?') + ' · catalogue ' + esc(pr.catalogue_version || '?') + (ev.duree_s != null ? ' · ' + fmt(ev.duree_s, 0) + ' s (' + fmt(ev.matchs_par_s, 2) + ' matchs/s)' : '') + '.</p>';
+    if (pr) h += '<p class="note" style="margin-top:8px">Protocole : ' + (pr.part_bleu != null ? fmt(pr.part_bleu * 100, 0) + ' % de matchs bleus · ' : '') + 'graine ' + pr.graine + ' · ' + (pr.glouton ? 'politique gloutonne' : 'politique échantillonnée') + ' · observation ' + esc(pr.obs_version || '?') + ' · catalogue ' + esc(pr.catalogue_version || '?') + (ev.duree_s != null ? ' · ' + fmt(ev.duree_s, 0) + ' s (' + fmt(ev.matchs_par_s, 2) + ' matchs/s)' : '') + '.</p>';
     box.innerHTML = h;
   }
 

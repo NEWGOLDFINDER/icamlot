@@ -124,6 +124,9 @@ _job_id = None
 # adverses + 20 % de self-play. Composantes acceptées : les robots, « self », « reference », « aucun ».
 MELANGE_DEFAUT = {"batisseur": 0.2, "razzia": 0.2, "champion": 0.2, "intermediaire": 0.2, "self": 0.2}
 COMPOSANTES_HORS_ROBOTS = ("self", "reference", "aucun")
+# Proportion de matchs joués en bleu à l'entraînement et à l'évaluation (docs/CONTRATS.md §16) : décision de l'équipe, 50 %
+# (même valeur que trainer.scenarios.PART_BLEU_DEFAUT) ; 0 = jaune seul.
+PART_BLEU_DEFAUT = 0.5
 
 
 def valider_physique(ph, info):
@@ -327,6 +330,8 @@ def validate_cerveau(j, slug):
         "hidden": hidden,
         "processus": int(clamp("processus", 0, MAX_PROCS, 0)),
         "eval_matchs": int(clamp("eval_matchs", 0, MAX_EVAL, 200)),
+        "part_bleu": clamp("part_bleu", 0, 1, PART_BLEU_DEFAUT),
+        "imitation_bleu_prefixe": bool(regl.get("imitation_bleu_prefixe", False)),
     }
     rec = j.get("recompense") or {}
     recompense = {
@@ -1331,7 +1336,7 @@ def adversaires_info():
         else:
             d["entraine"] = True
         out.append(d)
-    return {"robots": out, "physique": info.get("physique") or [], "melange_defaut": MELANGE_DEFAUT, "dossier": adversaires_dir(),
+    return {"robots": out, "physique": info.get("physique") or [], "melange_defaut": MELANGE_DEFAUT, "part_bleu_defaut": PART_BLEU_DEFAUT, "dossier": adversaires_dir(),
             "melange_defaut_effectif": melange_effectif(MELANGE_DEFAUT)[0]}
 
 
@@ -1369,6 +1374,11 @@ def lancer_entrainement_adversaire(rid, j):
                 cmd += [opt, str(int(float(j[k])))]
             except (TypeError, ValueError):
                 pass
+    if j.get("part_bleu") is not None:   # proportion de matchs bleus (contrat §16), défaut de la commande : 50 %
+        try:
+            cmd += ["--part-bleu", str(max(0.0, min(1.0, float(j["part_bleu"]))))]
+        except (TypeError, ValueError):
+            pass
     log = open(os.path.join(adversaires_dir(), rid + ".api.log"), "a", encoding="utf-8")
     p = subprocess.Popen(cmd, cwd=REPO, stdout=log, stderr=subprocess.STDOUT, start_new_session=True,
                          env=dict(os.environ, ICAMLOT_ADVERSAIRES=adversaires_dir()))
