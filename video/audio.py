@@ -105,61 +105,81 @@ def pad(f_list, dur, g=0.12):
 
 # --- lit musical : pad + basse pulsée (120 bpm) de 3 s à 27,3 s
 chords = [[110, 130.8, 164.8], [87.3, 110, 130.8], [130.8, 164.8, 196], [98, 123.5, 146.8]]   # la m, fa, do, sol
-for i, t0 in enumerate(np.arange(3.0, 27.3, 2.0)):
+for i, t0 in enumerate(np.arange(2.4, 27.4, 2.0)):
     put(pad(chords[i % 4], 2.3, 0.10), t0, 1.0, 0.0)
-for t0 in np.arange(3.0, 27.3, 0.5):
-    root = chords[int((t0 - 3) // 2) % 4][0] / 2
+for t0 in np.arange(2.4, 27.4, 0.5):
+    root = chords[int((t0 - 2.4) // 2) % 4][0] / 2
     n = int(0.42 * SR)
     tt = np.arange(n) / SR
     put(np.tanh(2 * np.sin(2 * np.pi * root * tt)) * env(n, 0.004, 0.16) * 0.22, t0)
 # respiration du lit sous les impacts
-# --- ouverture
-put(riser(0.85, 120, 900), 0.05, 0.8)
-put(hit(3.0, 42, 1.0), 0.9)
+# --- ouverture (0 - 2,4 s)
+put(riser(0.6, 120, 900), 0.05, 0.8)
+put(hit(2.4, 42, 1.0), 0.7)
 for k in range(10):
-    put(blip(2400 + 120 * k, 0.03, 0.06), 0.25 + k * 0.055, pan=0.3)
-for k in range(12):
-    put(blip(2000 + 90 * k, 0.03, 0.05), 1.45 + k * 0.045, pan=-0.3)
-put(riser(0.7, 300, 3000), 2.3, 0.7)
-put(hit(2.0, 55, 0.8), 3.0)
-put(whoosh(1.2, False), 3.0, 0.7)
-# --- le monde : chute des pierres (une par carrière)
+    put(blip(2400 + 120 * k, 0.03, 0.06), 0.15 + k * 0.045, pan=0.3)
+for k in range(10):
+    put(blip(2000 + 90 * k, 0.03, 0.05), 1.15 + k * 0.045, pan=-0.3)
+put(riser(0.5, 300, 3000), 1.9, 0.7)
+put(hit(1.8, 55, 0.85), 2.4)
+put(whoosh(0.9, False), 2.4, 0.7)
+# --- le monde : chute des pierres
 for i in range(10):
-    put(thud(0.32), 4.3 + i * 0.09 + 0.45, pan=-0.6 + i * 0.13)
-for k in range(4):
-    put(blip(1500 + 200 * k, 0.05, 0.08), 4.0 + 0.7 * k)
-# --- plan 3 : adversaire, notre robot, tampon, plongée
-put(riser(0.8, 200, 1200), 7.55, 0.5)
-put(riser(0.8, 220, 1400), 8.45, 0.5)
-put(hit(1.5, 70, 0.6), 9.0)
-put(riser(0.9, 150, 2400), 9.6, 0.9)
-put(hit(2.6, 40, 1.0), 10.5)
-put(whoosh(0.8, False), 10.45, 0.6)
-# --- plan 4 : dans sa tête
-WSTART = [10.9, 14.0, 17.0, 20.0]
-for w in WSTART:
-    put(hit(1.2, 36, 0.7), w)                          # battement de décision
-    n = int(1.2 * SR)
-    tt = np.arange(n) / SR                             # ralenti : son qui descend
-    put(np.sin(2 * np.pi * np.cumsum(420 * np.exp(-tt / 0.5) + 60) / SR) * env(n, 0.01, 0.5) * 0.18, w + 0.05)
-    for j in range(14):                                # activations
-        put(blip(1200 + 140 * ((j * 7) % 11), 0.025, 0.05), w + 0.15 + j * 0.075, pan=np.sin(j) * 0.7)
-    put(chime(1318.5, 0.12), w + 1.3)                  # décision affichée
-runs = [(12.5, 14.0), (15.6, 17.0), (18.6, 20.0), (21.6, 23.4)]
-for a, b in runs:                                      # tic-tac du chrono
-    for tk in np.arange(a, b, 0.25):
-        put(blip(3200, 0.012, 0.05), tk, pan=0.2)
-put(chime(880, 0.28), 20.0)                            # « +13 pts » mur M1
-put(chime(988, 0.28), 23.4)                            # « +13 pts » mur M4
-put(whoosh(0.9, True), 23.4, 0.6)
-# --- plan 5 : entraînement
+    put(thud(0.32), 3.1 + i * 0.072 + 0.4, pan=-0.6 + i * 0.13)
+for k in range(3):
+    put(blip(1500 + 200 * k, 0.05, 0.08), 3.0 + 0.4 * k)
+# --- présentation des robots
+put(riser(0.7, 200, 1200), 5.45, 0.5)
+put(whoosh(0.9, True), 6.3, 0.5)
+put(riser(0.6, 220, 1400), 6.4, 0.5)
+put(hit(1.2, 70, 0.6), 6.95)
+put(riser(0.4, 300, 2600), 7.2, 0.8)
+# --- GO
+put(hit(2.0, 45, 1.1), 7.6)
+for k in range(8):
+    put(blip(3200, 0.012, 0.05), 7.9 + k * 0.19, pan=0.2)
+# --- caméra embarquée au ralenti
+put(whoosh(0.6, False), 9.35, 0.6)
+n = int(2.5 * SR); tt = np.arange(n) / SR
+put(np.sin(2 * np.pi * np.cumsum(55 + 8 * np.sin(tt * 3)) / SR) * env(n, 0.3, 2.0) * 0.35, 9.4)
+for k in range(5):
+    put(blip(1100, 0.08, 0.07), 9.6 + k * 0.48, pan=-0.4)          # bip de verrouillage lidar
+# --- accélération ×3
+put(riser(0.7, 400, 4000), 11.9, 0.9)
+# --- arrêt sur image : une note par groupe d'entrées
+put(hit(2.0, 38, 1.0), 12.6)
+notes = [523.3, 587.3, 659.3, 698.5, 784.0, 880.0, 987.8, 1046.5, 1174.7, 1318.5]
+for i, f in enumerate(notes):
+    put(blip(f, 0.12, 0.12), 12.75 + i * 0.29, pan=-0.6 + i * 0.13)
+put(riser(0.5, 200, 2400), 15.5, 0.8)
+# --- le réseau décide
+put(hit(1.6, 40, 0.9), 16.0)
+for j in range(40):
+    put(blip(900 + 70 * ((j * 7) % 13), 0.025, 0.05), 16.2 + j * 0.055, pan=np.sin(j) * 0.7)
+put(riser(0.6, 300, 2000), 18.0, 0.7)
+# --- le nom de l'action
+put(hit(2.4, 36, 1.1), 18.6)
+put(chime(1318.5, 0.2), 18.65)
+# --- exécution
+put(whoosh(0.7, False), 19.95, 0.6)
+for k in range(10):
+    put(blip(3200, 0.012, 0.05), 20.0 + k * 0.18, pan=0.2)
+put(thud(0.5), 22.15)
+put(chime(880, 0.32), 22.2)                 # +13 pts mur M1
+# --- décision 4 en accéléré
+put(hit(1.0, 50, 0.7), 22.6)
+for j in range(12):
+    put(blip(1200 + 90 * j, 0.02, 0.05), 22.7 + j * 0.06)
+put(hit(1.2, 45, 0.8), 23.3)
+put(chime(988, 0.32), 23.85)                # +13 pts mur M4
+# --- entraînement
 put(hit(2.0, 50, 0.85), 24.2)
 for k in range(24):
     put(blip(900 + 60 * (k % 8), 0.04, 0.05), 24.6 + k * 0.11, pan=((k % 5) - 2) / 3)
 # --- appel
-put(riser(0.6, 300, 2600), 27.15, 0.8)
-put(hit(3.2, 38, 1.1), 27.8)
-put(pad([110, 164.8, 220, 277.2], 2.4, 0.14), 27.8)
+put(riser(0.5, 300, 2600), 27.2, 0.8)
+put(hit(3.0, 38, 1.1), 27.7)
+put(pad([110, 164.8, 220, 277.2], 2.3, 0.14), 27.7)
 
 # réverbération simple (réponse impulsionnelle bruitée)
 ir_n = int(1.8 * SR)

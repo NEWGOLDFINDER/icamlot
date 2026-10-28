@@ -441,189 +441,224 @@ function nodeVis(L, i, d) {
   return d.mask[i] ? { v: 0.25 + 0.75 * Math.pow(d.probs[i], 0.25), col: OUTCOL.valid } : { v: 0.12, col: OUTCOL.masked };
 }
 
-// ------------------------------------------------------------------ chronologie
-const S = { s1: [0, 3], s2: [3, 7.5], s3: [7.5, 10.5], s4: [10.5, 24], s5: [24, 27.3], s6: [27.3, 30] };
-const inS = (t, k) => t >= S[k][0] && t < S[k][1];
-const DT = DEC.map(d => d.t);
-const WSTART = [10.9, 14.0, 17.0, 20.0], WLEN = 1.6;
-const KF = [[10.5, 0], [10.9, 0], [12.5, 0.15], [14.0, DT[1]], [15.6, DT[1] + 0.15], [17.0, DT[2]], [18.6, DT[2] + 0.15], [20.0, DT[3]], [21.6, DT[3] + 0.15], [23.4, T_END], [99, T_END]];
+// ------------------------------------------------------------------ données du match réel : pierres échantillonnées dans le moteur
+const STONES = await (await fetch('stones.json')).json();
+function stoneSample(id, mt) {
+  const a = STONES.stones[id]; if (!a) return null;
+  const f = clamp(mt / STONES.dt, 0, a.length - 1), i = Math.min(a.length - 2, Math.floor(f)), k = f - i, A = a[i], B = a[i + 1];
+  if (!A || !B) return A || B;
+  if (A[7] !== B[7] && (A[7] === 3 || B[7] === 3)) return k < 0.5 ? A : B;      // pose : pas d'interpolation à travers le lâcher
+  let da = B[6] - A[6]; if (da > 180) da -= 360; if (da < -180) da += 360;
+  return [lerp(A[0], B[0], k), lerp(A[1], B[1], k), lerp(A[2], B[2], k), B[3], B[4], B[5], A[6] + da * k, B[7]];
+}
+// trajectoires (traces lumineuses)
+function trail(arr, color) {
+  const pts = arr.map(p => tab(p[0], p[1], 14));
+  const l = polyLine(pts, color, 0.9); l.material.opacity = 0.9; l.userData.n = pts.length; world.add(l); return l;
+}
+const trailY = trail(LIVE.yellow, C.yellow), trailB = trail(LIVE.blue, 0x6fa0ff);
+nous.visible = false; pulse.visible = false;
+
+// ------------------------------------------------------------------ montage
+const SH = { hook: [0, 2.4], world: [2.4, 5.4], reveal: [5.4, 7.6], go: [7.6, 7.9], A: [7.9, 9.4], B: [9.4, 11.9], C: [11.9, 12.6], D: [12.6, 16.0], E: [16.0, 18.6], F: [18.6, 20.0], G: [20.0, 22.6], H: [22.6, 24.2], I: [24.2, 27.4], J: [27.4, 30] };
+const IN = (t, k) => t >= SH[k][0] && t < SH[k][1];
+const DT3 = DEC[2].t, DT4 = DEC[3].t;
+const KF = [[7.6, 0], [7.9, 0], [9.4, 3.0], [11.9, 3.5], [12.6, DT3], [20.0, DT3], [21.8, 7.4], [22.6, DT4], [24.2, T_END], [99, T_END]];
 function matchT(t) { if (t <= KF[0][0]) return 0; for (let i = 1; i < KF.length; i++) if (t <= KF[i][0]) return lerp(KF[i - 1][1], KF[i][1], (t - KF[i - 1][0]) / (KF[i][0] - KF[i - 1][0])); return T_END; }
 function speedAt(t) { return (matchT(t + 0.02) - matchT(t - 0.02)) / 0.04; }
-function curDec(t) { let k = -1; WSTART.forEach((s, i) => { if (t >= s) k = i; }); return k; }
 function poseAt(arr, mt) {
   const f = clamp(mt / 0.05, 0, arr.length - 1), i = Math.min(arr.length - 2, Math.floor(f)), k = f - i, a = arr[i], b = arr[i + 1];
   let dh = b[2] - a[2]; if (dh > 180) dh -= 360; if (dh < -180) dh += 360;
   return { x: lerp(a[0], b[0], k), y: lerp(a[1], b[1], k), h: a[2] + dh * k };
 }
-// actions terminées : récompense versée par le moteur à la fin de la brique
-const DONE = DEC.map((d, k) => ({ k, end: k + 1 < DEC.length ? DEC[k + 1].t : T_END, reward: d.reward, wall: (d.label.match(/^Mur (M\d)/) || [])[1] }));
-
-// caméra « drone » : dérive douce + roulis
-function look(pos, tgt, fov = 40, shift = 0, roll = 0, cam = camera, shiftY = 0) {
-  const vw = cam === netCam ? NVP.w : VP.w;
-  cam.position.copy(pos); cam.up.set(0, 1, 0); cam.lookAt(tgt); if (roll) cam.rotateZ(roll); cam.fov = fov; cam.aspect = vw / H;
-  if (shift || shiftY) cam.setViewOffset(vw, H, -shift, -shiftY, vw, H); else cam.clearViewOffset(); cam.updateProjectionMatrix();
+function look(pos, tgt, fov = 40, roll = 0, cam = camera, vw = W, vh = H) {
+  cam.position.copy(pos); cam.up.set(0, 1, 0); cam.lookAt(tgt); if (roll) cam.rotateZ(roll);
+  cam.fov = fov; cam.aspect = vw / vh; cam.clearViewOffset(); cam.updateProjectionMatrix();
 }
 function drift(t, a = 1) { return V(Math.sin(t * 0.71) * 18 * a + Math.sin(t * 1.9) * 5 * a, Math.sin(t * 1.13) * 12 * a, Math.cos(t * 0.83) * 18 * a); }
+function shake(t, a) { return V(Math.sin(t * 37.1) * a + Math.sin(t * 23.3) * a * 0.6, Math.sin(t * 29.7) * a * 0.7, Math.cos(t * 31.9) * a); }
 function orbit(cx, cz, r, ang, h) { return V(cx + r * Math.cos(ang), h, cz + r * Math.sin(ang)); }
 const cubic = (a, b, c, k) => a.clone().multiplyScalar((1 - k) * (1 - k)).add(b.clone().multiplyScalar(2 * k * (1 - k))).add(c.clone().multiplyScalar(k * k));
-
-renderer.autoClear = false;
-netScene.background = null; netScene.fog = null;
+renderer.autoClear = false; netScene.background = null; netScene.fog = null;
+VP.x0 = 0; VP.w = W; NVP.x0 = 0; NVP.w = W;
 
 // ------------------------------------------------------------------ image
-let NETFADE = 0;
+let NETFADE = 1;
 function renderFrame(t) {
   g.clearRect(0, 0, hud.width, hud.height);
-  let scene = world;
-  const mt = matchT(t), k = curDec(t), dK = k >= 0 ? DEC[k] : null;
-  const yp = poseAt(LIVE.yellow, mt), bp = poseAt(LIVE.blue, mt);
-
-  // --- robots
-  const inHead = t >= S.s4[0] && t < S.s5[0];
-  placeRobot(robot, ...ROBOT_START);
-  placeRobot(adv, bp.x, bp.y, bp.h); adv.visible = t >= 7.55 && t < S.s5[0] + 0.6;
-  const bAdv = eio(seg(t, 7.6, 8.4)); adv.userData.body.scale.set(1, Math.max(0.001, bAdv), 1);
-  ringB.visible = t > 7.6 && t < 8.5; ringB.position.set(bp.x, bAdv * 440, bp.y); ringB.material.opacity = 0.9 * (1 - bAdv * 0.6);
-  const build = eio(seg(t, 8.5, 9.3)); clipPlane.constant = build * 470;
-  ringY.visible = t > 8.5 && t < 9.4; ringY.position.set(250, build * 470, 1000); ringY.material.opacity = 0.9 * (1 - build * 0.6);
-  nous.visible = inHead; placeRobot(nous, yp.x, yp.y, yp.h);
-  pulse.visible = inHead; { const r = ((t * 1300) % 1800); pulse.geometry.dispose(); pulse.geometry = new THREE.RingGeometry(Math.max(0, r - 25), r, 96); pulse.position.set(yp.x, 8, yp.y); pulse.material.opacity = 0.35 * (1 - r / 1800); }
-  rays.visible = inHead && dK;
+  const mt = matchT(t), yp = poseAt(LIVE.yellow, mt), bp = poseAt(LIVE.blue, mt), live = t >= SH.go[0];
+  // robots
+  placeRobot(robot, ...(live ? [yp.x, yp.y, yp.h] : ROBOT_START));
+  placeRobot(adv, ...(live ? [bp.x, bp.y, bp.h] : [2750, 1000, 180]));
+  adv.visible = t >= 5.45 && t < SH.I[1];
+  const bAdv = eio(seg(t, 5.5, 6.2)); adv.userData.body.scale.set(1, Math.max(0.001, bAdv), 1);
+  ringB.visible = t > 5.5 && t < 6.3; ringB.position.set(2750, bAdv * 440, 1000); ringB.material.opacity = 0.9 * (1 - bAdv * 0.6);
+  const build = eio(seg(t, 6.4, 7.0)); clipPlane.constant = build * 470;
+  ringY.visible = t > 6.4 && t < 7.1; ringY.position.set(250, build * 470, 1000); ringY.material.opacity = 0.9 * (1 - build * 0.6);
+  // pierres
+  for (const s of stones) {
+    const u = s.userData, id = u.pack + '.' + (u.k + 1);
+    if (!live) {
+      const drop = eout(seg(t, 3.1 + u.delay * 0.8, 3.5 + u.delay * 0.8)), bounce = Math.sin(seg(t, 3.5 + u.delay * 0.8, 3.7 + u.delay * 0.8) * Math.PI) * 18;
+      s.position.set(u.x, u.h + (1 - drop) * 1400 + bounce, u.y); s.rotation.set(0, u.pack === 'P9' || u.pack === 'P10' ? Math.PI / 2 : 0, 0); s.scale.set(1, 1, 1);
+      s.visible = t >= 3.1 + u.delay * 0.8; continue;
+    }
+    const b = stoneSample(id, mt); s.visible = !!b && t < SH.I[1]; if (!b) continue;
+    // boîte réelle : empreinte 2·hl × 2·hn, hauteur top-bottom, angle du grand côté
+    s.position.set(b[0], b[2], b[1]); s.rotation.set(0, -b[6] * Math.PI / 180, 0); s.scale.set(b[3] / 320, b[5] / 110, b[4] / 110);
+  }
+  // traces
+  const nT = Math.max(1, Math.floor(mt / 0.05) + 1);
+  trailY.visible = trailB.visible = live && t < SH.I[0] + 0.5;
+  trailY.geometry.setDrawRange(0, nT); trailB.geometry.setDrawRange(0, nT);
+  trailB.material.opacity = IN(t, 'B') ? 1 : 0.65; trailY.material.opacity = 0.55;
+  // radar (arrêt sur image)
+  rays.visible = IN(t, 'D') && t > 15.0;
   if (rays.visible) {
-    const pa = rays.geometry.attributes.position.array, rk = eout(seg(t, WSTART[k], WSTART[k] + 0.4));
-    for (let i = 0; i < 8; i++) { const a = (yp.h + i * 45) * Math.PI / 180, d = dK.obs[48 + i] * 1000 * rk; pa.set([yp.x, 60, yp.y, yp.x + d * Math.cos(a), 60, yp.y + d * Math.sin(a)], i * 6); }
+    const pa = rays.geometry.attributes.position.array, rk = eout(seg(t, 15.0, 15.4)), d3 = DEC[2];
+    for (let i = 0; i < 8; i++) { const a = (yp.h + i * 45) * Math.PI / 180, d = d3.obs[48 + i] * 1000 * rk; pa.set([yp.x, 60, yp.y, yp.x + d * Math.cos(a), 60, yp.y + d * Math.sin(a)], i * 6); }
     rays.geometry.attributes.position.needsUpdate = true;
   }
-  // --- pierres : chute (plan 2), puis ce que le robot croit (plan 4)
-  for (const s of stones) {
-    const u = s.userData, drop = eout(seg(t, 4.3 + u.delay, 4.75 + u.delay)), bounce = Math.sin(seg(t, 4.75 + u.delay, 5.0 + u.delay) * Math.PI) * 18;
-    let sc = 1;
-    if (inHead && k >= 0) {
-      const pi = SPEC.carrieres.findIndex(p => p.id === u.pack), now = Math.round(DEC[k].obs[5 + pi] * 3), before = k > 0 ? Math.round(DEC[k - 1].obs[5 + pi] * 3) : 3;
-      const was = u.k < before ? 1 : 0, is = u.k < now ? 1 : 0; sc = lerp(was, is, eio(seg(t, WSTART[k], WSTART[k] + 0.5)));
-    }
-    s.position.set(u.x, (u.h + (1 - drop) * 1400 + bounce) * Math.max(sc, 0.001), u.y); s.scale.set(1, Math.max(sc, 0.001), 1);
-    s.visible = t >= 4.3 + u.delay && sc > 0.01 && t < S.s5[1];
-  }
   for (const id in ZONE) ZONE[id].material.opacity = 0;
-  if (inHead) for (const dn of DONE) if (dn.wall && dn.reward > 0 && mt >= dn.end - 1e-6) ZONE[dn.wall].material.opacity = 0.25 + 0.2 * Math.sin(t * 7);
-  // --- table
-  topMat.opacity = eout(seg(t, 3.4, 4.6));
-  borders.forEach(b => { b.scale.y = Math.max(0.001, eout(seg(t, 3.6, 4.4))); b.position.y = 35 * b.scale.y; });
-  glowLines.forEach((l, i) => { l.geometry.setDrawRange(0, Math.max(0, Math.round(l.userData.n * seg(t, 3.2 + i * 0.05, 4.4 + i * 0.05)))); });
-  table.visible = t >= S.s2[0] - 0.2;
-  // --- grille
-  gridGroup.visible = t >= S.s5[0] - 0.1;
+  // table
+  topMat.opacity = eout(seg(t, 2.6, 3.4));
+  borders.forEach(b => { b.scale.y = Math.max(0.001, eout(seg(t, 2.8, 3.4))); b.position.y = 35 * b.scale.y; });
+  glowLines.forEach((l, i) => l.geometry.setDrawRange(0, Math.max(0, Math.round(l.userData.n * seg(t, 2.45 + i * 0.03, 3.3 + i * 0.03)))));
+  table.visible = t >= SH.world[0] - 0.1;
+  // grille d'entraînement
+  gridGroup.visible = t >= SH.I[0] - 0.1;
   if (gridGroup.visible) {
     const { robY, robB } = gridGroup.userData, m4 = new THREE.Matrix4(), q = new THREE.Quaternion();
     for (const c of clones) {
-      const u = ((t - S.s5[0]) * 0.33 + c.ph) % 1, [x, y] = pathAt(c.path, u), [xb, yb] = pathAt(c.pathB, (u + 0.37) % 1);
+      const u = ((t - SH.I[0]) * 0.45 + c.ph) % 1, [x, y] = pathAt(c.path, u), [xb, yb] = pathAt(c.pathB, (u + 0.37) % 1);
       q.setFromAxisAngle(V(0, 1, 0), u * 6); m4.compose(V(x + c.ox, 56, y + c.oy), q, V(1, 1, 1)); robY.setMatrixAt(c.ci, m4);
       m4.compose(V(xb + c.ox, 130, yb + c.oy), q, V(1, 1, 1)); robB.setMatrixAt(c.ci, m4);
     }
     robY.instanceMatrix.needsUpdate = robB.instanceMatrix.needsUpdate = true;
-    const op = eout(seg(t, S.s5[0], S.s5[0] + 1.0));
+    const op = eout(seg(t, SH.I[0], SH.I[0] + 0.8));
     gridGroup.children.forEach(o => { if (!o.isInstancedMesh && o.material) o.material.opacity = op * (o.isLine ? 0.7 : 1); });
   }
 
-  NETFADE = seg(t, 10.5, 11.0) * (1 - seg(t, 23.6, 24.3));
-  const SPLIT = Math.round(lerp(W, 900, eio(NETFADE)));
-  VP.x0 = 0; VP.w = SPLIT; NVP.x0 = SPLIT; NVP.w = W - SPLIT;
-  // --- caméras (vol de drone)
-  if (t < S.s2[0]) {
-    scene = voidScene; const q = seg(t, 0, 3);
+  // --- caméras
+  let scene = world, netFull = false, pip = false;
+  if (t < SH.world[0]) {
+    scene = voidScene; const q = seg(t, 0, SH.hook[1]);
     look(V(0, 0, 2000 - 15000 * Math.pow(q, 2.2)), V(0, 0, -20000 - 15000 * q), 50);
-  } else if (t < S.s3[0]) {
-    const q = eio(seg(t, S.s2[0], S.s2[1]));
-    const pos = orbit(1500, 1000, lerp(2500, 3400, q), lerp(2.45, 1.72, q), lerp(230, 2500, Math.pow(q, 1.3))).add(drift(t, 1.5));
-    look(pos, tab(lerp(700, 1450, q), lerp(1150, 1000, q), 0), lerp(46, 42, q), 0, lerp(0.07, -0.015, q));
-  } else if (t < S.s4[0]) {
-    if (t < 8.6) {
-      const q = eio(seg(t, 7.5, 8.6));
-      look(orbit(2750, 1000, lerp(1250, 900, q), lerp(2.55, 3.55, q), lerp(650, 430, q)).add(drift(t)), tab(2750, 1000, 170), 38, 0, lerp(-0.05, 0.03, q));
-    } else if (t < 9.6) {
-      const q = eio(seg(t, 8.6, 9.6));
-      const p0 = orbit(2750, 1000, 900, 3.55, 430), p2 = orbit(250, 1000, 950, -0.35, 520), p1 = V(1500, 1250, 700);
-      look(cubic(p0, p1, p2, q).add(drift(t)), tab(lerp(2750, 250, eio(clamp(q * 1.2))), 1000, 170), 40, 0, Math.sin(q * Math.PI) * -0.12);
-    } else {
-      const q = eio(seg(t, 9.6, 10.5));
-      const p0 = orbit(250, 1000, 950, -0.35, 520), p1 = tab(255, 1000, 330);
-      look(p0.lerp(p1, q).add(drift(t, 1 - q)), tab(250, 1000, lerp(170, 120, q)), lerp(40, 70, q), 0, q * 0.2);
-    }
-  } else if (t < S.s5[0]) {
-    const q = seg(t, S.s4[0], S.s4[1]);
-    look(orbit(1500, 1000, lerp(4200, 3900, q), lerp(1.9, 1.4, eio(q)), lerp(3800, 3450, q)).add(drift(t, 1.5)), tab(1500, 1000, 0), 44, 0, Math.sin(t * 0.4) * 0.01, camera, 210);
+  } else if (t < SH.reveal[0]) {
+    const q = eio(seg(t, SH.world[0], SH.world[1]));
+    const pos = orbit(1500, 1000, lerp(2300, 3300, q), lerp(2.6, 1.65, q), lerp(200, 2300, Math.pow(q, 1.2))).add(drift(t, 1.5));
+    look(pos, tab(lerp(600, 1450, q), lerp(1200, 1000, q), 0), lerp(48, 42, q), lerp(0.1, -0.02, q));
+  } else if (t < SH.go[0]) {
+    if (t < 6.4) { const q = eio(seg(t, 5.4, 6.4)); look(orbit(2750, 1000, lerp(1300, 850, q), lerp(2.5, 3.6, q), lerp(700, 420, q)).add(drift(t)), tab(2750, 1000, 170), 38, lerp(-0.06, 0.04, q)); }
+    else { const q = eio(seg(t, 6.4, 7.6)); const p0 = orbit(2750, 1000, 850, 3.6, 420), p1 = V(1500, 1300, 650), p2 = orbit(250, 1000, 900, -0.3, 480);
+      look(cubic(p0, p1, p2, clamp(q * 1.5)).add(drift(t)), tab(lerp(2750, 250, eio(clamp(q * 1.8))), 1000, 170), 40, Math.sin(clamp(q * 1.5) * Math.PI) * -0.14); }
+  } else if (t < SH.B[0]) {
+    const q = eio(seg(t, SH.go[0], SH.B[0]));
+    look(orbit(1500, 900, lerp(2700, 3000, q), lerp(1.95, 1.45, q), lerp(1900, 2300, q)).add(drift(t, 2)), tab(1500, 800, 0), 44, lerp(0.05, -0.03, q));
+  } else if (t < SH.C[0]) {
+    // caméra embarquée derrière l'adversaire : on suit sa trajectoire au ralenti
+    const q = seg(t, SH.B[0], SH.B[1]), a = bp.h * Math.PI / 180, fx = Math.cos(a), fy = Math.sin(a);
+    const back = lerp(900, 520, eio(q)), hh = lerp(520, 360, eio(q));
+    const pos = tab(bp.x - fx * back + fy * 160, bp.y - fy * back - fx * 160, hh).add(shake(t, 4));
+    look(pos, tab(bp.x + fx * 900, bp.y + fy * 900, 120), lerp(52, 60, q), Math.sin(t * 1.3) * 0.03);
+  } else if (t < SH.D[0]) {
+    // accélération ×3 : la caméra s'arrache vers le haut
+    const q = eio(seg(t, SH.C[0], SH.C[1])), a = bp.h * Math.PI / 180;
+    const p0 = tab(bp.x - Math.cos(a) * 520, bp.y - Math.sin(a) * 520, 360), p1 = orbit(1450, 820, 1700, 1.2, 3300);
+    look(p0.lerp(p1, q).add(shake(t, 18 * (1 - q))), tab(lerp(bp.x, 1450, q), lerp(bp.y, 820, q), 0), lerp(60, 48, q), (1 - q) * 0.1);
+  } else if (t < SH.E[0]) {
+    // arrêt sur image : la caméra tourne autour de la table figée
+    const q = seg(t, SH.D[0], SH.D[1]);
+    look(orbit(1450, 820, lerp(1700, 1450, q), lerp(1.2, 2.0, eio(q)), lerp(3300, 3100, q)).add(drift(t, 1)), tab(1450, 820, 0), 48);
+  } else if (t < SH.G[0]) {
+    netFull = true; scene = null;
+  } else if (t < SH.H[0]) {
+    // exécution : on suit notre robot jusqu'au mur
+    const q = seg(t, SH.G[0], SH.G[1]);
+    look(orbit(yp.x, yp.y, lerp(1500, 900, eio(q)), lerp(2.3, 1.85, q), lerp(1100, 520, eio(q))).add(drift(t, 1)), tab(yp.x - 80, yp.y - 60, 140), lerp(40, 46, q), lerp(0.03, -0.02, q));
+  } else if (t < SH.I[0]) {
+    pip = t < 23.7;
+    const q = eio(seg(t, SH.H[0], SH.H[1]));
+    look(orbit(lerp(700, 640, q), lerp(900, 1150, q), lerp(1500, 1250, q), lerp(-0.3, 0.55, q), lerp(900, 650, q)).add(drift(t, 1.5)), tab(yp.x, yp.y, 120), 44, lerp(-0.04, 0.04, q));
   } else {
-    const q = eio(seg(t, S.s5[0], 30));
-    const p0 = orbit(1500, 1000, 3900, 1.4, 3450);
-    look(V(lerp(p0.x, 1500, q), lerp(p0.y, 22000, Math.pow(q, 1.3)), lerp(p0.z, 1000 + 9000, q)).add(drift(t, 3)), tab(1500, 1000, 0), lerp(44, 42, q), 0, q * 0.08);
+    const q = eio(seg(t, SH.I[0], 30)), p0 = orbit(640, 1150, 1250, 0.55, 650);
+    look(V(lerp(p0.x, 1500, q), lerp(p0.y, 22000, Math.pow(q, 1.25)), lerp(p0.z, 1000 + 9000, q)).add(drift(t, 3)), tab(lerp(yp.x, 1500, q), lerp(yp.y, 1000, q), 0), lerp(44, 42, q), q * 0.08);
   }
   dust.rotation.z = t * 0.03;
 
-  // --- rendu : monde, puis réseau en surimpression
-  renderer.setScissorTest(true);
-  renderer.setViewport(0, 0, SPLIT, H); renderer.setScissor(0, 0, SPLIT, H);
-  renderer.setClearColor(C.bg, 1); renderer.clear(); renderer.render(scene, camera);
-  if (SPLIT < W) {
-    netFrame(t, k);
-    const q = seg(t, S.s4[0], S.s4[1]);
-    look(V(6100 * Math.sin(lerp(-0.24, 0.2, eio(q))), lerp(300, 60, q), 6100 * Math.cos(lerp(-0.24, 0.2, eio(q)))).add(drift(t * 1.3, 2.5)), V(-60, -40, 0), 38, 0, 0, netCam);
-    renderer.setViewport(SPLIT, 0, W - SPLIT, H); renderer.setScissor(SPLIT, 0, W - SPLIT, H);
-    renderer.setClearColor(0x02060d, 1); renderer.clear(); renderer.render(netScene, netCam);
-  }
+  // --- rendu
   renderer.setScissorTest(false); renderer.setViewport(0, 0, W, H);
-  // --- robot confidentiel (flouté)
-  if (t >= 8.5 && t < S.s4[0] + 0.05) {
-    // silhouette unie -> réduite à 64 x 36 px -> agrandie et très floutée : aucun mécanisme ne peut subsister
-    rRenderer.render(robotScene, camera);
-    tctx.clearRect(0, 0, 64, 36); tctx.drawImage(rcv, 0, 0, 64, 36);
-    const bl = lerp(38, 80, seg(t, 9.7, 10.5));
-    g.save(); g.imageSmoothingEnabled = true; g.filter = `blur(${bl * DPR}px)`;
-    g.globalAlpha = 1; g.drawImage(tiny, 0, 0, W * DPR, H * DPR);
-    g.globalCompositeOperation = 'lighter'; g.globalAlpha = 0.3; g.drawImage(tiny, 0, 0, W * DPR, H * DPR); g.restore();
-    const dk = seg(t, 9.85, 10.2); if (dk > 0) { g.fillStyle = `rgba(2,6,14,${0.82 * dk})`; g.fillRect(0, 0, W * DPR, H * DPR); }
+  renderer.setClearColor(netFull ? 0x02060d : C.bg, 1); renderer.clear();
+  if (scene) renderer.render(scene, camera);
+  if (netFull) {
+    const q = seg(t, SH.E[0], SH.F[1]);
+    netFrameP(t, 2, seg(t, 16.15, 18.5), 1);
+    const zz = eio(seg(t, 17.9, 18.7)), win = net.layers[3][DEC[2].idx].p;
+    let pos = V(lerp(-2300, 2300, eio(clamp(q * 1.25))), lerp(420, 150, q), lerp(2300, 2500, q)), tgt = V(lerp(-1100, 900, eio(clamp(q * 1.3))), 0, 0);
+    if (t > 18.6) { pos = win.clone().add(V(900, 120, 900)); tgt = win.clone(); }
+    look(pos.add(drift(t * 1.4, 3)), tgt, 44, 0, netCam);
+    renderer.render(netScene, netCam);
   }
-  hudFrame(t, mt, k, yp, bp);
+  if (pip) {
+    const pw = 640, ph = 360, px = W - pw - 60, py = 130;
+    netFrameP(t, 3, seg(t, 22.65, 23.45), 1);
+    look(V(700, 250, 3300), V(-100, 0, 0), 40, 0, netCam, pw, ph);
+    renderer.setScissorTest(true); renderer.setViewport(px, H - py - ph, pw, ph); renderer.setScissor(px, H - py - ph, pw, ph);
+    renderer.setClearColor(0x02060d, 1); renderer.clear(); renderer.render(netScene, netCam);
+    renderer.setScissorTest(false); renderer.setViewport(0, 0, W, H);
+  }
+  // --- notre robot : silhouette unie, pixelisée puis floutée selon sa taille à l'écran
+  const robotOn = scene === world && t >= 6.4 && t < SH.I[0] + 0.4;
+  if (robotOn) {
+    const c = proj(robot.position.clone().add(V(0, 170, 0))), e = proj(robot.position.clone().add(V(240, 170, 0)).add(V(0, 0, 0)));
+    const e2 = proj(robot.position.clone().add(V(0, 400, 0)));
+    const rpx = Math.max(Math.hypot(e.x - c.x, e.y - c.y), Math.hypot(e2.x - c.x, e2.y - c.y), 4);
+    if (c.z < 1) {
+      rRenderer.render(robotScene, camera);
+      const tw = Math.round(clamp(W * 5 / (2 * rpx), 16, 480)), th = Math.max(9, Math.round(tw * H / W));
+      if (tiny.width !== tw) { tiny.width = tw; tiny.height = th; }
+      tctx.clearRect(0, 0, tw, th); tctx.drawImage(rcv, 0, 0, tw, th);
+      const bl = Math.max(5, rpx * 0.45);
+      g.save(); g.imageSmoothingEnabled = true; g.filter = `blur(${bl * DPR}px)`;
+      g.drawImage(tiny, 0, 0, W * DPR, H * DPR); g.globalCompositeOperation = 'lighter'; g.globalAlpha = 0.35; g.drawImage(tiny, 0, 0, W * DPR, H * DPR); g.restore();
+    }
+  }
+  hudFrame(t, mt, yp, bp);
 }
 
-function netFrame(t, k) {
-  const p = k >= 0 ? seg(t, WSTART[k], WSTART[k] + WLEN) : 0, nf = NETFADE, ap = eback(seg(t, 10.5, 11.1));
-  net.bg.material.opacity = 0.78 * nf; net.frame.material.opacity = 0.5 * nf;
-  const cur = k >= 0 ? DEC[k] : null, prev = k > 0 ? DEC[k - 1] : null;
+function netFrameP(t, k, p, nf) {
+  const ap = 1, cur = DEC[k], prev = k > 0 ? DEC[k - 1] : null;
   net.layers.forEach((Lr, L) => {
     const a0 = 0.05 + 0.22 * L, mix = eout(seg(p, a0, a0 + 0.2)), spark = Math.sin(seg(p, a0, a0 + 0.2) * Math.PI);
     Lr.forEach((o, i) => {
       const A = nodeVis(L, i, prev), B = nodeVis(L, i, cur);
-      const v = lerp(A.v, B.v, mix), col = (A.col || B.col || new THREE.Color(0x38e1ff)).clone().lerp(B.col || A.col || new THREE.Color(0x38e1ff), mix);
-      const base = L === 3 && cur && i === cur.idx ? lerp(9, 20, mix) : L === 2 ? 9 : 8;
-      o.m.material.color.copy(col); o.m.material.opacity = nf * clamp(ap) * (0.25 + 0.75 * v);
-      o.m.scale.setScalar(Math.max(0.001, ap) * (base * (0.6 + 0.9 * v) + spark * 7 * v));
+      const v = lerp(A.v, B.v, mix), col = (A.col || B.col).clone().lerp(B.col || A.col, mix);
+      const base = L === 3 && i === cur.idx ? lerp(9, 22, mix) : L === 2 ? 9 : 8;
+      o.m.material.color.copy(col); o.m.material.opacity = nf * (0.25 + 0.75 * v);
+      o.m.scale.setScalar(base * (0.6 + 0.9 * v) + spark * 8 * v);
     });
   });
   net.sets.forEach((set, j) => set.forEach((l, L) => {
-    const a0 = 0.15 + 0.22 * L;
-    let op = 0, n = 0;
-    if (j === k) { op = 0.95 * eout(seg(p, a0, a0 + 0.22)) * (1 - 0.55 * seg(p, 0.92, 1)); n = Math.round(l.userData.n * eout(seg(p, a0, a0 + 0.25))); }
-    else if (j === k - 1) { const f = 1 - seg(p, 0, 0.18); op = 0.43 * f; n = l.userData.n; }
+    const a0 = 0.15 + 0.22 * L; let op = 0, n = 0;
+    if (j === k) { op = 0.95 * eout(seg(p, a0, a0 + 0.22)) * (1 - 0.5 * seg(p, 0.92, 1)); n = Math.round(l.userData.n * eout(seg(p, a0, a0 + 0.25))); }
     l.material.opacity = op * nf; l.geometry.setDrawRange(0, n * 2); l.visible = op > 0.002;
   }));
-  net.loop.material.opacity = 0.55 * nf * clamp(ap); net.loop.rotation.x = t * 1.5;
+  net.loop.material.opacity = 0.55 * nf; net.loop.rotation.x = t * 1.5;
   const pa = net.pulses.geometry.attributes.position.array;
   for (let i = 0; i < 900; i++) {
-    const L = i % 3, set = k >= 0 ? net.sets[k][L] : null, a0 = 0.15 + 0.22 * L;
-    if (!set || p < a0 || p > a0 + 0.42) { pa[i * 3 + 1] = 1e6; continue; }
-    const li = Math.floor(i / 3) % set.userData.n, [a, b] = set.userData.list[li], u = (seg(p, a0, a0 + 0.42) * 2.2 + (i * 0.618) % 1) % 1;
+    const L = i % 3, set = net.sets[k][L], a0 = 0.15 + 0.22 * L;
+    if (p < a0 || p > a0 + 0.45) { pa[i * 3 + 1] = 1e6; continue; }
+    const li = Math.floor(i / 3) % set.userData.n, [a, b] = set.userData.list[li], u = (seg(p, a0, a0 + 0.45) * 2.2 + (i * 0.618) % 1) % 1;
     const P = set.userData.A[a].p.clone().lerp(set.userData.B[b].p, u); pa.set([P.x, P.y, P.z], i * 3);
   }
   net.pulses.geometry.attributes.position.needsUpdate = true; net.pulses.material.opacity = nf;
-  if (cur) { const wp = net.layers[3][cur.idx].p, hk = seg(p, 0.8, 0.95); net.halo.position.copy(wp); net.halo.lookAt(netCam.position); net.halo.material.opacity = hk * nf; net.halo.scale.setScalar(1 + hk + 0.25 * Math.sin(t * 9)); }
+  const wp = net.layers[3][cur.idx].p, hk = seg(p, 0.8, 0.95); net.halo.position.copy(wp); net.halo.lookAt(netCam.position); net.halo.material.opacity = hk * nf; net.halo.scale.setScalar(1 + hk + 0.25 * Math.sin(t * 9));
 }
 
 // ------------------------------------------------------------------ HUD
 const fmt = (v, d = 1) => v.toFixed(d).replace('.', ',');
 const fmtMm = v => Math.round(v).toLocaleString('fr-FR').replace(/ | /g, ' ');
-function projN(v) { const p = v.clone().project(netCam); return { x: NVP.x0 + (p.x + 1) / 2 * NVP.w, y: (1 - p.y) / 2 * H, z: p.z }; }
+function projN(v) { const p = v.clone().project(netCam); return { x: (p.x + 1) / 2 * W, y: (1 - p.y) / 2 * H, z: p.z }; }
 function stamp(str, x, y, k, rot = -0.08) {
   if (k <= 0) return; const s = lerp(1.6, 1, eoutx(k));
   g.save(); g.translate(x * DPR, y * DPR); g.rotate(rot); g.scale(s, s); g.globalAlpha = clamp(k * 1.5);
@@ -631,133 +666,191 @@ function stamp(str, x, y, k, rot = -0.08) {
   g.strokeStyle = '#ff4d5e'; g.lineWidth = 3 * DPR; g.strokeRect(-w / 2 - 18 * DPR, -30 * DPR, w + 36 * DPR, 46 * DPR);
   g.fillStyle = '#ff4d5e'; g.textAlign = 'center'; g.fillText(str, 0, 4 * DPR); g.restore();
 }
-function hudFrame(t, mt, k, yp, bp) {
-  if (t < S.s2[0] + 0.3) {
-    const out = 1 - seg(t, 2.55, 3.0);
-    text('ICAM LOT  ·  EUROBOT 2027', W / 2, 390, { size: 22, weight: 600, align: 'center', track: 8, color: CSS.cyan, alpha: seg(t, 0.15, 0.5) * out, fam: 'Inter' });
-    text(typeOn('On vous dévoile', seg(t, 0.25, 0.8)), W / 2, 480, { size: 54, weight: 500, align: 'center', alpha: out });
-    glitchTitle('LA PLUS GRANDE TECHNO', W / 2, 600, 118, seg(t, 0.85, 1.35) * out, Math.floor(t * 30));
-    text(typeOn('prévue sur notre robot', seg(t, 1.45, 2.0)), W / 2, 690, { size: 54, weight: 500, align: 'center', alpha: out, color: CSS.yellow });
-    flash(Math.max(0, 0.5 - Math.abs(t - 0.9) * 3), '56,225,255');
-    flash(seg(t, 2.85, 3.0) * 0.9 * (1 - seg(t, 3.0, 3.3)));
-    flash((1 - seg(t, 3.0, 3.3)) * (t >= 3 ? 0.9 : 0));
+function speedLines(a, seed) {
+  if (a <= 0) return; const r = rng(seed); g.save(); g.globalAlpha = a; g.strokeStyle = '#bfefff';
+  for (let i = 0; i < 70; i++) { const y = r() * H, x = r() * W, l = 120 + r() * 420; g.lineWidth = (0.6 + r() * 1.8) * DPR; g.beginPath(); g.moveTo(x * DPR, y * DPR); g.lineTo((x + l) * DPR, y * DPR); g.stroke(); }
+  g.restore();
+}
+function badge(str, x, y, col, bg, a) {
+  if (a <= 0) return; g.save(); g.font = F(800, 24, 'Inter'); g.letterSpacing = (3 * DPR) + 'px'; const w = g.measureText(str).width / DPR + 40; g.restore();
+  rect(x - w, y, w, 50, bg, a, col); text(str, x - w / 2, y + 34, { size: 24, weight: 800, align: 'center', track: 3, alpha: a, color: '#fff', fam: 'Inter' });
+}
+function bracket(x, y, r, col, a) { const s = r * 0.45; for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { line(x + sx * r, y + sy * r, x + sx * (r - s), y + sy * r, col, a, 3); line(x + sx * r, y + sy * r, x + sx * r, y + sy * (r - s), col, a, 3); } }
+function bigWord(str, y, size, k, col = CSS.white, seed = 1) {
+  if (k <= 0) return; const s = lerp(1.35, 1, eoutx(k));
+  g.save(); g.translate(W / 2 * DPR, y * DPR); g.scale(s, s); g.translate(-W / 2 * DPR, -y * DPR);
+  glitchTitle(str, W / 2, y, size, k, seed, { color: col }); g.restore();
+}
+
+function hudFrame(t, mt, yp, bp) {
+  // accroche
+  if (t < SH.world[0] + 0.3) {
+    const out = 1 - seg(t, 2.0, 2.4);
+    text('ICAM LOT  ·  EUROBOT 2027', W / 2, 390, { size: 22, weight: 600, align: 'center', track: 8, color: CSS.cyan, alpha: seg(t, 0.1, 0.4) * out, fam: 'Inter' });
+    text(typeOn('On vous dévoile', seg(t, 0.15, 0.6)), W / 2, 480, { size: 54, weight: 500, align: 'center', alpha: out });
+    bigWord('LA PLUS GRANDE TECHNO', 600, 118, seg(t, 0.65, 1.1) * out, CSS.white, Math.floor(t * 30));
+    text(typeOn('prévue sur notre robot', seg(t, 1.15, 1.6)), W / 2, 690, { size: 54, weight: 500, align: 'center', alpha: out, color: CSS.yellow });
+    flash(Math.max(0, 0.55 - Math.abs(t - 0.7) * 3), '56,225,255');
+    flash(seg(t, 2.25, 2.4) * 0.9 * (1 - seg(t, 2.4, 2.7)));
+    flash((1 - seg(t, 2.4, 2.7)) * (t >= 2.4 ? 0.9 : 0));
   }
-  if (t > S.s2[0] && t < S.s6[0]) {
+  const brand = t > SH.world[0] && t < SH.J[0];
+  if (brand) {
     const w1 = text('ICAM LOT', 80, 78, { size: 22, weight: 800, track: 6, alpha: 0.95, fam: 'Inter' });
     text('EUROBOT 2027', 80 + w1 + 18, 78, { size: 22, weight: 500, track: 6, color: CSS.dim, alpha: 0.95, fam: 'Inter' });
-    const sim = inS(t, 's4') ? 'EN DIRECT DANS SON CERVEAU' : 'SIMULATION';
-    const w2 = text(sim, W - 80, 78, { size: 20, weight: 600, track: 4, align: 'right', alpha: 0.9, fam: 'Inter' });
+    const lab = IN(t, 'E') || IN(t, 'F') ? 'RÉSEAU DE NEURONES' : IN(t, 'B') ? 'CAMÉRA EMBARQUÉE · ADVERSAIRE' : 'SIMULATION';
+    const w2 = text(lab, W - 80, 78, { size: 20, weight: 600, track: 4, align: 'right', alpha: 0.9, fam: 'Inter' });
     dot(W - 80 - w2 - 18, 71, 5, CSS.red, 0.6 + 0.4 * Math.sin(t * 6));
   }
-  // plan 2 : le monde
-  if (inS(t, 's2')) {
-    const a1 = fadeIO(t, 3.35, 5.5), a2 = fadeIO(t, 5.35, 7.45);
-    text(typeOn('Avant de rouler sur la vraie table…', seg(t, 3.35, 4.2)), W / 2, 930, { size: 52, weight: 600, align: 'center', alpha: a1 });
-    text(typeOn('…notre robot s\'entraîne dans un monde virtuel.', seg(t, 5.4, 6.4)), W / 2, 930, { size: 52, weight: 600, align: 'center', alpha: a2 });
-    const ca = 1 - seg(t, 7.1, 7.45);
-    chip('TABLE EUROBOT 2027 · 3 000 × 2 000 MM', 80, 130, seg(t, 4.0, 4.6) * ca);
-    chip('30 PIERRES · 10 CARRIÈRES', 80, 182, seg(t, 4.7, 5.3) * ca, CSS.yellow);
-    chip('1 MATCH = 100 SECONDES', 80, 234, seg(t, 5.4, 6.0) * ca, CSS.white);
-    const lk = seg(t, 5.2, 5.6) * (1 - seg(t, 7.0, 7.4));
-    if (lk > 0) for (const p of SPEC.carrieres) { const s = proj(tab(p.c[0], p.c[1], 420)); if (s.z < 1) text(p.id, s.x, s.y, { size: 20, weight: 700, align: 'center', alpha: lk, color: CSS.yellow, fam: 'Inter' }); }
+  // le monde
+  if (IN(t, 'world')) {
+    const a1 = fadeIO(t, 2.6, 4.1, 0.25, 0.25), a2 = fadeIO(t, 4.0, 5.4, 0.25, 0.3);
+    text(typeOn('Avant de rouler sur la vraie table…', seg(t, 2.6, 3.2)), W / 2, 930, { size: 52, weight: 700, align: 'center', alpha: a1 });
+    text(typeOn('…il s\'entraîne dans un monde virtuel.', seg(t, 4.05, 4.6)), W / 2, 930, { size: 52, weight: 700, align: 'center', alpha: a2, color: CSS.cyan });
+    const ca = 1 - seg(t, 5.1, 5.4);
+    chip('TABLE EUROBOT 2027 · 3 000 × 2 000 MM', 80, 130, seg(t, 3.0, 3.4) * ca);
+    chip('30 PIERRES · 10 CARRIÈRES', 80, 182, seg(t, 3.4, 3.8) * ca, CSS.yellow);
+    chip('1 MATCH = 100 SECONDES', 80, 234, seg(t, 3.8, 4.2) * ca, CSS.white);
   }
-  // plan 3 : adversaire, puis notre robot (confidentiel)
-  if (inS(t, 's3')) {
-    callout(tab(bp.x, bp.y, 450), -230, -150, 'Adversaire simulé', 'robot à 4 roues · modèle fictif', seg(t, 7.9, 8.6) * (1 - seg(t, 8.7, 8.9)), CSS.blue);
-    const rk = seg(t, 8.9, 9.4) * (1 - seg(t, 9.7, 9.9)), rp = proj(tab(250, 1000, 520));
-    if (rk > 0 && rp.z < 1) {
-      text('NOTRE ROBOT', rp.x, rp.y - 40, { size: 30, weight: 800, align: 'center', track: 5, alpha: rk, glow: 10 });
-      stamp('DESIGN CONFIDENTIEL', rp.x, rp.y + 10, seg(t, 9.0, 9.35) * (1 - seg(t, 9.7, 9.9)));
-    }
-    const d = seg(t, 9.95, 10.25);
-    flash(seg(t, 10.2, 10.5) * 0.85, '56,225,255');
-    glitchTitle('DANS SA TÊTE', W / 2, 540, 120, d, Math.floor(t * 30) + 5);
-    text(typeOn('ce qu\'il perçoit, ce qu\'il décide, en direct', seg(t, 10.1, 10.5)), W / 2, 610, { size: 32, weight: 500, align: 'center', alpha: d, color: CSS.cyan, fam: 'Inter' });
+  // présentation des robots
+  if (IN(t, 'reveal')) {
+    callout(tab(2750, 1000, 450), -230, -150, 'Adversaire simulé', 'robot à 4 roues · modèle fictif', seg(t, 5.7, 6.2) * (1 - seg(t, 6.3, 6.5)), CSS.blue);
+    const rk = seg(t, 6.9, 7.2) * (1 - seg(t, 7.45, 7.6)), rp = proj(tab(250, 1000, 560));
+    if (rk > 0 && rp.z < 1) { text('NOTRE ROBOT', rp.x, Math.max(150, rp.y - 40), { size: 30, weight: 800, align: 'center', track: 5, alpha: rk, glow: 10 }); stamp('DESIGN CONFIDENTIEL', rp.x, Math.max(200, rp.y + 10), seg(t, 6.95, 7.25) * (1 - seg(t, 7.45, 7.6))); }
   }
-  if (t >= 10.5 && t < 11.0) {
-    flash((1 - seg(t, 10.5, 10.9)) * 0.85, '56,225,255');
-    const d = 1 - seg(t, 10.6, 10.95);
-    glitchTitle('DANS SA TÊTE', W / 2, 540, 120, d, 9);
-    text('ce qu\'il perçoit, ce qu\'il décide, en direct', W / 2, 610, { size: 32, weight: 500, align: 'center', alpha: d, color: CSS.cyan, fam: 'Inter' });
+  // départ
+  if (t >= SH.go[0] && t < 8.5) { bigWord('GO', 560, 220, seg(t, 7.6, 7.75) * (1 - seg(t, 8.1, 8.5)), CSS.yellow, Math.floor(t * 30)); flash((1 - seg(t, 7.6, 7.85)) * 0.8, '242,183,5'); }
+  // chrono et vitesse pendant le match
+  const matchShot = t >= SH.go[0] && t < SH.I[0] && !IN(t, 'E') && !IN(t, 'F');
+  if (matchShot) {
+    const a = seg(t, 7.7, 8.0) * (1 - seg(t, 24.0, 24.2));
+    rect(W / 2 - 150, 104, 300, 82, 'rgba(4,10,20,0.78)', a, 'rgba(56,225,255,0.6)');
+    text('TEMPS RESTANT', W / 2, 130, { size: 15, weight: 700, track: 4, align: 'center', color: CSS.cyan, alpha: a, fam: 'Inter' });
+    text(fmt(100 - mt, 2) + ' s', W / 2, 174, { size: 42, weight: 800, align: 'center', alpha: a });
+    const sp = speedAt(t);
+    const s = sp < 0.01 ? ['ARRÊT SUR IMAGE', CSS.yellow, 'rgba(242,183,5,0.18)'] : sp < 0.9 ? ['RALENTI ×' + fmt(sp), CSS.red, 'rgba(255,90,106,0.18)'] : ['VITESSE ×' + fmt(sp), CSS.cyan, 'rgba(56,225,255,0.12)'];
+    if (!IN(t, 'H') || t > 23.7) badge(s[0], W - 80, 112, s[1], s[2], a);
+    // position de l'adversaire en continu
+    rect(62, H - 168, 470, 96, 'rgba(4,10,20,0.75)', a, 'rgba(91,147,255,0.6)');
+    text('ADVERSAIRE · POSITION LIDAR', 80, H - 138, { size: 15, weight: 700, track: 3, color: CSS.blue, alpha: a, fam: 'Inter' });
+    text(`x ${fmtMm(bp.x)} mm   y ${fmtMm(bp.y)} mm`, 80, H - 98, { size: 30, weight: 700, alpha: a, fam: 'Inter' });
   }
-  if (inS(t, 's4')) headHud(t, mt, k, yp, bp);
-  // plan 5 : entraînement
-  if (inS(t, 's5') || (t >= S.s6[0] && t < 28.1)) {
-    const out = 1 - seg(t, 27.4, 27.9), kk = seg(t, 24.2, 24.8);
+  if (IN(t, 'A')) text('Match simulé dans notre moteur · cerveau en cours d\'entraînement', W - 80, H - 60, { size: 16, weight: 500, align: 'right', color: CSS.dim, alpha: seg(t, 8.0, 8.3), fam: 'Inter' });
+  // caméra embarquée : verrouillage lidar
+  if (IN(t, 'B')) {
+    const k = seg(t, 9.5, 9.9) * (1 - seg(t, 11.7, 11.9));
+    sectionTitle('', 'DANS LA ROUE DE L\'ADVERSAIRE', k);
+    text('on suit sa trajectoire au ralenti', 80, 252, { size: 24, weight: 500, color: CSS.dim, alpha: k, fam: 'Inter' });
+    const yo = proj(robot.position.clone().add(V(0, 200, 0)));
+    if (yo.z < 1) { bracket(yo.x, yo.y, 60 + 6 * Math.sin(t * 8), CSS.yellow, k); text('NOTRE ROBOT', yo.x, yo.y - 78, { size: 18, weight: 800, align: 'center', track: 3, color: CSS.yellow, alpha: k, fam: 'Inter' }); }
+    const d = Math.hypot(bp.x - (robot.position.x), bp.y - robot.position.z) / 1000;
+    text(`distance entre les robots : ${fmt(d, 2)} m`, W / 2, H - 120, { size: 30, weight: 700, align: 'center', alpha: k, fam: 'Inter' });
+  }
+  if (IN(t, 'C')) { speedLines(0.35 * Math.sin(seg(t, 11.9, 12.6) * Math.PI), Math.floor(t * 30)); bigWord('×3', 560, 160, Math.sin(seg(t, 11.9, 12.6) * Math.PI), CSS.cyan, Math.floor(t * 30)); }
+  // arrêt sur image : état des lieux des 56 entrées
+  if (IN(t, 'D')) inventory(t, yp, bp);
+  // le réseau décide
+  if (IN(t, 'E') || IN(t, 'F')) networkHud(t);
+  // exécution
+  if (IN(t, 'G')) {
+    const k = seg(t, 20.05, 20.4) * (1 - seg(t, 22.4, 22.6));
+    chip('EXÉCUTION · MUR M1 · EXT · FACE A', 80, 130, k, '#ffd84d');
+    const pk = seg(t, 22.55, 22.6), pp = proj(tab(yp.x, yp.y, 500));
+    if (t > 22.1) { const q = seg(t, 22.1, 22.6); text(`+${DEC[2].reward} PTS`, W / 2, 330 - 60 * q, { size: 64, weight: 800, align: 'center', color: CSS.yellow, alpha: Math.sin(q * Math.PI * 0.9 + 0.2), glow: 16 }); }
+  }
+  if (IN(t, 'H')) {
+    const k = seg(t, 22.65, 22.9) * (1 - seg(t, 23.9, 24.2));
+    if (t < 23.7) { rect(W - 700, 130, 640, 360, null, k, CSS.cyan); text('DÉCISION 4', W - 680, 160, { size: 16, weight: 700, track: 4, color: CSS.cyan, alpha: k, fam: 'Inter' }); }
+    const n = seg(t, 23.3, 23.5) * (1 - seg(t, 23.95, 24.2));
+    bigWord('MUR M4', 520, 120, n, CSS.white, Math.floor(t * 30) + 2);
+    text(`extérieur · face B · certitude ${fmt(DEC[3].top3[0][2] * 100)} %`, W / 2, 590, { size: 30, weight: 600, align: 'center', color: CSS.cyan, alpha: n, fam: 'Inter' });
+    const pp = proj(tab(yp.x, yp.y, 500)); if (t > 23.8) { const q = seg(t, 23.8, 24.2); text(`+${DEC[3].reward} PTS`, W / 2, 700 - 60 * q, { size: 64, weight: 800, align: 'center', color: CSS.yellow, alpha: Math.sin(q * Math.PI * 0.9 + 0.2), glow: 16 }); }
+  }
+  // entraînement
+  if (IN(t, 'I') || (t >= SH.J[0] && t < 28.2)) {
+    const out = 1 - seg(t, 27.5, 28.0), kk = seg(t, 24.4, 24.9);
     { const bk = kk * out; const gr = g.createLinearGradient(0, 360 * DPR, 0, 680 * DPR); gr.addColorStop(0, 'rgba(2,4,10,0)'); gr.addColorStop(0.3, `rgba(2,4,10,${0.72 * bk})`); gr.addColorStop(0.75, `rgba(2,4,10,${0.72 * bk})`); gr.addColorStop(1, 'rgba(2,4,10,0)'); g.fillStyle = gr; g.fillRect(0, 360 * DPR, W * DPR, 320 * DPR); }
-    glitchTitle('ON L\'ENTRAÎNE VIRTUELLEMENT', W / 2, 470, 84, kk * out, Math.floor(t * 30) + 7);
-    text(typeOn('Des matchs simulés en parallèle, en continu.', seg(t, 24.8, 25.5)), W / 2, 560, { size: 34, weight: 600, align: 'center', alpha: out });
-    text(typeOn('Chaque point marqué le récompense : il apprend par renforcement.', seg(t, 25.5, 26.4)), W / 2, 612, { size: 30, weight: 500, align: 'center', color: CSS.cyan, alpha: out, fam: 'Inter' });
+    bigWord('ON L\'ENTRAÎNE VIRTUELLEMENT', 470, 84, kk * out, CSS.white, Math.floor(t * 30) + 7);
+    text(typeOn('Des matchs simulés en parallèle, en continu.', seg(t, 24.9, 25.5)), W / 2, 560, { size: 34, weight: 600, align: 'center', alpha: out });
+    text(typeOn('Chaque point marqué le récompense : il apprend par renforcement.', seg(t, 25.5, 26.3)), W / 2, 612, { size: 30, weight: 500, align: 'center', color: CSS.cyan, alpha: out, fam: 'Inter' });
     const pts = ['+5 mur', '+5 tour', '+20 porte', '+1 pierre', '+5 Graal', '+10 trône', '+20 boulets'];
     clones.forEach((c, i) => {
-      const ph = ((t - S.s5[0]) * 0.33 + c.ph) % 1, near = Math.abs(ph - 0.66);
+      const ph = ((t - SH.I[0]) * 0.45 + c.ph) % 1, near = Math.abs(ph - 0.66);
       if (near < 0.06 && t > 24.5) { const [x, y] = pathAt(c.path, ph), p = proj(tab(x + c.ox, y + c.oy, 400)); if (p.z < 1) text(pts[i % pts.length], p.x, p.y - (0.06 - near) * 300, { size: 20, weight: 800, align: 'center', color: CSS.yellow, alpha: (1 - near / 0.06) * out, fam: 'Inter' }); }
     });
   }
-  // plan 6 : appel
-  if (t >= S.s6[0]) {
-    const kk = seg(t, 27.7, 28.3), d = seg(t, 27.4, 28.2);
+  if (t >= SH.J[0]) {
+    const kk = seg(t, 27.7, 28.2), d = seg(t, 27.4, 28.1);
     g.fillStyle = `rgba(2,4,10,${0.8 * d})`; g.fillRect(0, 0, W * DPR, H * DPR);
-    glitchTitle('DEVENEZ SPONSOR', W / 2, 520, 130, kk, Math.floor(t * 30) + 3, { color: CSS.yellow });
-    text(typeOn('Aidez-nous à entraîner le cerveau de notre robot.', seg(t, 28.3, 29.0)), W / 2, 610, { size: 38, weight: 600, align: 'center', alpha: seg(t, 28.2, 28.4) });
-    const b = seg(t, 28.9, 29.3);
+    bigWord('DEVENEZ SPONSOR', 520, 130, kk, CSS.yellow, Math.floor(t * 30) + 3);
+    text(typeOn('Aidez-nous à entraîner le cerveau de notre robot.', seg(t, 28.2, 28.9)), W / 2, 610, { size: 38, weight: 600, align: 'center', alpha: seg(t, 28.1, 28.3) });
+    const b = seg(t, 28.8, 29.2);
     line(W / 2 - 160 * b, 668, W / 2 + 160 * b, 668, CSS.cyan, b, 2);
     text('ICAM LOT  ·  EUROBOT 2027', W / 2, 720, { size: 28, weight: 700, align: 'center', track: 8, alpha: b, color: CSS.cyan, fam: 'Inter' });
   }
+  // transitions éclair
+  for (const c of [SH.B[0], SH.D[0], SH.E[0], SH.G[0], SH.H[0], SH.I[0]]) flash(Math.max(0, 0.75 - Math.abs(t - c) * 6), '210,245,255');
   vignette(0.6);
-  scanlines(t < S.s2[0] ? 0.18 : inS(t, 's4') ? 0.09 : 0.05);
+  scanlines(t < SH.world[0] ? 0.18 : 0.06);
 }
 
-function headHud(t, mt, k, yp, bp) {
-  const ent = seg(t, 10.7, 11.2), out = 1 - seg(t, 23.5, 24.0), A = ent * out, d = k >= 0 ? DEC[k] : null;
-  const p = k >= 0 ? seg(t, WSTART[k], WSTART[k] + WLEN) : 0;
-  if (VP.w < W) line(VP.w, 0, VP.w, H, CSS.cyan, 0.8 * A, 2);
-  // coins de visée
-  const br = (x, y, sx, sy) => { line(x, y, x + 40 * sx, y, CSS.cyan, 0.7 * A, 2); line(x, y, x, y + 40 * sy, CSS.cyan, 0.7 * A, 2); };
-  br(40, 110, 1, 1); br(W - 40, 110, -1, 1); br(40, H - 40, 1, -1); br(W - 40, H - 40, -1, -1);
-  // chrono et adversaire
-  text('TEMPS RESTANT', 80, 150, { size: 18, weight: 700, track: 4, color: CSS.cyan, alpha: A, fam: 'Inter' });
-  text(fmt(100 - mt, 2) + ' s', 80, 222, { size: 68, weight: 800, alpha: A, glow: 10 });
-  text('ADVERSAIRE · LIDAR', 80, 280, { size: 18, weight: 700, track: 4, color: CSS.blue, alpha: A, fam: 'Inter' });
-  text(`x ${fmtMm(bp.x)} mm  ·  y ${fmtMm(bp.y)} mm`, 80, 314, { size: 26, weight: 600, alpha: A, fam: 'Inter' });
-  if (d) {
-    const fa = Math.round(d.obs[15] * 3), fb = Math.round(d.obs[18] * 3);
-    text('PINCES (CHARGE)', 80, 368, { size: 18, weight: 700, track: 4, color: CSS.yellow, alpha: A, fam: 'Inter' });
-    text(`face A ${fa}/3  ·  face B ${fb}/3`, 80, 402, { size: 26, weight: 600, alpha: A, fam: 'Inter' });
+// --- arrêt sur image : chaque groupe d'entrées est montré à sa place sur la table
+const CUM = [1, 5, 15, 21, 30, 34, 35, 37, 48, 56];
+function inventory(t, yp, bp) {
+  const d = DEC[2], o = d.obs, out = 1 - seg(t, 15.85, 16.0), T0 = 12.75, STEP = 0.29;
+  const k = i => seg(t, T0 + i * STEP, T0 + i * STEP + 0.25) * out;
+  sectionTitle('', 'ARRÊT SUR IMAGE · t = ' + fmt(d.t, 2) + ' s', seg(t, 12.6, 12.9) * out);
+  text('état des lieux de tout ce que le robot perçoit', 80, 252, { size: 24, weight: 500, color: CSS.dim, alpha: seg(t, 12.7, 13.0) * out, fam: 'Inter' });
+  let n = 0; CUM.forEach((c, i) => { if (t >= T0 + i * STEP) n = c; });
+  text('ENTRÉES', W - 80, 210, { size: 16, weight: 700, track: 4, align: 'right', color: CSS.cyan, alpha: out, fam: 'Inter' });
+  text(`${n} / 56`, W - 80, 275, { size: 64, weight: 800, align: 'right', alpha: out, glow: 10 });
+  const at = (x, y, z, lab, val, i, col, dx = 0, dy = -70) => {
+    const kk = k(i); if (kk <= 0) return; const p = proj(tab(x, y, z)); if (p.z > 1) return;
+    dot(p.x, p.y, 5, col, kk); line(p.x, p.y, p.x + dx, p.y + dy, col, kk * 0.9, 2);
+    const ax = dx < 0 ? 'right' : dx > 0 ? 'left' : 'center', tx = p.x + dx + (dx < 0 ? -8 : dx > 0 ? 8 : 0);
+    text(lab, tx, p.y + dy - 30, { size: 14, weight: 700, track: 2, align: ax, color: col, alpha: kk, fam: 'Inter' });
+    text(typeOn(val, kk * 1.6), tx, p.y + dy - 4, { size: 24, weight: 800, align: ax, alpha: kk, fam: 'Inter' });
+  };
+  const cap = Math.round(Math.atan2(o[4], o[3]) * 180 / Math.PI);
+  // 1 temps (affiché au centre) — 2 position — 3 paquets — 4 pinces — 5 constructions — 6 Graal — 7 boulets — 8 adversaire — 9 état fin — 10 radar
+  { const q = k(0) * (1 - seg(t, T0 + 0.5, T0 + 0.9)); if (q > 0) { rect(W / 2 - 158, 96, 316, 98, null, q, CSS.yellow); text('ENTRÉE 1 · TEMPS RESTANT', W / 2, 222, { size: 15, weight: 700, track: 3, align: 'center', color: CSS.yellow, alpha: q, fam: 'Inter' }); } }
+  at(yp.x, yp.y, 420, 'NOTRE POSITION', `x ${fmtMm(o[1] * 3000)} · y ${fmtMm(o[2] * 2000)} · cap ${cap}°`, 1, CSS.yellow, -300, 150);
+  SPEC.carrieres.forEach((p, j) => at(p.c[0], p.c[1], 360, p.id, `${Math.round(o[5 + j] * 3)}/3`, 2, Math.round(o[5 + j] * 3) ? CSS.white : CSS.red, 0, -40));
+  at(yp.x, yp.y, 250, 'PINCES', `A ${Math.round(o[15] * 3)}/3 · B ${Math.round(o[18] * 3)}/3`, 3, '#2f9bff', 280, -90);
+  const built = o.slice(21, 30).filter(v => v > 0).length;
+  at(250, 400, 20, 'MURS ET TOURS', `${built} / 9 construits`, 4, '#ff8a3d', -40, -90);
+  at(250, 1000, 20, 'GRAAL', o[30] ? 'au départ' : o[31] ? 'tenu' : 'posé', 5, '#e2a72e', 60, 80);
+  at(250, 1000, 20, 'BOULETS', o[34] ? 'lâchés' : 'pas encore lâchés', 6, '#ffd84d', 60, 150);
+  at(bp.x, bp.y, 480, 'ADVERSAIRE (LIDAR)', `x ${fmtMm(o[35] * 3000)} · y ${fmtMm(o[36] * 2000)}`, 7, CSS.blue, -80, -60);
+  at(yp.x, yp.y, 120, 'ÉTAT FIN DES PINCES', `chariot ${Math.round(o[41] * 350)} mm · 6/6 ventouses actives`, 8, '#b58cff', 280, 110);
+  if (k(9) > 0) for (let i = 0; i < 8; i++) {
+    const a = (yp.h + i * 45) * Math.PI / 180, dd = o[48 + i] * 1000, p = proj(tab(yp.x + dd * Math.cos(a), yp.y + dd * Math.sin(a), 60));
+    if (p.z < 1) { dot(p.x, p.y, 4, '#fff1a8', k(9)); text(fmtMm(dd) + ' mm', p.x + 8, p.y - 8, { size: 15, weight: 700, color: '#fff1a8', alpha: k(9), fam: 'Inter' }); }
   }
-  // vitesse
-  const sp = speedAt(t), slow = sp < 0.5, bx = W - 330;
-  rect(bx, 112, 250, 54, slow ? 'rgba(255,90,106,0.16)' : 'rgba(56,225,255,0.10)', A, slow ? CSS.red : CSS.cyan);
-  text(slow ? 'RALENTI ×0,1' : (sp > 0.05 ? 'VITESSE ×' + fmt(sp) : 'PAUSE'), bx + 125, 148, { size: 26, weight: 800, align: 'center', track: 3, alpha: A, color: slow ? '#ffd1d6' : CSS.white, fam: 'Inter' });
-  // repères sur la carte
-  const np = proj(tab(yp.x, yp.y, 520)); if (np.z < 1) text('NOUS', np.x, np.y, { size: 20, weight: 800, align: 'center', track: 4, color: CSS.yellow, alpha: A, fam: 'Inter' });
-  const ap = proj(tab(bp.x, bp.y, 560)); if (ap.z < 1) text('ADVERSAIRE', ap.x, ap.y, { size: 18, weight: 800, align: 'center', track: 4, color: CSS.blue, alpha: A, fam: 'Inter' });
-  for (const dn of DONE) if (dn.reward > 0 && mt >= dn.end - 1e-6 && dn.wall) {
-    const z = SPEC.murs.find(m => m.id === dn.wall), tt = KF.find(f => f[1] >= dn.end - 1e-6)[0], q = seg(t, tt, tt + 1.4);
-    const pp = proj(tab(z.c[0], z.c[1], 300 + 500 * q)); if (pp.z < 1 && q < 1) text(`+${dn.reward} pts`, pp.x, pp.y, { size: 34, weight: 800, align: 'center', color: CSS.yellow, alpha: (1 - q) * A, glow: 12, fam: 'Inter' });
-  }
-  // réseau : étiquettes
-  const lab = (v, s1, s2, kk, col) => { const q = projN(v); if (q.z < 1 && kk > 0) { text(s1, q.x, q.y, { size: 24, weight: 700, align: 'center', alpha: kk, color: col, glow: 6 }); if (s2) text(s2, q.x, q.y + 26, { size: 15, weight: 500, align: 'center', alpha: kk, color: CSS.dim, fam: 'Inter' }); } };
-  const la = seg(t, 11.0, 11.5) * out;
-  lab(V(-1500, 990, 0), '56 entrées', 'ce qu\'il perçoit', la, CSS.white);
-  lab(V(-600, 520, 0), 'Encodeur', '128 neurones', la, CSS.cyan);
-  lab(V(300, 470, 0), 'Mémoire GRU', '128 neurones · garde le fil du match', la, '#7cf3c0');
-  lab(V(1300, 470, 0), '130 actions', 'les impossibles sont masquées', la, CSS.white);
-  // carte de décision
-  if (d) {
-    const ck = eout(seg(p, 0.78, 0.95)) * out, x = NVP.x0 + 60, y = 850;
-    rect(x - 18, y - 46, 560, 230, 'rgba(4,10,20,0.82)', ck, 'rgba(255,216,77,0.6)');
-    text(`DÉCISION ${k + 1}  ·  À ${fmt(d.t)} s DE MATCH`, x, y - 12, { size: 17, weight: 700, track: 3, color: '#ffd84d', alpha: ck, fam: 'Inter' });
-    text(typeOn(d.label, seg(p, 0.78, 0.88)), x, y + 34, { size: 34, weight: 800, alpha: ck });
-    text(`certitude du réseau : ${fmt(d.top3[0][2] * 100)} %  ·  ${d.nValid} actions possibles sur 130`, x, y + 70, { size: 17, weight: 500, color: CSS.dim, alpha: ck, fam: 'Inter' });
-    d.top3.slice(1).forEach(([i, lb, pr], j) => {
-      text(lb, x, y + 108 + j * 30, { size: 17, weight: 500, color: CSS.dim, alpha: ck * 0.9, fam: 'Inter' });
-      text(fmt(pr * 100) + ' %', x + 520, y + 108 + j * 30, { size: 17, weight: 600, align: 'right', color: CSS.dim, alpha: ck * 0.9, fam: 'Inter' });
-    });
+  if (k(9) > 0) text('RADAR · 8 DIRECTIONS', W / 2, H - 70, { size: 18, weight: 700, track: 4, align: 'center', color: '#fff1a8', alpha: k(9), fam: 'Inter' });
+}
+
+function networkHud(t) {
+  const d = DEC[2], out = 1 - seg(t, 19.8, 20.0);
+  if (t < SH.F[0]) {
+    const k = seg(t, 16.05, 16.4);
+    sectionTitle('', 'LE RÉSEAU DÉCIDE', k * (1 - seg(t, 18.4, 18.6)));
+    const lab = (v, s1, s2, kk, col) => { const q = projN(v); kk *= (q.x < 720 && q.y < 280) ? 0 : 1; if (q.z < 1 && kk > 0 && q.x > 60 && q.x < W - 60) { text(s1, q.x, q.y, { size: 28, weight: 700, align: 'center', alpha: kk, color: col, glow: 6 }); if (s2) text(s2, q.x, q.y + 30, { size: 17, weight: 500, align: 'center', alpha: kk, color: CSS.dim, fam: 'Inter' }); } };
+    const f = 1 - seg(t, 18.3, 18.6);
+    lab(V(-1500, 990, 0), '56 entrées', 'l\'état des lieux', seg(t, 16.2, 16.5) * f, CSS.white);
+    lab(V(-600, 520, 0), 'Encodeur', '128 neurones', seg(t, 16.6, 16.9) * f, CSS.cyan);
+    lab(V(300, 470, 0), 'Mémoire GRU', 'garde le fil du match', seg(t, 17.1, 17.4) * f, '#7cf3c0');
+    lab(V(1300, 470, 0), '130 actions', 'les impossibles sont masquées', seg(t, 17.6, 17.9) * f, CSS.white);
+    text('liaisons : les plus fortes contributions réelles (activation × poids)', W / 2, H - 60, { size: 17, weight: 500, align: 'center', color: CSS.dim, alpha: k * f, fam: 'Inter' });
   } else {
-    text('le réseau attend sa première observation…', NVP.x0 + 60, 870, { size: 20, weight: 500, color: CSS.dim, alpha: A, fam: 'Inter' });
+    g.fillStyle = `rgba(2,6,13,${0.55 * seg(t, 18.6, 18.9)})`; g.fillRect(0, 0, W * DPR, H * DPR);
+    const n = seg(t, 18.65, 18.85) * out, parts = d.label.split(' · ');
+    text('DÉCISION', W / 2, 360, { size: 22, weight: 700, track: 8, align: 'center', color: '#ffd84d', alpha: n, fam: 'Inter' });
+    bigWord(parts[0].toUpperCase(), 500, 150, n, CSS.white, Math.floor(t * 30) + 4);
+    text(parts.slice(1).join(' · ').replace('ext', 'extérieur'), W / 2, 580, { size: 36, weight: 600, align: 'center', color: CSS.cyan, alpha: seg(t, 18.8, 19.0) * out, fam: 'Inter' });
+    text(`certitude du réseau : ${fmt(d.top3[0][2] * 100)} %   ·   ${d.nValid} actions possibles sur 130`, W / 2, 640, { size: 24, weight: 500, align: 'center', alpha: seg(t, 18.95, 19.15) * out, fam: 'Inter' });
+    d.top3.slice(1).forEach(([, lb, pr], j) => text(`${lb}   ${fmt(pr * 100)} %`, W / 2, 700 + j * 34, { size: 20, weight: 500, align: 'center', color: CSS.dim, alpha: seg(t, 19.1 + j * 0.1, 19.3 + j * 0.1) * out, fam: 'Inter' }));
   }
-  text('Match simulé dans le moteur de l\'équipe · cerveau en cours d\'entraînement', 80, H - 60, { size: 16, weight: 500, align: 'left', color: CSS.dim, alpha: A, fam: 'Inter' });
 }
 
 window.renderFrame = renderFrame;
