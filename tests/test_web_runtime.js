@@ -54,6 +54,18 @@ test('reset : l\'état caché repart de zéro (même séquence, mêmes choix)', 
   assert.deepStrictEqual(a, b);
 });
 
+test('même observation redemandée : état caché avancé une seule fois, nouveau masque appliqué', () => {
+  const p = ref.pas[0], choose = RUNTIME.chooser(modele);
+  const a = choose(p.obs, p.mask);
+  const h1 = Array.from(choose.hidden());
+  const m2 = p.mask.slice(); m2[a] = 0;
+  const b = choose(p.obs, m2);
+  assert.notStrictEqual(a, b);
+  assert.strictEqual(m2[b], 1);
+  assert.deepStrictEqual(Array.from(choose.hidden()), h1);
+  assert.ok(ecartMax(h1, p.hidden) < TOL);
+});
+
 test('masque : une action masquée n\'est jamais choisie, -1 si rien de permis', () => {
   const logits = [5, 9, 1, 7];
   assert.strictEqual(RUNTIME.choisir(logits, [1, 0, 1, 1]), 3);

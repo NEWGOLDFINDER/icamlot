@@ -87,19 +87,30 @@
     return best;
   }
 
+  function memeObs(a, b) {
+    if (!a || !b || a.length !== b.length) return false;
+    for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+    return true;
+  }
+
   /** Agent glouton : function(obs, mask) -> index. À créer (ou `reset()`) au début de chaque match :
-      l'état caché repart de zéro et n'avance qu'une fois par appel (une fois par décision). */
+      l'état caché repart de zéro et n'avance qu'une fois par décision. Si l'environnement rappelle l'agent
+      avec la même observation (filtre de sécurité qui masque l'action choisie puis redemande), les logits
+      sont réutilisés sans avancer l'état caché. */
   function chooser(model, attendu) {
     var err = validate(model, attendu);
     if (err) throw new Error(err);
-    var hidden = zeros(model);
+    var hidden = zeros(model), lastObs = null;
     function choose(obs, mask) {
-      var r = forward(model, obs, hidden);
-      hidden = r.hidden;
-      choose.lastLogits = r.logits;
-      return choisir(r.logits, mask);
+      if (!(lastObs && choose.lastLogits && memeObs(obs, lastObs))) {
+        var r = forward(model, obs, hidden);
+        hidden = r.hidden;
+        choose.lastLogits = r.logits;
+        lastObs = Array.prototype.slice.call(obs);
+      }
+      return choisir(choose.lastLogits, mask);
     }
-    choose.reset = function () { hidden = zeros(model); choose.lastLogits = null; };
+    choose.reset = function () { hidden = zeros(model); lastObs = null; choose.lastLogits = null; };
     choose.hidden = function () { return hidden; };
     choose.lastLogits = null;
     return choose;
