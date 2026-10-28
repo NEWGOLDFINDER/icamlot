@@ -137,8 +137,12 @@ class PontNode:
             champs["vision"] = vision
         return self.appeler("track_start", **champs)
 
-    def track_exec(self, brique: dict, adversaire: Optional[dict] = None) -> Dict[str, Any]:
-        return self.appeler("track_exec", brique=brique, adversaire=adversaire)
+    def track_exec(self, brique: dict, adversaire: Optional[dict] = None, trace: bool = False) -> Dict[str, Any]:
+        return self.appeler("track_exec", brique=brique, adversaire=adversaire, trace=trace)
 
     def track_belief(self, adversaire: Optional[dict] = None) -> Dict[str, Any]:
         return self.appeler("track_belief", adversaire=adversaire)
+
+    def reference(self) -> List[dict]:
+        """ENGINE.PROGRAMME_REFERENCE (briques en repère de l'équipe)."""
+        return self.appeler("reference")["programme"]

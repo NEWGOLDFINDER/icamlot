@@ -34,7 +34,8 @@
    Le robot réel exécute chaque brique sur un moteur local sans adversaire (prédiction de ses propres pinces, constructions,
    pierres posées, Graal), dont le plan (trajet, mouvements de pince en temps masqué) est celui que les ESP32 reproduisent.
    track_start  { params?, vision? }              -> { belief }
-   track_exec   { brique, adversaire? }           -> { info, plan, belief }
+   track_exec   { brique, adversaire?, trace? }   -> { info, plan, belief, frames? }
+   reference                                      -> { programme } : ENGINE.PROGRAMME_REFERENCE (briques en repère de l'équipe)
    track_belief { adversaire? }                   -> { belief }
 
    Repère : toutes les briques, tous les plans et la croyance du modèle interne sont dans le repère de l'équipe (jaune).
@@ -93,7 +94,8 @@ function need(msg, k) { if (msg[k] == null) throw new Error('Champ « ' + k + ' 
      NAV (x, y, h)   GRIP_A / GRIP_B (hc, rot)   FORK (fx, fz)   CANON (can)
    Un déplacement (« move ») est un intervalle continu pendant lequel le groupe change de valeur : pts = [{ t, v: [...] }].
    Deux déplacements dont les intervalles se recouvrent s'exécutent en parallèle dans le moteur.
-   Événements : VAC (ventouses d'une face, 3 rangées, 0/1), CANON_SPIN, FIRE (tir de n boulets), WAIT (attente).
+   Événements : VAC (ventouses d'une face, 3 rangées, 0/1), CANON_SPIN, FIRE (tir de n boulets ; noAvant = instant de match avant
+   lequel on ne tire pas, début de la phase d'attaque), WAIT (attente ; until = instant de match absolu).
 --------------------------------------------------------------------------------------------------------------------------- */
 var GROUPS = {
   NAV: function (f) { return [f.x, f.y, f.h]; },
@@ -136,7 +138,7 @@ function extractPlan(sim, k0, t0, brique, info) {
   if ((brique.a === 'tir' || brique.a === 'boulets') && !(info && info.err) && B.shots && B.tDeploy >= t0 - EPS_T) {
     var dep = P.bdep > 0 ? P.bdep : 0.1;
     if (P.bspin > 0) events.push({ kind: 'CANON_SPIN', t0: rel(B.tDeploy + dep), t1: rel(B.tDeploy + dep + P.bspin) });
-    events.push({ kind: 'FIRE', n: B.n, rate: P.brate > 0 ? P.brate : 2, t0: rel(B.t0), t1: rel(t1) });
+    events.push({ kind: 'FIRE', n: B.n, rate: P.brate > 0 ? P.brate : 2, t0: rel(B.t0), t1: rel(t1), noAvant: ENGINE.T_ATTAQUE });
   }
   if (brique.a === 'attendre' || brique.a === 'attendreJusqua') events.push({ kind: 'WAIT', until: brique.a === 'attendreJusqua' ? +brique.sec : null, t0: 0, t1: rel(t1) });
   moves.forEach(function (m) { delete m.last; });
@@ -210,7 +212,9 @@ function trackExec(msg) {
   var brique = need(msg, 'brique'), sim = track.sim, k0 = sim.result(false).K.length, t0 = sim.time();
   var info = track.duel.exec('yellow', ACTIONS.realStep(brique, 'yellow'));
   ENV.updateMemory(track.mem, sim, t0, sim.time(), brique, info);
-  return { info: info, plan: extractPlan(sim, k0, t0, brique, info), belief: ENV.beliefFromSim(sim, track.mem, msg.adversaire || null) };
+  var out = { info: info, plan: extractPlan(sim, k0, t0, brique, info), belief: ENV.beliefFromSim(sim, track.mem, msg.adversaire || null) };
+  if (msg.trace) out.frames = framesSince(sim, k0, t0);
+  return out;
 }
 
 /* ---------------------------------------------------------------------------------------------------------------------------
@@ -233,6 +237,7 @@ function handle(msg) {
       var brique = ACTIONS.toProgramStep(act, bel);
       return { index: idx, act: act, brique: brique, reelle: brique ? ACTIONS.realStep(brique, bel.team) : null };
     }
+    case 'reference': return { programme: ENGINE.PROGRAMME_REFERENCE };
     case 'mirror_ids': return { ids: need(msg, 'ids').map(function (id) { return ENGINE.mirrorId(id); }) };
     case 'sim_reset': return simReset(msg);
     case 'sim_step': return simStep(msg);
