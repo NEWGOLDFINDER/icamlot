@@ -82,6 +82,20 @@ def changements_vide(frames: List[dict]) -> Dict[str, List[Tuple[int, int, int]]
     return res
 
 
+# ---- modèles de test, entraînés une seule fois par session pytest ----------------------------------------------------------
+_MODELES: Dict[str, Tuple[Path, Path]] = {}
+
+
+def modele_de_test(tmp_path_factory, nom: str = "petit") -> Tuple[Path, Path]:
+    """(.onnx, .pt). « petit » : 30 époques d'imitation ; « peu » : 1 époque (politique presque aléatoire, actions très variées).
+    Le modèle versionné .data/modeles/fumee.onnx n'est pas utilisé : il date de l'observation à 56 entrées (incompatible v3)."""
+    if nom not in _MODELES:
+        dossier = tmp_path_factory.getbasetemp() / "modeles_embarque"
+        dossier.mkdir(exist_ok=True)
+        _MODELES[nom] = exporter_petit_modele(dossier, nom, {"petit": 30, "peu": 1}[nom])
+    return _MODELES[nom]
+
+
 # ---- décisions aléatoires valides dans l'environnement du moteur ------------------------------------------------------
 def decisions_aleatoires(pont, n: int, graine: int = 7, scenarios: Optional[List[dict]] = None) -> Iterator[dict]:
     """Joue n décisions valides (indice tiré au hasard sous le masque) en enchaînant des matchs ; produit les réponses de sim_step
