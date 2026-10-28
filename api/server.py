@@ -93,8 +93,11 @@ var root = process.argv[1];
 var c = require(require('path').join(root, 'engine', 'load.js')).loadIcamlot(root);
 var g = {}; c.ENV.GROUPS.forEach(function (x) { g[x.id] = x.vars.reduce(function (a, v) { return a + v.n; }, 0); });
 var f = {}; c.ACTIONS.FAMILLES.forEach(function (x) { f[x.id] = c.ACTIONS.filterByFamilles([x.id]).length; });
+var A = c.ADVERSAIRES;
 process.stdout.write(JSON.stringify({ entrees: g, entrees_defaut: c.ENV.DEFAULT_GROUPS, familles: f,
-  familles_ordre: c.ACTIONS.FAMILLES.map(function (x) { return x.id; }), moteur: c.ENGINE.VERSION, bareme: c.BAREME_VERSION }));
+  familles_ordre: c.ACTIONS.FAMILLES.map(function (x) { return x.id; }), moteur: c.ENGINE.VERSION, bareme: c.BAREME_VERSION,
+  physique: A.PHYSIQUE.map(function (d) { return { id: d.id, nom: d.nom, unite: d.unite, nominal: d.nominal, statut: d.statut, source: d.source, plageDefaut: d.plageDefaut }; }),
+  robots: A.IDS.map(function (id) { var p = A.PROFILS[id]; return { id: id, nom: p.nom, type: p.type, esquisse: p.esquisse, description: p.description, modele: p.modele || null }; }) }));
 """
 
 
@@ -116,6 +119,57 @@ def env_info():
 _job_lock = threading.Lock()
 _job_proc = None
 _job_id = None
+
+# Mélange d'adversaires d'entraînement par défaut (décision de l'équipe, docs/CONTRATS.md §14) : 20 % de chacun des 4 robots
+# adverses + 20 % de self-play. Composantes acceptées : les robots, « self », « reference », « aucun ».
+MELANGE_DEFAUT = {"batisseur": 0.2, "razzia": 0.2, "champion": 0.2, "intermediaire": 0.2, "self": 0.2}
+COMPOSANTES_HORS_ROBOTS = ("self", "reference", "aucun")
+
+
+def valider_physique(ph, info):
+    """Caractéristiques de notre robot : { actif, valeurs: { id: nominale }, plages: { id: % | [min, max] | 0 } }."""
+    ph = ph if isinstance(ph, dict) else {}
+    desc = {d["id"]: d for d in info.get("physique") or []}
+    valeurs, plages = {}, {}
+    for k, v in (ph.get("valeurs") or {}).items():
+        if k in desc:
+            try:
+                x = float(v)
+            except (TypeError, ValueError):
+                continue
+            if x >= 0:
+                valeurs[k] = x
+    for k, v in (ph.get("plages") or {}).items():
+        if k not in desc:
+            continue
+        if isinstance(v, (list, tuple)) and len(v) == 2:
+            try:
+                a, b = float(v[0]), float(v[1])
+            except (TypeError, ValueError):
+                continue
+            if 0 <= a <= b:
+                plages[k] = [a, b]
+        elif v is None or v == 0 or v == "fixe":
+            plages[k] = 0
+        else:
+            try:
+                plages[k] = max(0.0, min(90.0, float(v)))
+            except (TypeError, ValueError):
+                continue
+    return {"actif": bool(ph.get("actif", True)), "valeurs": valeurs, "plages": plages}
+
+
+def valider_melange(m, info):
+    ids = {r["id"] for r in info.get("robots") or []} | set(COMPOSANTES_HORS_ROBOTS)
+    out = {}
+    for k, v in (m or {}).items():
+        try:
+            x = float(v)
+        except (TypeError, ValueError):
+            continue
+        if k in ids and x > 0:
+            out[k] = min(1.0, x)
+    return out
 
 
 def slugify(name):
@@ -285,6 +339,9 @@ def validate_cerveau(j, slug):
     intensite = str(adv.get("intensite") or "aucun")
     if intensite not in ("aucun", "faible", "realiste", "agressif"):
         intensite = "aucun"
+    # mélange d'adversaires (défaut : MELANGE_DEFAUT) ; « melange »: {} explicite = ancien réglage par intensité
+    melange = valider_melange(adv.get("melange"), info) if "melange" in adv else dict(MELANGE_DEFAUT)
+    physique = valider_physique(j.get("physique"), info)
     seed = int(j.get("graine") or reglages["graine"])
     doc = {
         "format": "camelot-cerveau",
@@ -294,7 +351,8 @@ def validate_cerveau(j, slug):
         "actions": {"familles": familles, "cotes": ["ext", "int"]},
         "reseau": {"couches": clean, "sortie": "softmax", "architecture": architecture},
         "architecture": architecture,
-        "adversaire": {"actif": intensite != "aucun", "intensite": intensite},
+        "adversaire": {"actif": intensite != "aucun" or bool(melange), "intensite": intensite, "melange": melange},
+        "physique": physique,
         "methode": methode,
         "reglages": reglages,
         "recompense": recompense,
@@ -909,6 +967,11 @@ class Handler(SimpleHTTPRequestHandler):
             return "trainer", None
         if p == "/api/processus":
             return "procs", None
+        if p == "/api/adversaires":
+            return "advs", None
+        m = re.fullmatch(r"/api/adversaires/([a-z]+)/(modele|entrainer)", p)
+        if m:
+            return "adv_" + m.group(2), m.group(1)
         if p == "/api/processus/stop-all":
             return "procs_stop_all", None
         m = re.fullmatch(r"/api/processus/(\d+)/stop", p)
@@ -976,6 +1039,15 @@ class Handler(SimpleHTTPRequestHandler):
             if not SLUG_RE.match(slug) or not os.path.exists(path_for(slug)):
                 return self.send_json(404, {"error": "Stratégie introuvable."})
             with open(path_for(slug), encoding="utf-8") as fh:
+                return self.send_json(200, json.load(fh))
+        if kind == "advs":
+            return self.send_json(200, adversaires_info())
+        if kind == "adv_modele":
+            r = robot_reseau(slug)
+            f = os.path.join(adversaires_dir(), (r or {}).get("modele", "") + ".json") if r else None
+            if not f or not os.path.exists(f):
+                return self.send_json(404, {"error": "Modèle figé absent : entraîner ce robot adverse d'abord."})
+            with open(f, encoding="utf-8") as fh:
                 return self.send_json(200, json.load(fh))
         if kind == "brains":
             out = []
@@ -1118,6 +1190,12 @@ class Handler(SimpleHTTPRequestHandler):
                 kick_queue()
             job["queue"] = queue_position(jid)
             return self.send_json(200, job)
+        if kind == "adv_entrainer":
+            r = robot_reseau(slug)
+            if not r:
+                return self.send_json(404, {"error": "Robot adverse « réseau » inconnu."})
+            j = self.read_json() or {}
+            return self.send_json(200, lancer_entrainement_adversaire(slug, j))
         if kind == "proc_stop":
             pid = int(slug)
             if not any(q["pid"] == pid for q in list_processes()):
@@ -1211,6 +1289,64 @@ class Handler(SimpleHTTPRequestHandler):
         return self.send_json(200, {"deleted": slug})
 
 
+# ───────────── robots adverses (docs/CONTRATS.md §14) ─────────────
+def adversaires_dir():
+    d = os.environ.get("ICAMLOT_ADVERSAIRES") or os.path.join(data_root(), "adversaires")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def robot_reseau(rid):
+    try:
+        info = env_info()
+    except RuntimeError:
+        return None
+    for r in info.get("robots") or []:
+        if r["id"] == rid and r["type"] == "reseau":
+            return r
+    return None
+
+
+_adv_procs = {}
+
+
+def adversaires_info():
+    info = env_info()
+    out = []
+    for r in info.get("robots") or []:
+        d = dict(r)
+        if r["type"] == "reseau":
+            f = os.path.join(adversaires_dir(), r["modele"] + ".json")
+            d["entraine"] = os.path.exists(f)
+            d["bilan"] = load_json(os.path.join(adversaires_dir(), r["modele"] + ".entrainement.json"))
+            pr = _adv_procs.get(r["id"])
+            d["entrainement_en_cours"] = bool(pr and pr.poll() is None)
+        else:
+            d["entraine"] = True
+        out.append(d)
+    return {"robots": out, "physique": info.get("physique") or [], "melange_defaut": MELANGE_DEFAUT, "dossier": adversaires_dir()}
+
+
+def lancer_entrainement_adversaire(rid, j):
+    """(Ré)entraîne une fois un robot adverse « réseau » : python -m trainer.adversaires --robot <id> (modèle figé dans
+    <données>/adversaires/<modele>.json)."""
+    pr = _adv_procs.get(rid)
+    if pr and pr.poll() is None:
+        return {"robot": rid, "pid": pr.pid, "deja_en_cours": True}
+    cmd = [find_python(), "-m", "trainer.adversaires", "--robot", rid, "--dossier", adversaires_dir()]
+    for k, opt in (("duree", "--duree"), ("transitions", "--transitions"), ("epoques", "--epoques"), ("processus", "--processus")):
+        if j.get(k) is not None:
+            try:
+                cmd += [opt, str(int(float(j[k])))]
+            except (TypeError, ValueError):
+                pass
+    log = open(os.path.join(adversaires_dir(), rid + ".api.log"), "a", encoding="utf-8")
+    p = subprocess.Popen(cmd, cwd=REPO, stdout=log, stderr=subprocess.STDOUT, start_new_session=True,
+                         env=dict(os.environ, ICAMLOT_ADVERSAIRES=adversaires_dir()))
+    _adv_procs[rid] = p
+    return {"robot": rid, "pid": p.pid, "commande": " ".join(cmd)}
+
+
 def main():
     global DATA, SECRET
     ap = argparse.ArgumentParser()
@@ -1225,6 +1361,8 @@ def main():
     os.makedirs(brains_dir(), exist_ok=True)
     os.makedirs(jobs_dir(), exist_ok=True)
     os.makedirs(weights_dir(), exist_ok=True)
+    # les workers Node (entraînement) lisent les modèles figés des adversaires dans ce dossier
+    os.environ.setdefault("ICAMLOT_ADVERSAIRES", adversaires_dir())
     SECRET = load_secret()
     reconcile_jobs()
     if not PASSWORD:

@@ -250,6 +250,18 @@ input[type=number], input[type=text], input[type=search] { background: var(--bg)
             <button type="button" data-i="agressif">Agressif</button>
           </div>
           <p class="note" style="margin-top:8px">Stratégies enregistrées jouées en miroir, filtrées (≥ 70 pts, règles respectées). Le robot adverse apparaît aussi dans le simulateur 3D.</p>
+          <label class="chk" style="margin-top:8px"><input id="advMel" type="checkbox" checked> Mélange de robots adverses (prioritaire sur l'intensité)</label>
+          <div class="pgrid" id="advMelGrid" style="margin-top:6px"></div>
+          <p class="note" id="advMelNote" style="margin-top:4px">Proportions en %, ramenées à 100 %. Défaut de l'équipe : 20 % de chacun des 4 robots + 20 % de self-play (notre réseau courant). Un robot « réseau » non entraîné est retiré du mélange par l'entraîneur.</p>
+          <h2 style="margin-top:16px">Caractéristiques de notre robot</h2>
+          <label class="chk"><input id="phyAct" type="checkbox" checked> Tirage aléatoire à chaque match (graine du scénario)</label>
+          <div class="tablewrap" style="overflow-x:auto;margin-top:6px">
+            <table class="phy" id="phyTab" style="width:100%;border-collapse:collapse;font-size:13px">
+              <thead><tr><th style="text-align:left">Caractéristique</th><th>Statut (spec)</th><th>Nominale</th><th title="± % autour de la nominale ; « min-max » pour une plage absolue ; 0 = fixe">Plage</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <p class="note" style="margin-top:4px">Valeurs nominales lues dans spec/robot.json. Statut : <b>déclaré</b> (donné par l'équipe) ou <b>hérité</b> (ancien simulateur, à mesurer). Plage : « 15 » = ± 15 %, « 3-4 » = de 3 à 4, « 0 » = fixe. Enregistrées avec le modèle (.meta.json).</p>
           <h2 style="margin-top:16px">Récompense</h2>
           <div class="pgrid">
             <label title="Pénalité de la récompense de l'environnement (cfg.recompense)">Pénalité / erreur <input id="rPenE" type="number" min="0" step="1" value="0"></label>
@@ -355,6 +367,7 @@ input[type=number], input[type=text], input[type=search] { background: var(--bg)
 <script src="../engine/geom.js?v=__V__"></script>
 <script src="../engine/engine.js?v=__V__"></script>
 <script src="../engine/score.js?v=__V__"></script>
+<script src="../engine/adversaires.js?v=__V__"></script>
 <script src="../engine/actions.js?v=__V__"></script>
 <script src="../engine/env.js?v=__V__"></script>
 <script src="net.js?v=__V__"></script>

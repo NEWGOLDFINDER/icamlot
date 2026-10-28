@@ -51,6 +51,9 @@
     /* atteignabilité : 'moteur' (le moteur joue l'étape à blanc sur le monde reconstruit depuis la croyance : choix de la pose
        et planificateur certifié du moteur, celui qu'exec essaie en premier), 'grille' (ancien A* du masque) ou 'disque' (approché) */
     planification: 'moteur',
+    /* recherche de secours (chantier adversaires, contrat §14) : quand le planificateur certifié ne trouve aucun passage, le masque
+       essaie le début de la recherche d'origine d'exec (mode « secours » de planifierEtape), comme exec. Vrai par défaut. */
+    secours: true,
     planMax: 4000,
     /* case libre : sans contact avec cette tolérance (mm, négative = marge exigée) ; le moteur vérifie ensuite le tracé au mm */
     margeGrille: 1,
@@ -817,6 +820,8 @@
       if (b.t + Math.max(dist(tg, [b.pose.x, b.pose.y]) / v, dh2 / w) + (P2.bdep > 0 ? P2.bdep : 0.1) + (P2.bspin > 0 ? P2.bspin : 0) >= E().MATCH) return 'Tir : la position de tir serait atteinte après 100 s.';
     }
     var r = worldOf(b, cache).planifierEtape(st, { mode: 'disque', verifier: true });
+    /* aucun passage pour le plan certifié : exec essaierait ensuite la recherche d'origine ; le masque en joue le début (secours) */
+    if (!r.ok && HYPOTHESES.secours && !r.trajet && /aucun passage sans contact/.test(r.raison || '')) r = worldOf(b, cache).planifierEtape(st, { mode: 'secours', verifier: true });
     if (!r.ok) return r.raison || 'Refusé par le moteur.';
     if (ap && st.a === 'tir') {
       /* attente avant le premier boulet (contrat §13) : majorée d'abord avec un minorant du trajet (ligne droite à v, rotation à w) ;
@@ -824,6 +829,7 @@
       var att = attenteTir(b, b.t + Math.max(dist(tg, [b.pose.x, b.pose.y]) / v, dh2 / w));
       if (att > HYPOTHESES.attenteMaxTir + 1e-6) {
         var r2 = worldOf(b, cache).planifierEtape(st, { mode: 'disque' });
+        if (!r2.ok && HYPOTHESES.secours && !r2.trajet && /aucun passage sans contact/.test(r2.raison || '')) r2 = worldOf(b, cache).planifierEtape(st, { mode: 'secours' });
         if (!r2.ok) return r2.raison || 'Refusé par le moteur.';
         att = attenteTir(b, b.t + (r2.trajet ? r2.trajet.duree : 0));
         if (att > HYPOTHESES.attenteMaxTir + 1e-6) return raisonAttente(att);

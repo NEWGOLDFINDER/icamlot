@@ -26,6 +26,7 @@ function loadIcamlot(rootDir, opts) {
   run('engine/geom.js');
   run('engine/engine.js');
   run('engine/score.js');
+  run('engine/adversaires.js');
   if (opts.moteurSeul) return ctx;
   run('engine/actions.js');
   run('engine/env.js');

@@ -23,12 +23,17 @@
      etrangeres: [ { id, foot, bottom, top, t } ],  pierres posées par l'adversaire, vues par les caméras (même modèle de vue)
      echec: booléen,                            la dernière action a échoué (le robot le sait)
      echecs: { t, briques: [brique réelle] },   briques qui ont échoué à l'instant t sans faire avancer le temps (masquées à t)
-     params: { gx, gy, ga, tx, ty, bn, tirDepuisTrone, v, w, bdep, bspin }   départ du Graal (réel), réglages du tir, vitesses (connus)
+     params: { gx, gy, ga, tx, ty, bn, tirDepuisTrone, v, va, w, vz, trot, tvac, trel, tMonteeGraal, tDescenteFourche, bdep, bspin, brate }
+                                                 départ du Graal (réel), réglages du tir, caractéristiques physiques EFFECTIVES de notre robot
+                                                 pour ce match (unités du moteur : v et va en m/s, w en °/s, vz en mm/s, durées en s, brate
+                                                 en boulets/s ; ADVERSAIRES.PHYSIQUE). Embarqué : valeurs de la spec par défaut, ou d'un
+                                                 fichier de calibration (embarque/croyance.py, params_calibration).
    }
    La simulation construit la croyance depuis le moteur avec le modèle de caméras ENV.VISION (hypothèses, voir plus bas). */
 (function (root) {
   var MATCH = 100;
-  var OBS_VERSION = 'icamlot-obs-3.0';
+  /* 3.1 (chantier adversaires, contrat §14) : groupe « physique » (caractéristiques effectives de notre robot pour ce match) */
+  var OBS_VERSION = 'icamlot-obs-3.1';
 
   /* Caméras des faces A et B (décision d'équipe, 2026-10-28) : elles ne servent qu'à lire les étiquettes ArUco des pierres pour
      l'ajustement (x, y, ω) de la préhension. Une carrière (et une pierre posée par l'adversaire) n'est donc mise à jour que
@@ -55,7 +60,8 @@
     { id: 'constructions', label: 'Constructions propres', vars: [{ id: 'constructions', nom: 'Murs, tours, stock', desc: 'M1-M5 : 0 vide, 0,5 occupée, 1 porte ; T1-T4 : occupée ; pierres stockées dans la cour / 3', n: 10 }] },
     { id: 'adversaire', label: 'Adversaire (lidar)', vars: [{ id: 'adversaire', nom: 'Position et vitesse adverses', desc: 'vu, x / 3000, y / 2000, vx / v, vy / v (repère de l\'équipe, v = notre vitesse, bornées à ±1), âge de la mesure / 5 s', n: 6 }] },
     { id: 'spatial', label: 'Dégagement', vars: [{ id: 'spatial', nom: 'Rayons', desc: 'distance libre (obstacles connus) dans 8 directions à partir de la face A, tous les 45° dans le sens trigonométrique du repère de l\'équipe, / 1000 mm', n: 8 }] },
-    { id: 'echec', label: 'Retour d\'exécution', vars: [{ id: 'echec', nom: 'Échec', desc: 'la dernière action a échoué', n: 1 }] }
+    { id: 'echec', label: 'Retour d\'exécution', vars: [{ id: 'echec', nom: 'Échec', desc: 'la dernière action a échoué', n: 1 }] },
+    { id: 'physique', label: 'Caractéristiques physiques', vars: [{ id: 'physique', nom: 'Caractéristiques de notre robot (ce match)', desc: 'pour ' + root.ADVERSAIRES.PHYSIQUE.map(function (d) { return d.nom.toLowerCase(); }).join(', ') + ' : valeur effective / valeur nominale de la spec - 1 (bornée à ±1 ; mise en route du canon, nominale nulle : écart en s)', n: root.ADVERSAIRES.PHYSIQUE.length }] }
   ];
   var DEFAULT_GROUPS = GROUPS.map(function (g) { return g.id; });
   var GROUP_N = {}; GROUPS.forEach(function (g) { GROUP_N[g.id] = g.vars[0].n; });
@@ -121,6 +127,12 @@
     var p = other.poseAtT(t), q = other.poseAtT(Math.max(0, t - VISION.periodeLidar)), dt = Math.min(t, VISION.periodeLidar);
     return { x: p.x, y: p.y, vx: dt > 0 ? (p.x - q.x) / dt : 0, vy: dt > 0 ? (p.y - q.y) / dt : 0, t: t };
   }
+  /* paramètres connus du robot (croyance) : Graal, tir, caractéristiques physiques effectives (ADVERSAIRES.clesPhysiques) */
+  function paramsBelief(P) {
+    var o = { gx: P.gx, gy: P.gy, ga: P.ga || 0, tx: P.tx, ty: P.ty, bn: P.bn, tirDepuisTrone: P.tirDepuisTrone };
+    root.ADVERSAIRES.clesPhysiques().forEach(function (k) { if (P[k] != null) o[k] = P[k]; });
+    return o;
+  }
   function beliefFromSim(sim, mem, oppPose) {
     var P = sim.params(), p = sim.pose(), held = sim.held(), t = sim.time();
     function slots(f) { var h = held[f]; return h && h.stack ? h.stack.map(function (s) { return s ? s.id : null; }) : [null, null, null]; }
@@ -142,7 +154,7 @@
       pierres: pierres, portes: pl, paquets: paquets, echec: !!mem.echec,
       etrangeres: Object.keys(mem.etr || {}).map(function (id) { var o = mem.etr[id]; return { id: o.id, foot: o.foot, bottom: o.bottom, top: o.top, t: o.t }; }),
       echecs: mem.echecs ? { t: mem.echecs.t, briques: mem.echecs.briques.slice() } : { t: t, briques: [] },
-      params: { gx: P.gx, gy: P.gy, ga: P.ga || 0, tx: P.tx, ty: P.ty, bn: P.bn, tirDepuisTrone: P.tirDepuisTrone, v: P.v, w: P.w, bdep: P.bdep, bspin: P.bspin }
+      params: paramsBelief(P)
     };
   }
 
@@ -191,6 +203,7 @@
         else push(0, 0, 0, 0, 0, 0);
       } else if (id === 'spatial') rays(b).forEach(function (v) { out.push(v); });
       else if (id === 'echec') push(b.echec ? 1 : 0);
+      else if (id === 'physique') root.ADVERSAIRES.observerPhysique(b.params).forEach(function (v) { out.push(v); });
     });
     return out;
   }
@@ -356,9 +369,26 @@
       program: function () { return mind.program(); }
     };
   }
-  /* Adversaire d'un scénario : une stratégie ({ program, params }) ou un cerveau ({ brain }), avec une intensité. */
-  function opponentSetup(spec, P, intensity) {
+  /* Adversaire d'un scénario : une stratégie ({ program, params }), un cerveau ({ brain }) ou un des robots adverses
+     ({ robot: 'batisseur' | 'razzia' | 'champion' | 'intermediaire', fixe? : caractéristiques imposées }, contrat §14 ;
+     caractéristiques tirées par la graine seed), avec une intensité (sans effet sur les robots adverses, sauf « aucun »). */
+  function opponentSetup(spec, P, intensity, seed) {
     if (!spec || intensity === 'aucun' || intensity === 'none') return null;
+    if (spec.robot) {
+      var ADV = root.ADVERSAIRES, pr = ADV.PROFILS[spec.robot];
+      if (!pr) throw new Error('Robot adverse inconnu : ' + spec.robot + ' (attendu : ' + ADV.IDS.join(', ') + ').');
+      var sd = seed != null ? seed : (P.seed || 0);
+      if (pr.type === 'regles') {
+        var prep = ADV.preparerRegles(spec.robot, sd, spec.fixe), ag = prep.agent;
+        return { agent: ag, make: prep.make, tirage: prep.tirage, spec: spec, robot: spec.robot };
+      }
+      var brain = spec.brain || ADV.modele(pr.modele);
+      if (!brain) throw new Error('Robot adverse « ' + pr.nom + ' » : modèle figé absent (.data/adversaires/' + pr.modele + '.json, à entraîner : python -m trainer.adversaires --robot ' + spec.robot + ').');
+      var tir = ADV.tirerAdversaire(spec.robot, sd, spec.fixe);
+      var paramsR = blueParams(Object.assign({}, P, ADV.paramsReseau(tir)));
+      var agR = brainAgent(brain); agR.kind = 'reseau';
+      return { params: paramsR, agent: agR, tirage: tir, spec: spec, robot: spec.robot };
+    }
     var params = ENGINE.intensityParams(blueParams(spec.params || P), intensity);
     if (spec.brain) return { params: params, agent: brainAgent(spec.brain), spec: spec };
     if (!spec.program || !spec.program.length) return null;
@@ -367,14 +397,18 @@
     agent.program = function () { return list.slice(0, played().length); };
     return { params: params, agent: agent, spec: spec };
   }
+  /* configuration du robot bleu d'un duel ; programme joué par un robot à règles = celui de son moteur abstrait */
+  function blueCfg(op) { return op ? (op.make ? { make: op.make } : { params: op.params }) : null; }
+  function duelProgram(op, duel) { if (op && op.make) op.agent.program = function () { return duel.sims.blue.program(); }; }
   /* Programme du joueur contre un adversaire (stratégie ou cerveau). */
   function playProgram(prog, params, spec, intensity, skipContacts) {
     var P = Object.assign({}, ENGINE.DEF, params || {});
-    var op = opponentSetup(spec, P, intensity || 'realiste');
-    var duel = ENGINE.makeDuel({ params: P, skipContacts: !!skipContacts, blue: op ? { params: op.params } : null });
+    var op = opponentSetup(spec, P, intensity || 'realiste', P.seed);
+    var duel = ENGINE.makeDuel({ params: P, skipContacts: !!skipContacts, blue: blueCfg(op) });
+    duelProgram(op, duel);
     duel.run({ yellow: ENGINE.programAgent(prog || []), blue: op ? op.agent : null });
     var R = duel.finish();
-    return { result: R, program: (prog || []).slice(), opponentProgram: op ? op.agent.program() : [] };
+    return { result: R, program: (prog || []).slice(), opponentProgram: op ? op.agent.program() : [], adversaire: op ? op.tirage || null : null };
   }
 
   /* ------------------------------------------------------------------ environnement */
@@ -393,7 +427,7 @@
     var rec = opts.recompense || {};
     var onError = opts.onError || rec.sur_erreur || 'penalite';
     var PEN = { erreur: +rec.penalite_erreur || 0, contact: +rec.penalite_contact || 0, invalide: +rec.penalite_invalide || 0 };
-    var duel = null, sim = null, mem = null, opp = null, lastScore = 0, done = false, history = [], penalties = 0, cur = null;
+    var phys = null, duel = null, sim = null, mem = null, opp = null, lastScore = 0, done = false, history = [], penalties = 0, cur = null;
     /* opts.cameras === false : modèle de caméras coupé (croyance sans vue des carrières), demandé par l'embarqué */
     var sansCameras = opts.cameras === false;
 
@@ -434,14 +468,26 @@
       scenario = scenario || {};
       var P = Object.assign({}, params, scenario.params || {});
       if (scenario.seed != null) P.seed = scenario.seed;
-      opp = opponentSetup(opponentSpecOf(scenario), P, scenario.intensite || intensity);
-      duel = ENGINE.makeDuel({ params: P, skipContacts: skipContacts, blue: opp ? { params: opp.params } : null });
+      /* caractéristiques physiques de notre robot pour ce match (tirées par la graine, contrat §14) : opts.physique, ou
+         scenario.physique (valeurs imposées à la main) ; elles priment sur params */
+      var regPhys = scenario.physique || opts.physique || null;
+      phys = regPhys ? root.ADVERSAIRES.tirerPhysique(scenario.seed || 0, regPhys) : null;
+      if (phys) Object.assign(P, phys.params);
+      opp = opponentSetup(opponentSpecOf(scenario), P, scenario.intensite || intensity, scenario.seed || 0);
+      duel = ENGINE.makeDuel({ params: P, skipContacts: skipContacts, blue: blueCfg(opp) });
+      duelProgram(opp, duel);
       sim = duel.sims.yellow;
       mem = newMemory(); mem.sansCameras = sansCameras;
       done = false; history = []; penalties = 0;
       lastScore = scoreNow();
-      var s = state(); s.reset = true;
+      var s = state(); s.reset = true; s.physique = physique();
       return s;
+    }
+    /* caractéristiques du match : notre robot (valeurs effectives, unité affichée) et adversaire (tirage) */
+    function physique() {
+      var notre = phys ? phys.valeurs : null;
+      if (!notre && sim) { notre = {}; var Pq = sim.params(); root.ADVERSAIRES.PHYSIQUE.forEach(function (d) { notre[d.id] = Pq[d.id] * d.facteur; }); }
+      return { notre: notre, plages: phys ? phys.plages : null, tirageActif: !!(phys && phys.actif), adversaire: opp ? Object.assign({ robot: opp.robot || null }, opp.tirage || {}) : null };
     }
     /* joue l'action idx (même chemin pour step et imitate) ; force : ignore le masque (imitation d'un programme) */
     function doAction(idx, force) {
@@ -498,6 +544,25 @@
       var s0 = reset(scenario || { intensite: 'aucun' }), pairs = [], score0 = lastScore, prev = null;
       (program || []).forEach(function (st) {
         if (done || !st) return;
+        /* pseudo-brique « attendreTir » (démonstrations, chantier adversaires) : attentes courtes du catalogue jusqu'à ce que le
+           tir soit valide, la plus longue qui laisse le temps de tourner vers la cible (180° / w) et de préparer le canon */
+        if (st.a === 'attendreTir') {
+          var iTir = -1, att = [];
+          catalogue.forEach(function (a, i) { if (a.a === 'tir') iTir = i; if (a.famille === 'attenteCourte') att.push(i); });
+          att.sort(function (a, b) { return catalogue[b].sec - catalogue[a].sec; });
+          for (var g = 0; g < 40 && !done && iTir >= 0 && att.length; g++) {
+            if (!cur) state();
+            if (cur.mask[iTir]) break;
+            var Pm = sim.params(), budget = ENGINE.T_ATTAQUE - (Pm.bdep > 0 ? Pm.bdep : 0.1) - (Pm.bspin > 0 ? Pm.bspin : 0) - 180 / Pm.w - sim.time();
+            if (budget < -1) break;
+            var ia = att.filter(function (i) { return catalogue[i].sec <= budget; })[0];
+            if (ia == null) ia = att[att.length - 1];
+            var s0w = { obs: observeBelief(cur.belief, groups), mask: cur.mask.slice(), t: sim.time() }, rw = doAction(ia, true);
+            prev = { obs: s0w.obs, action: ia, mask: s0w.mask, reward: rw.reward, t: s0w.t, err: rw.err || null };
+            pairs.push(prev);
+          }
+          return;
+        }
         var idx = -1;
         /* attentes du catalogue (attentes courtes, finir) reconnues ; une attente d'une autre durée est jouée telle quelle */
         if (!(st.a === 'attendreJusqua' && +st.sec < MATCH)) idx = ACTIONS.indexOfStep(st, cur.belief, catalogue);
@@ -561,7 +626,7 @@
       } catch (e) { restore(snap); return false; }
     }
     var envObj = {
-      reset: reset, step: step, play: play, imitate: imitate, program: program, opponentProgram: opponentProgram, result: result,
+      reset: reset, step: step, play: play, imitate: imitate, program: program, opponentProgram: opponentProgram, result: result, physique: physique,
       snapshot: snapshot, restore: restore, testActionSafety: testActionSafety,
       belief: function () { return cur ? cur.belief : null; },
       catalogue: catalogue, groups: groups, nInputs: nInputs(groups), nOutputs: catalogue.length
@@ -576,7 +641,8 @@
     create: create, mirrorId: mirrorId, mirrorStep: mirrorStep, blueParams: blueParams, pickOpponent: pickOpponent,
     chooserFromLayers: chooserFromLayers, chooserFromRecurrent: chooserFromRecurrent, recurrentForward: recurrentForward,
     brainSpec: brainSpec, brainAgent: brainAgent, makeMind: makeMind, opponentSetup: opponentSetup, playProgram: playProgram, qualify: qualify,
-    newMemory: newMemory, updateMemory: updateMemory, beliefFromSim: beliefFromSim, observeBelief: observeBelief, lidarOf: lidarOf
+    newMemory: newMemory, updateMemory: updateMemory, beliefFromSim: beliefFromSim, observeBelief: observeBelief, lidarOf: lidarOf,
+    paramsBelief: paramsBelief, blueCfg: blueCfg
   };
   /* ENV.EXAMPLE est remplacé par ENGINE.PROGRAMME_REFERENCE (alias conservé pour la commande « example » du worker) */
   Object.defineProperty(api, 'EXAMPLE', { get: function () { return ENGINE.PROGRAMME_REFERENCE; }, enumerable: true });

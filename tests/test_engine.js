@@ -55,7 +55,7 @@ var Rref = ENGINE.simulate(ENGINE.PROGRAMME_REFERENCE, ENGINE.DEF, { skipContact
 var sRef = finalScore(Rref);
 var envI = ENV.create({ skipContacts: true });
 var im = envI.imitate(ENGINE.PROGRAMME_REFERENCE, { intensite: 'aucun' });
-check('programme de référence : ' + sRef + ' pts sans erreur', sRef === 116 && Rref.errors.length === 0, 'T=' + Rref.T.toFixed(1));
+check('programme de référence : ' + sRef + ' pts sans erreur', sRef === 122 && Rref.errors.length === 0, 'T=' + Rref.T.toFixed(1));
 check('imitation : même score que le programme', im.score === sRef, im.score + ' pts');
 check('toutes les briques reconnues (une paire par brique)', im.n === ENGINE.PROGRAMME_REFERENCE.length, im.n + ' paires');
 check('actions imitées valides dans le masque', im.pairs.every(function (p) { return p.mask[p.action] === 1; }));

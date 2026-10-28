@@ -128,6 +128,7 @@ class PPOTrainer:
             "obs_rms": self.obs_rms.state_dict(), "ret_rms": self.ret_rms.state_dict(),
             "optimizer_state": self.opt.state_dict(), "update": self.update, "global_step": self.global_step,
             "ppo_config": asdict(self.cfg), "gamma": self.cfg.gamma, "best_eval": self.best_eval,
+            **(getattr(self, "info_extra", None) or {}),
         }
 
     def load_state(self, ck: dict, optimizer: bool = True) -> None:

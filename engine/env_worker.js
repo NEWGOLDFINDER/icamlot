@@ -41,7 +41,11 @@
        jusqu'à la décision suivante) et l'instant de décision. -> { pairs: [{ obs, action, mask, reward, t }],
        score0, score, T, n, errors, detail }
 
-   Scénario : { seed?, intensite?, params?, opponent?: { program, params } | { brain }, opponentRef?: <id> }
+   adversaires                           -> { robots: [{ id, nom, type, esquisse, modele: bool }] } (robots adverses, contrat §14)
+   physique                              -> { caracteristiques: [{ id, nom, unite, nominal, statut, source, plageDefaut }] }
+   Robots adverses « réseau » : modèles figés lus au démarrage dans .data/adversaires/<id>.json (ou ICAMLOT_ADVERSAIRES=<dossier>).
+
+   Scénario : { seed?, intensite?, params?, physique?, opponent?: { program, params } | { brain } | { robot: id, fixe? }, opponentRef?: <id> }
    (opponentRef est accepté par toutes les commandes qui prennent un scénario : reset, imitate, play, *_batch).
 
    État (reset, step) : { obs: number[], mask: (0|1)[], t, score, reward, done, err } (contrat §4 de docs/CONTRATS.md).
@@ -59,6 +63,18 @@ var loadIcamlot = require('./load.js').loadIcamlot;
 var rootDir = path.resolve(__dirname, '..');
 var ctx = loadIcamlot(rootDir);
 var env = null;
+/* modèles figés des adversaires « réseau » (champion, intermédiaire) */
+function chargerAdversaires() {
+  var fs = require('fs');
+  var dir = process.env.ICAMLOT_ADVERSAIRES || path.join(rootDir, '.data', 'adversaires');
+  ctx.ADVERSAIRES.IDS.forEach(function (id) {
+    var pr = ctx.ADVERSAIRES.PROFILS[id], f = pr.modele ? path.join(dir, pr.modele + '.json') : null;
+    if (!f || !fs.existsSync(f)) return;
+    try { ctx.ADVERSAIRES.enregistrerModele(pr.modele, JSON.parse(fs.readFileSync(f, 'utf8'))); }
+    catch (e) { process.stderr.write('Adversaire ' + id + ' : modèle illisible (' + e.message + ')\n'); }
+  });
+}
+chargerAdversaires();
 
 /* Nombre maximal de décisions par épisode en mode groupé (hypothèse reprise de ENV.play : max = 80). */
 var DEFAULT_MAX_DECISIONS = 80;
@@ -127,6 +143,7 @@ function bilan(s) {
     var so = finalScore(R.opponent);
     out.adversaire = { score: so.total, errors: (R.opponent.errors || []).length };
   }
+  if (s.env.physique) out.physique = s.env.physique();
   return out;
 }
 
@@ -251,6 +268,18 @@ function handle(msg) {
     return out;
   }
   if (cmd === 'close') { env = null; batch = []; return { ok: true }; }
+  if (cmd === 'physique') {
+    return { caracteristiques: ctx.ADVERSAIRES.PHYSIQUE.map(function (d) { return { id: d.id, nom: d.nom, unite: d.unite, nominal: d.nominal, statut: d.statut, source: d.source, plageDefaut: d.plageDefaut }; }) };
+  }
+  if (cmd === 'adversaire_cfg') {
+    /* réglages d'entraînement d'un robot adverse « réseau » : tirage physique et programme de démonstration */
+    var prA = ctx.ADVERSAIRES.PROFILS[msg.robot];
+    if (!prA || prA.type !== 'reseau') return { error: 'Robot adverse « réseau » inconnu : ' + msg.robot };
+    return { robot: msg.robot, profil: prA, physique: ctx.ADVERSAIRES.reglagesPhysiques(msg.robot), demonstration: ctx.ADVERSAIRES.programmeDemo(msg.robot) };
+  }
+  if (cmd === 'adversaires') {
+    return { robots: ctx.ADVERSAIRES.IDS.map(function (id) { var p = ctx.ADVERSAIRES.PROFILS[id]; return { id: id, nom: p.nom, type: p.type, esquisse: p.esquisse, modele: p.type === 'regles' || !!ctx.ADVERSAIRES.modele(p.modele) }; }) };
+  }
 
   /* ── commandes groupées ── */
   if (cmd === 'create_batch') {

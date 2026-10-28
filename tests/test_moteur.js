@@ -21,7 +21,12 @@ function msgs(R) { return R.errors.map(function (e) { return e.step + ': ' + e.m
 titre('Spécification');
 var gen = require(path.join(ROOT, 'tools', 'gen_spec.js'));
 ok(fs.readFileSync(path.join(ROOT, 'spec', 'spec.js'), 'utf8') === gen.contenu(), 'spec/spec.js à jour avec spec/*.json', 'sinon : node tools/gen_spec.js');
-ok(E.DEF.v === 0.5 && E.DEF.w === 120 && E.DEF.vz === L.SPEC.robot.mecanismes.pince_A_et_B.vitesse_chariot_mm_s && E.DEF.trot === 1.5 && E.DEF.tvac === 0.5 && E.DEF.trel === 0.4, 'durées et vitesses lues dans la spec');
+var NACs = L.SPEC.robot.mecanismes.pince_A_et_B, ENTs = L.SPEC.robot.entrainement, CANs = L.SPEC.robot.mecanismes.canon_C;
+function vs(x) { return x !== null && typeof x === 'object' && 'valeur' in x ? x.valeur : x; }
+ok(E.DEF.v === vs(ENTs.vitesse_lineaire_mm_s) / 1000 && E.DEF.va === vs(ENTs.vitesse_approche_mm_s) / 1000 && E.DEF.w === vs(ENTs.vitesse_rotation_deg_s) && E.DEF.vz === vs(NACs.vitesse_chariot_mm_s) &&
+  E.DEF.trot === vs(NACs.rotation_duree_s_pour_90deg) && E.DEF.tvac === vs(NACs.prise_vide_s) && E.DEF.trel === vs(NACs.relache_s) &&
+  E.DEF.bdep === vs(CANs.deploiement_s) && E.DEF.bspin === vs(CANs.mise_en_route_s) && E.DEF.brate === vs(CANs.cadence_boulets_s), 'durées et vitesses lues dans la spec',
+  'trot ' + E.DEF.trot + ' s, prise ' + E.DEF.tvac + ' s, lâcher ' + E.DEF.trel + ' s, canon ' + E.DEF.bdep + ' + ' + E.DEF.bspin + ' s, ' + E.DEF.brate + ' boulet/s');
 ok(L.BAREME.pierre === L.SPEC.regles.bareme.pierre && L.BAREME.mur === L.SPEC.regles.bareme.mur && L.BAREME.tour === L.SPEC.regles.bareme.tour && L.BAREME.porte === L.SPEC.regles.bareme.porte &&
   L.BAREME.graalPresent === L.SPEC.regles.bareme.graal_present && L.BAREME.graalNiveau === L.SPEC.regles.bareme.graal_par_niveau && L.BAREME.retourPartiel === L.SPEC.regles.bareme.trone_partiel &&
   L.BAREME.retourComplet === L.SPEC.regles.bareme.trone_complet && L.BAREME.boulet1 === L.SPEC.regles.bareme.boulet_au_moins_1 && L.BAREME.boulet3 === L.SPEC.regles.bareme.boulets_au_moins_3_supplement &&
@@ -59,7 +64,7 @@ ok(/rotation impossible sous 350 mm/.test(r1.infos[1].err || ''), 'pile tournée
 var r2 = run([{ a: 'prendre', f: 'B', mode: 'pierre', s: 'P1.3' }, { a: 'tourner', f: 'B', r: 180 }]);
 ok(/rotation impossible sous 350 mm/.test(r2.infos[1].err || '') && r2.infos[1].dt === 0, 'retournement à 180° d\'une pierre en rangée 3 refusé sans avancer le temps', r2.infos[1].err);
 var r3 = run([{ a: 'tourner', f: 'A', r: 180 }, { a: 'tourner', f: 'A', r: 0 }]);
-ok(!r3.infos[0].err && !r3.infos[1].err && r3.infos[0].dt >= 3 - 0.05 && r3.infos[0].dt <= 3 + 4 * E.DEF.trz + 0.05, 'nacelle vide 0 → 180° exécutée (3 s + rampes des vérins Z)', r3.infos[0].dt.toFixed(2) + ' s');
+ok(!r3.infos[0].err && !r3.infos[1].err && r3.infos[0].dt >= 2 * E.DEF.trot - 0.05 && r3.infos[0].dt <= 2 * E.DEF.trot + 4 * E.DEF.trz + 0.05, 'nacelle vide 0 → 180° exécutée (2 × trot = ' + 2 * E.DEF.trot + ' s, + rampes des vérins Z)', r3.infos[0].dt.toFixed(2) + ' s');
 
 /* ------------------------------------------------------------------ */
 titre('Programme de référence (golden)');
@@ -72,10 +77,11 @@ console.log('     score ' + sc.total + ' pts, programme terminé à ' + Rref.T.t
 sc.rows.forEach(function (r) { r[1].forEach(function (x) { console.log('       ' + r[0] + ' · ' + x[0] + ' : ' + x[1] + ' → ' + x[2]); }); });
 ok(Rref.errors.length === 0, 'aucune erreur moteur', msgs(Rref));
 ok(Rref.collisions.length === 0, 'aucun contact', JSON.stringify(Rref.collisions));
-/* Golden (contrat §13, catalogue 3.1) : la référence va au trône après le Graal (70,4 s), attend 4 + 4 + 2 + 1 s puis lance le tir
-   à 81,7 s. Score et durée inchangés (116 pts, 90,30 s) : le premier boulet part toujours à 85 s et le retour au trône finit au même
-   instant. Une prise + une tour de plus (122 pts) n'est pas imitable sans cible invalide (voir §13). */
-var GOLDEN = { total: 116, T: 90.30, detail: { pierres: 16, murs: 20, tours: 5, porte: 20, graal: 25, roi: 10, boulets: 20 }, attenteTirMax: 0.1 };
+/* Golden (contrat §14, catalogue 3.1) : variante à 122 pts (P6.2 face A et tour T4 face A en plus), imitable depuis que le masque essaie
+   la recherche de secours d'exec. Durées déclarées le 2026-10-28 (spec 134a8e7 : nacelle 1 s, prise 0,35 s, canon 2 s + 0 s,
+   1,25 boulet/s) : Graal fini à 75,8 s, trône, attentes courtes 4 + 1 s, tir lancé à 81,1 s (attente interne 0,20 s, premier boulet
+   à 85 s, 10 boulets à 1,25/s), trône ; fin du programme à 93,00 s (0,5 s de fin comprise). Ancienne référence (§13) : 116 pts, 90,30 s. */
+var GOLDEN = { total: 122, T: 93.00, detail: { pierres: 17, murs: 20, tours: 10, porte: 20, graal: 25, roi: 10, boulets: 20 }, attenteTirMax: 0.25 };
 var attTir = Rref.segs.filter(function (x) { return /^Attente, canon rentré/.test(x.label); }).reduce(function (u, x) { return u + x.t1 - x.t0; }, 0);
 ok(ref.some(function (st) { return st.a === 'attendre'; }) && attTir <= GOLDEN.attenteTirMax, 'tir explicite : attentes courtes avant le tir, attente dans la brique tir <= ' + GOLDEN.attenteTirMax + ' s', attTir.toFixed(2) + ' s');
 ok(Math.abs(Rref.balls.t0 - E.T_ATTAQUE) < 1e-9, 'premier boulet au début de la phase d\'attaque (' + E.T_ATTAQUE + ' s)', String(Rref.balls.t0));

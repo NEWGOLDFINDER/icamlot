@@ -441,14 +441,24 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
         <button type="button" data-k="exemple">Exemple</button>
         <button type="button" data-k="strategie">Stratégie</button>
         <button type="button" data-k="cerveau">Cerveau</button>
+        <button type="button" data-k="robot">Robot</button>
       </div>
       <select id="mOppSel" aria-label="Choix pour l'adversaire"></select>
+      <p class="note" id="mRobotNote" hidden></p>
       <div class="segc" id="mOppInt" role="group" aria-label="Intensité de l'adversaire">
         <button type="button" data-i="faible">Faible</button>
         <button type="button" data-i="realiste">Réaliste</button>
         <button type="button" data-i="agressif">Agressif</button>
       </div>
       <p class="note">L'intensité règle la vitesse du robot adverse. Son cerveau voit la table en miroir : un cerveau entraîné côté jaune joue côté bleu sans réentraînement.</p>
+    </div>
+    <div class="mcard">
+      <h3><i class="fa-solid fa-gauge-high"></i> Caractéristiques physiques</h3>
+      <label class="chk"><input id="mPhyTir" type="checkbox"> Tirage aléatoire à chaque match</label>
+      <label>Graine du match <input id="mSeed" type="number" min="0" value="1" style="width:90px"></label>
+      <p class="note">Valeurs du dernier match (tirées ou nominales). Saisir une valeur la fixe à la main ; vide = tirage ou valeur de la spec.</p>
+      <div style="overflow-x:auto"><table class="phy" id="mPhyTab" style="width:100%;font-size:12px;border-collapse:collapse"><thead><tr><th style="text-align:left">Notre robot</th><th>Valeur</th><th>Fixer</th></tr></thead><tbody></tbody></table></div>
+      <div style="overflow-x:auto"><table class="phy" id="mPhyOpp" style="width:100%;font-size:12px;border-collapse:collapse"><thead><tr><th style="text-align:left">Adversaire</th><th>Valeur</th><th>Fixer</th></tr></thead><tbody></tbody></table></div>
     </div>
     <div class="crow"><button type="button" class="primary" id="mGo"><i class="fa-solid fa-play"></i> Lancer le match</button>
       <a href="../cerveau/" class="ghostlink">Entraîner un cerveau (Atelier)</a></div>
@@ -637,6 +647,7 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
 <script src="../engine/geom.js?v=__V__"></script>
 <script src="../engine/engine.js?v=__V__"></script>
 <script src="../engine/score.js?v=__V__"></script>
+<script src="../engine/adversaires.js?v=__V__"></script>
 <script src="../engine/actions.js?v=__V__"></script>
 <script src="../engine/env.js?v=__V__"></script>
 <script src="../cerveau/net.js?v=__V__"></script>
