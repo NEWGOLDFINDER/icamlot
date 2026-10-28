@@ -327,6 +327,8 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
           <div class="row"><span>Périmètre</span><b id="hP">1200 mm</b></div>
           <div class="row"><span>Face A : Z / rot.</span><b id="hA">165 / 0°</b></div>
           <div class="row"><span>Face B : Z / rot.</span><b id="hB">165 / 0°</b></div>
+          <div class="row"><span>Graal</span><b id="hG">au départ</b></div>
+          <div class="row"><span>Canon / fourche</span><b id="hC">rentré</b></div>
           <div class="row"><span>Boulets</span><b id="hBall">à bord</b></div>
           <div class="row"><span>Adversaire</span><b id="hOpp">-</b></div>
         </div>
@@ -477,8 +479,6 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
         <label for="pTL">Lâcher (vide coupé) <span><input id="pTL" type="number" min="0" max="5" step="0.1"> s</span></label>
         <label for="pOvl">Au plus proche : chevauchement minimal avec la zone <span><input id="pOvl" type="number" min="0" max="100" step="1"> mm</span></label>
         <label for="pPGap">Porte : écart du linteau au-dessus des piliers <span><input id="pPGap" type="number" min="0" max="50" step="1"> mm</span></label>
-        <label for="pZmin">Pince : hauteur mini <span><input id="pZmin" type="number" min="0" max="600" step="5"> mm</span></label>
-        <label for="pZmax">Pince : hauteur maxi (0 = sans limite) <span><input id="pZmax" type="number" min="0" max="600" step="5"> mm</span></label>
       </div>
     </div>
     <div>
@@ -489,17 +489,29 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
         <label for="pH0">Orientation face A <span><input id="pH0" type="number" min="-360" max="360" step="5"> °</span></label>
         <label for="pGX">Graal x <span><input id="pGX" type="number" min="0" max="3000" step="10"> mm</span></label>
         <label for="pGY">Graal y <span><input id="pGY" type="number" min="0" max="2000" step="10"> mm</span></label>
-        <label for="pGS">Graal (cube) <span><input id="pGS" type="number" min="20" max="200" step="5"> mm</span></label>
+        <label for="pGA">Graal : orientation au départ <span><input id="pGA" type="number" min="-360" max="360" step="5"> °</span></label>
+        <label for="pGS">Graal : côté de la base <span><input id="pGS" type="number" min="20" max="200" step="1"> mm</span></label>
+      </div>
+    </div>
+    <div>
+      <h3>Ascenseur du Graal (face C)</h3>
+      <p class="note" style="margin-bottom:8px">Étape « Monter le Graal » : trajet jusqu'à la pose de prise, puis fourche. Durées par défaut tirées de la spec (hypothèses à valider).</p>
+      <div class="pgrid">
+        <label for="pTSF">Sortie de la fourche <span><input id="pTSF" type="number" min="0" max="10" step="0.1"> s</span></label>
+        <label for="pTDF">Descente de la fourche <span><input id="pTDF" type="number" min="0" max="10" step="0.1"> s</span></label>
+        <label for="pTMG">Montée du Graal <span><input id="pTMG" type="number" min="0" max="10" step="0.1"> s</span></label>
+        <label for="pTTG">Transfert sur le toit <span><input id="pTTG" type="number" min="0" max="10" step="0.1"> s</span></label>
+        <label for="pTPG">Pose <span><input id="pTPG" type="number" min="0" max="10" step="0.1"> s</span></label>
+        <label for="pTDG">Dégagement <span><input id="pTDG" type="number" min="0" max="10" step="0.1"> s</span></label>
       </div>
     </div>
     <div>
       <h3>Canon (face C)</h3>
-      <p class="note" style="margin-bottom:8px">Tir uniquement depuis la salle du trône, face C vers le camp adverse, à partir de 85 s. Le canon reste replié jusqu'à la séance de tir (périmètre de départ limité à 1200 mm) et se déploie au début de la séance. La vitesse de sortie est calculée pour amener la balle au point visé.</p>
+      <p class="note" style="margin-bottom:8px">Tir autorisé de 85 s à 100 s, face C vers le camp adverse. Le canon est rentré au départ et sort de 90 mm. La vitesse de sortie est calculée pour amener la balle au point visé.</p>
+      <label class="chk" for="pTirTrone" style="margin-bottom:8px"><input id="pTirTrone" type="checkbox"> Tir seulement depuis la salle du trône (paramètre, pas une règle)</label>
       <div class="pgrid">
         <label for="pTX">Position de tir x <span><input id="pTX" type="number" min="0" max="500" step="5"> mm</span></label>
         <label for="pTY">Position de tir y <span><input id="pTY" type="number" min="750" max="1250" step="5"> mm</span></label>
-        <label for="pCL">Canon : dépassement hors robot <span><input id="pCL" type="number" min="0" max="300" step="5"> mm</span></label>
-        <label for="pCW">Canon : largeur <span><input id="pCW" type="number" min="0" max="200" step="5"> mm</span></label>
         <label for="pBH">Hauteur de sortie <span><input id="pBH" type="number" min="30" max="350" step="5"> mm</span></label>
         <label for="pBEl">Élévation du tir <span><input id="pBEl" type="number" min="0" max="80" step="1"> °</span></label>
         <label for="pBTx">Point visé x (cour adverse) <span><input id="pBTx" type="number" min="2250" max="3000" step="5"> mm</span></label>
@@ -541,12 +553,6 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
         <button type="button" data-i="faible">Faible</button>
         <button type="button" data-i="realiste" aria-pressed="true">Réaliste</button>
         <button type="button" data-i="agressif">Agressif</button>
-      </div>
-    </div>
-    <div>
-      <h3>Planification & IA</h3>
-      <div style="display:grid;gap:8px">
-        <label class="chk" for="cMcts"><input id="cMcts" type="checkbox"> Planification GPU MCTS (recherche arborescente AlphaZero en direct)</label>
       </div>
     </div>
     <div>
@@ -593,18 +599,18 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
       <h3>Règles contrôlées</h3>
       <ul class="rules">
         <li>Hauteur du robot : 350 mm (règlement général F.3). Objets tenus : 350 mm, ou 430 mm dans les zones de construction et les châteaux (règlement 2027).</li>
-        <li>Périmètre : 1200 mm au départ, 1400 mm ensuite (F.3). Boulets (E.4) : tirés au canon depuis la salle du trône à partir de 85 s, comptés s'ils sont arrêtés dans la cour adverse (derrière les zones de muraille, salle du trône comprise) à 100 s. Vol avec résistance de l'air, rebonds et roulement ; les pierres et constructions ne sont pas des obstacles pour les boulets. Graal : plus grand qu'un cube de 100 mm (contraintes PAMI). Fin : robot dans la salle du trône (E.3).</li>
+        <li>Périmètre : 1200 mm au départ, 1400 mm ensuite (F.3). Boulets (E.4) : tirés au canon depuis la salle du trône à partir de 85 s, comptés s'ils sont arrêtés dans la cour adverse (derrière les zones de muraille, salle du trône comprise) à 100 s. Vol avec résistance de l'air, rebonds et roulement ; les pierres et constructions ne sont pas des obstacles pour les boulets. Graal : base 62 mm, hauteur 100 mm (spec). Fin : robot dans la salle du trône (E.3).</li>
         <li>Trajets calculés sur une grille de 40 mm avec la forme exacte du robot, du canon et des pierres tenues, en gardant si possible 25 mm d'écart avec les pierres. Chaque trajet est vérifié pas à pas (10 mm, 1,5°, et au millimètre près là où le robot frôle une pierre), avec la position réelle des pinces au même instant ; si besoin le robot pivote sur place dans un endroit dégagé, et la pince bouge au départ, en fin de trajet ou avant de partir. Les mouvements de pince sur place sont aussi vérifiés. S'il n'existe aucun passage sans contact, l'étape est signalée en erreur.</li>
         <li>Prise : un paquet entier, les deux pierres du dessus (empilées à plat et alignées), ou une seule pierre si rien n'est posé dessus (ventouse au choix). Dépôt en x, y, angle : toute la pile tenue ou une pierre, pince à 0° (à plat), 90° (debout) ou 180° (à plat, pile retournée), sur la table ou sur d'autres pierres. À plat, seule la pierre du bas de la pince peut être posée seule. La hauteur de pince doit rester dans sa course (Paramètres) ; sinon, la case « Lâcher » laisse tomber les pierres à plat depuis la position la plus basse de la pince.</li>
         <li>Étape « Lâcher » : coupe le vide sur place, sans bouger ; les pierres tombent droit sur le sol ou sur les pierres en dessous (debout : seulement au contact de l'appui).</li>
-        <li>Poser le Graal : côté au choix, de l'intérieur (robot dans le château) ou de l'extérieur.</li>
+        <li>Monter le Graal : le robot, dans son château, prend le Graal de départ avec l'ascenseur de la face C et le pose sur son toit (niveau 4 si la fourche est dégagée à la fin). Un Graal qui sort du château est retiré (erreur, 0 point).</li>
         <li>Étape « Trajectoire » : le robot suit les points cliqués sur la table, depuis sa position, en ligne droite d'un point à l'autre. Angle facultatif à chaque point (orientation de la face choisie, 0° le long de x, positif vers +y) ; sans angle, la rotation est répartie selon la distance. Les contacts sont signalés, le tracé n'est pas corrigé.</li>
         <li>Pince : rotation dans un seul sens, à 0°, 90° ou 180° (180° prend deux fois le temps de 90°). Étape « Tourner la pince » : tout de suite, ou en temps masqué pendant le prochain trajet.</li>
         <li>Temps masqué (case dans l'étape) : la pince monte, descend et tourne pendant le trajet ; le robot attend la pince si elle est plus lente. Les étapes enregistrées avant cette option restent sans temps masqué.</li>
         <li>Mur, tour, porte : placement parfait (centré dans la zone), au plus proche (la position qui touche encore la zone, avec un chevauchement minimal réglable, et que le robot atteint le plus vite, orientation libre) ou manuel (centre et angle saisis ou cliqués, avec aperçu). Une pierre compte dès que sa projection touche la zone, ou si elle repose sur une pierre valide (E.1). Pierres d'une construction hors zone : en rouge, sans points.</li>
         <li>Porte : 2 piliers accolés posés debout, puis le robot recule juste assez, met le linteau à plat en restant bas et ne le monte qu'à la hauteur des piliers (+ l'écart réglable) pour le poser : la pince reste sous le plafond de 350 mm. Linteau tenu par de petites ventouses. Tour : la pierre est centrée sur son cercle si la place le permet, sinon décalée (signalé). Robot adverse absent.</li>
         <li>Robot adverse : un cerveau ou une stratégie joue en miroir sur le château bleu, en même temps que nous. Même table pour les deux : un paquet pris par l'un disparaît pour l'autre (premier servi), les deux robots ne se traversent pas (contact signalé, lidar à 400 mm : attente de 2 s).</li>
-        <li>Score : barème du compteur de points, état de la table à 100 s (ou en fin de programme). Seules nos zones comptent. Niveau du Graal estimé d'après sa hauteur. Douves et attaque de PAMI non simulées.</li>
+        <li>Score : barème du compteur de points, état de la table à 100 s (ou en fin de programme). Seules nos zones comptent. Niveau du Graal : 1 à 3 d'après la hauteur de son dessous, 4 sur le toit du robot. Douves et attaque de PAMI non simulées.</li>
         <li>Cerveau : le réseau voit l'état (temps, paquets encore là, constructions, adversaire) et choisit l'action suivante. Pas de programme figé à l'issue de l'entraînement. Murs et portes interdits sur une zone déjà occupée. Boulets seulement à partir de 80 s. Le match va jusqu'à 100 s.</li>
       </ul>
     </div>
@@ -634,6 +640,7 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
 <script src="../engine/actions.js?v=__V__"></script>
 <script src="../engine/env.js?v=__V__"></script>
 <script src="../cerveau/net.js?v=__V__"></script>
+<script src="../cerveau/runtime.js?v=__V__"></script>
 <!-- ?v=__V__ : remplacé par le numéro de version à l'installation (deploy/install.sh), pour ne jamais servir un ancien fichier -->
 <script src="../bareme.js?v=__V__"></script>
 <script src="app.js?v=__V__"></script>

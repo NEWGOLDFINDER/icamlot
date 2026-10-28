@@ -4,32 +4,27 @@
   var $ = function (id) { return document.getElementById(id); };
   var BrainActs = window.ACTIONS;
   var MATCH = 100;
-  var DEF = { v: 0.5, va: 0.2, w: 120, vz: 100, trot: 1.5, tvac: 0.5, trel: 0.4, x0: 250, y0: 1000, h0: 0, gx: 100, gy: 1180, gs: 60, zmin: 140, zmax: 0, pgap: 5, ovl: 8,
-    tx: 250, ty: 1000, cl: 80, cw: 60, bn: 10, brate: 2, bdep: 1, bspin: 0.5, bel: 35, bh: 250, btx: 2625, bmode: 'arret',
-    bm: 2, bcd: 0.47, be: 0.5, bmu: 0.3, bcr: 0.05, bdv: 5, bdaz: 2, bdel: 2, bseed: 1 };
-  var PIDS = { v: 'pV', va: 'pVA', w: 'pW', vz: 'pVZ', trot: 'pTR', tvac: 'pTV', trel: 'pTL', x0: 'pX0', y0: 'pY0', h0: 'pH0', gx: 'pGX', gy: 'pGY', gs: 'pGS', zmin: 'pZmin', zmax: 'pZmax', pgap: 'pPGap', ovl: 'pOvl',
-    tx: 'pTX', ty: 'pTY', cl: 'pCL', cw: 'pCW', bn: 'pBN', brate: 'pBRate', bdep: 'pBDep', bspin: 'pBSpin', bel: 'pBEl', bh: 'pBH', btx: 'pBTx', bmode: 'pBMode',
+  /* paramètres par défaut : lus dans le moteur (ENGINE.DEF), jamais recopiés ici */
+  var DEF = Object.assign({}, ENGINE.DEF);
+  var PIDS = { v: 'pV', va: 'pVA', w: 'pW', vz: 'pVZ', trot: 'pTR', tvac: 'pTV', trel: 'pTL', x0: 'pX0', y0: 'pY0', h0: 'pH0', gx: 'pGX', gy: 'pGY', ga: 'pGA', gs: 'pGS', pgap: 'pPGap', ovl: 'pOvl',
+    tMonteeGraal: 'pTMG', tTransfertGraal: 'pTTG', tPoseGraal: 'pTPG', tDegagementGraal: 'pTDG', tSortieFourche: 'pTSF', tDescenteFourche: 'pTDF',
+    tx: 'pTX', ty: 'pTY', tirDepuisTrone: 'pTirTrone', bn: 'pBN', brate: 'pBRate', bdep: 'pBDep', bspin: 'pBSpin', bel: 'pBEl', bh: 'pBH', btx: 'pBTx', bmode: 'pBMode',
     bm: 'pBM', bcd: 'pBCd', be: 'pBE', bmu: 'pBMu', bcr: 'pBCr', bdv: 'pBDv', bdaz: 'pBDaz', bdel: 'pBDel', bseed: 'pBSeed' };
-  /* paramètres qui peuvent valoir 0 */
-  var ZERO_OK = ['tvac', 'trel', 'x0', 'y0', 'h0', 'gx', 'gy', 'zmin', 'zmax', 'pgap', 'ovl', 'tx', 'ty', 'cl', 'cw', 'bn', 'bdep', 'bspin', 'bel', 'be', 'bmu', 'bcr', 'bdv', 'bdaz', 'bdel', 'bseed'];
-  var EXAMPLE = [
-    { a: 'prendre', f: 'A', p: 'P1' }, { a: 'prendre', f: 'B', p: 'P9' },
-    { a: 'mur', f: 'A', z: 'M1', side: 'ext' }, { a: 'mur', f: 'B', z: 'M2', side: 'ext' },
-    { a: 'prendre', f: 'A', p: 'P5' }, { a: 'prendre', f: 'B', p: 'P10' },
-    { a: 'mur', f: 'A', z: 'M5', side: 'ext' }, { a: 'mur', f: 'B', z: 'M4', side: 'ext' },
-    { a: 'prendre', f: 'A', p: 'P4' },
-    { a: 'porte', f: 'A', z: 'M3', side: 'int' },
-    { a: 'prendreGraal', f: 'B' }, { a: 'poserGraal', f: 'B', z: 'M3' },
-    { a: 'tir' }
-  ];
+  /* paramètres qui peuvent valoir 0 ou être négatifs (angles) */
+  var ZERO_OK = ['tvac', 'trel', 'x0', 'y0', 'h0', 'gx', 'gy', 'ga', 'pgap', 'ovl', 'tx', 'ty', 'bn', 'bdep', 'bspin', 'bel', 'be', 'bmu', 'bcr', 'bdv', 'bdaz', 'bdel', 'bseed',
+    'tMonteeGraal', 'tTransfertGraal', 'tPoseGraal', 'tDegagementGraal', 'tSortieFourche', 'tDescenteFourche'];
+  var ANGLES = ['h0', 'ga'];
+  /* programme de référence du moteur (116 pts, 0 erreur) */
+  var EXAMPLE = JSON.parse(JSON.stringify(ENGINE.PROGRAMME_REFERENCE));
+  var OBSOLETE_PARAMS = ['zmin', 'zmax', 'cl', 'cw'];
   var ACTIONS = [
     ['prendre', 'Prendre (paquet ou pierre)'], ['deposer', 'Déposer en x, y, angle'], ['mur', 'Poser en mur'], ['tour', 'Faire une tour'], ['porte', 'Faire une porte'],
-    ['tir', 'Commencer la séance de tir (canon, face C)'], ['prendreGraal', 'Prendre le Graal'], ['poserGraal', 'Poser le Graal sur'],
+    ['tir', 'Commencer la séance de tir (canon, face C)'], ['monterGraal', 'Monter le Graal (ascenseur, face C)'],
     ['traj', 'Trajectoire (points cliqués)'], ['lacher', 'Lâcher sur place'], ['tourner', 'Tourner la pince (0, 90, 180°)'], ['attendre', 'Attendre (s)'], ['attendreJusqua', 'Attendre jusqu\'à (s)'], ['trone', 'Aller dans la salle du trône']
   ];
-  var SHORT = { prendre: 'Prendre', deposer: 'Déposer', mur: 'Mur', tour: 'Tour', porte: 'Porte', tir: 'Tir', prendreGraal: 'Prendre Graal', poserGraal: 'Poser Graal', traj: 'Trajectoire', lacher: 'Lâcher', tourner: 'Tourner', attendre: 'Attendre', attendreJusqua: 'Attendre jusqu\'à', trone: 'Trône' };
-  var ICONS = { prendre: 'fa-hand', deposer: 'fa-location-crosshairs', mur: 'fa-grip-lines', tour: 'fa-chess-rook', porte: 'fa-archway', tir: 'fa-bullseye', prendreGraal: 'fa-trophy', poserGraal: 'fa-award', traj: 'fa-route', lacher: 'fa-hand-holding', tourner: 'fa-rotate-right', attendre: 'fa-hourglass-half', attendreJusqua: 'fa-clock', trone: 'fa-crown' };
-  var FIELDS = { prendre: ['f', 'mode', 'p', 's', 'v', 'tm'], deposer: ['f', 'q', 'xy', 'ang', 'r', 'drop', 'tm'], tourner: ['f', 'r', 'tm'], lacher: ['f', 'q'], traj: ['fa', 'pts'], mur: ['f', 'zm', 'pm', 'side', 'xy', 'ang'], tour: ['f', 'zt', 's', 'pm', 'xy', 'ang', 'tm'], porte: ['f', 'zm', 'pm', 'side', 'xy', 'ang', 'tm'], tir: [], prendreGraal: ['f', 'tm'], poserGraal: ['f', 'gm', 'zmt', 'xy', 'side', 'tm'], attendre: ['sec'], attendreJusqua: ['sec'], trone: [] };
+  var SHORT = { prendre: 'Prendre', deposer: 'Déposer', mur: 'Mur', tour: 'Tour', porte: 'Porte', tir: 'Tir', monterGraal: 'Monter Graal', traj: 'Trajectoire', lacher: 'Lâcher', tourner: 'Tourner', attendre: 'Attendre', attendreJusqua: 'Attendre jusqu\'à', trone: 'Trône' };
+  var ICONS = { prendre: 'fa-hand', deposer: 'fa-location-crosshairs', mur: 'fa-grip-lines', tour: 'fa-chess-rook', porte: 'fa-archway', tir: 'fa-bullseye', monterGraal: 'fa-trophy', traj: 'fa-route', lacher: 'fa-hand-holding', tourner: 'fa-rotate-right', attendre: 'fa-hourglass-half', attendreJusqua: 'fa-clock', trone: 'fa-crown' };
+  var FIELDS = { prendre: ['f', 'mode', 'p', 's', 'v', 'tm'], deposer: ['f', 'q', 'xy', 'ang', 'r', 'drop', 'tm'], tourner: ['f', 'r', 'tm'], lacher: ['f', 'q'], traj: ['fa', 'pts'], mur: ['f', 'zm', 'pm', 'side', 'xy', 'ang'], tour: ['f', 'zt', 's', 'pm', 'xy', 'ang', 'tm'], porte: ['f', 'zm', 'pm', 'side', 'xy', 'ang', 'tm'], tir: [], monterGraal: [], attendre: ['sec'], attendreJusqua: ['sec'], trone: [] };
   var PKIDS = ENGINE.PK.map(function (p) { return p.id; }), MIDS = ENGINE.ZM.map(function (z) { return z.id; }), TIDS = ENGINE.ZT.map(function (z) { return z.id; });
   var SIDS = []; PKIDS.forEach(function (p) { for (var l = 1; l <= 3; l++) SIDS.push(p + '.' + l); });
   var prog = [], params = {}, sel = -1;
@@ -46,7 +41,6 @@
   /* champs affichés : la prise montre soit le paquet, soit la pierre et sa ventouse */
   function fieldsOf(st) {
     return (FIELDS[st.a] || []).filter(function (k) {
-      if (st.a === 'poserGraal') return st.gm === 'xy' ? k !== 'zmt' : k !== 'xy';
       /* constructions : position manuelle seulement en mode manuel, côté d'approche seulement en placement parfait */
       if (st.a === 'mur' || st.a === 'tour' || st.a === 'porte') { if ((k === 'xy' || k === 'ang') && st.pm !== 'manuel') return false; if (k === 'side' && st.pm && st.pm !== 'parfait') return false; return true; }
       if (st.a !== 'prendre') return true;
@@ -66,16 +60,22 @@
 
   /* ---------- stockage navigateur (brouillon en cours) ---------- */
   function saveLocal() { if (pilot.mode === 'cerveau') return; lsSet('camelot-prog-v1', JSON.stringify({ params: params, program: prog })); }
-  function loadLocal() { try { var j = JSON.parse(lsGet('camelot-prog-v1') || 'null'); if (j && Array.isArray(j.program)) { j.program.forEach(upgradeStep); return j; } } catch (e) {} return null; }
-  function upgradeStep(st) { if (st && st.a === 'boulets') st.a = 'tir'; return st; }
+  function loadLocal() { try { var j = JSON.parse(lsGet('camelot-prog-v1') || 'null'); if (j && Array.isArray(j.program)) { j.program.forEach(upgradeStep); j.program = j.program.filter(function (x) { return x && x.a !== 'prendreGraal'; }); dropParams(j.params); return j; } } catch (e) {} return null; }
+  /* anciens programmes : boulets -> tir ; poserGraal -> monterGraal (prendreGraal n'existe plus : l'étape est retirée) */
+  function upgradeStep(st) { if (st && st.a === 'boulets') st.a = 'tir'; if (st && st.a === 'poserGraal') st.a = 'monterGraal'; return st; }
+  function dropParams(P) { if (P) OBSOLETE_PARAMS.forEach(function (k) { delete P[k]; }); return P; }
 
   /* ---------- paramètres ---------- */
-  function writeParams() { for (var k in PIDS) $(PIDS[k]).value = params[k]; }
+  function writeParams() {
+    for (var k in PIDS) { var el = $(PIDS[k]); if (!el) continue; if (typeof DEF[k] === 'boolean') el.checked = params[k] !== false; else el.value = params[k]; }
+  }
   function readParams() {
     for (var k in PIDS) {
-      if (typeof DEF[k] === 'string') { params[k] = $(PIDS[k]).value || DEF[k]; continue; }
-      var v = parseFloat($(PIDS[k]).value), zeroOk = ZERO_OK.indexOf(k) >= 0;
-      params[k] = isFinite(v) && (zeroOk ? v >= 0 || k === 'h0' : v > 0) ? v : DEF[k];
+      var el = $(PIDS[k]); if (!el) continue;
+      if (typeof DEF[k] === 'boolean') { params[k] = el.checked; continue; }
+      if (typeof DEF[k] === 'string') { params[k] = el.value || DEF[k]; continue; }
+      var v = parseFloat(el.value), zeroOk = ZERO_OK.indexOf(k) >= 0;
+      params[k] = isFinite(v) && (zeroOk ? v >= 0 || ANGLES.indexOf(k) >= 0 : v > 0) ? v : DEF[k];
     }
   }
 
@@ -125,8 +125,7 @@
       case 'tour': return 'Tour ' + st.z + ' avec ' + st.s + pmTxt(st) + f;
       case 'porte': return 'Porte en ' + st.z + pmTxt(st) + f + (st.pm && st.pm !== 'parfait' ? '' : sideTxt(st.side));
       case 'tir': return 'Séance de tir : salle du trône, face C vers le camp adverse (à partir de 85 s)';
-      case 'prendreGraal': return 'Prendre le Graal' + f;
-      case 'poserGraal': return (st.gm === 'xy' ? 'Poser le Graal en ' + Math.round(st.x) + ', ' + Math.round(st.y) : 'Poser le Graal sur ' + st.z) + f + sideTxt(st.side);
+      case 'monterGraal': return 'Monter le Graal sur le toit (ascenseur de la face C, robot dans son château)';
       case 'attendre': return 'Attendre ' + fmt(st.sec) + ' s';
       case 'attendreJusqua': return 'Attendre jusqu\'à ' + fmt(st.sec) + ' s';
       case 'trone': return 'Aller dans la salle du trône';
@@ -139,8 +138,8 @@
     FIELDS[a].forEach(function (k) {
       if (k === 'f') st.f = 'A'; if (k === 'p') st.p = 'P1'; if (k === 'zm') st.z = 'M1'; if (k === 'zt') st.z = 'T1'; if (k === 'zmt') st.z = 'M3';
       if (k === 'side') st.side = 'auto'; if (k === 's') st.s = a === 'prendre' ? 'P1.3' : 'P1.1'; if (k === 'sec') st.sec = a === 'attendreJusqua' ? 85 : 1;
-      if (k === 'mode') st.mode = 'paquet'; if (k === 'gm') st.gm = 'zone'; if (k === 'v') st.v = 'auto'; if (k === 'tm') st.tm = true;
-      if (k === 'q') st.q = 'pile'; if (k === 'xy') { if (a === 'deposer' || a === 'poserGraal') { st.x = 1200; st.y = 1000; } else { st.x = null; st.y = null; } } if (k === 'pm') st.pm = 'parfait'; if (k === 'ang') st.ang = 0;
+      if (k === 'mode') st.mode = 'paquet'; if (k === 'v') st.v = 'auto'; if (k === 'tm') st.tm = true;
+      if (k === 'q') st.q = 'pile'; if (k === 'xy') { if (a === 'deposer') { st.x = 1200; st.y = 1000; } else { st.x = null; st.y = null; } } if (k === 'pm') st.pm = 'parfait'; if (k === 'ang') st.ang = 0;
       if (k === 'r') st.r = a === 'tourner' ? 90 : 0; if (k === 'drop') st.drop = false; if (k === 'fa') st.fa = 'A'; if (k === 'pts') st.pts = [];
     });
     return st;
@@ -205,7 +204,6 @@
       if (k === 'mode') d.appendChild(fld('Prendre', mkSeg('Prendre', [['paquet', 'Paquet (3)'], ['deux', 'Deux du dessus'], ['pierre', 'Une pierre (dessus)']], st.mode || 'paquet', function (v) { prog[i].mode = v; changed(true); })));
       if (k === 'v') d.appendChild(fld('Ventouse', mkSel('Ventouse', [['auto', 'Auto (pince au plus près de 165 mm)'], ['1', 'Ventouse 1 (bas)'], ['2', 'Ventouse 2 (milieu)'], ['3', 'Ventouse 3 (haut)']], st.v || 'auto', function (v) { setField(i, 'v', v); })));
       if (k === 'q') d.appendChild(fld('Quoi', mkSel('Pierres déposées', [['pile', 'Toute la pile tenue']].concat(SIDS.map(function (p) { return [p, 'Pierre ' + p]; })), st.q, function (v) { setField(i, 'q', v); })));
-      if (k === 'gm') d.appendChild(fld('Poser', mkSeg('Poser le Graal', [['zone', 'Sur une construction'], ['xy', 'En x, y']], st.gm || 'zone', function (v) { prog[i].gm = v; changed(true); })));
       if (k === 'r') d.appendChild(fld(st.a === 'tourner' ? 'Angle' : 'Pince', mkSeg('Angle de la pince', st.a === 'tourner' ? [['0', '0°'], ['90', '90°'], ['180', '180°']] : [['0', '0° à plat'], ['90', '90° debout'], ['180', '180° retournée']], String(rotOf(st)), function (v) { delete prog[i].o; setField(i, 'r', +v); })));
       if (k === 'pm') d.appendChild(fld('Placement', mkSeg('Placement de la construction', [['parfait', 'Parfait'], ['proche', 'Au plus proche'], ['manuel', 'Manuel']], st.pm || 'parfait', function (v) {
         var q = prog[i]; q.pm = v;
@@ -337,10 +335,10 @@
   var worker = null, reqId = 0, R = null;
   /* le Web Worker charge le même moteur que la page (adresses des balises <script>, version comprise) */
   function scriptUrl(name) { var s = document.querySelector('script[src*="' + name + '"]'); return s ? s.src : '../' + name; }
-  var workerSrc = Promise.all([fetch(scriptUrl('engine/geom.js')), fetch(scriptUrl('engine/engine.js'))]).then(function (rs) {
-    return Promise.all(rs.map(function (r) { return r.text(); }));
+  var workerSrc = Promise.all([fetch(scriptUrl('spec/spec.js')), fetch(scriptUrl('engine/geom.js')), fetch(scriptUrl('engine/engine.js'))]).then(function (rs) {
+    return Promise.all(rs.map(function (r) { if (!r.ok) throw new Error('script ' + r.url); return r.text(); }));
   }).then(function (src) {
-    return src[0] + '\n' + src[1] + '\nonmessage=function(e){var r=ENGINE.simulateMatch(e.data.prog,e.data.P,{opponent:e.data.opponent,intensity:e.data.intensity});var opp=r.opponent||null;if(opp){delete opp.poseAt;delete opp.stoneAt;}r.opponent=null;delete r.poseAt;delete r.stoneAt;postMessage({id:e.data.id,r:r,opp:opp});};';
+    return src[0] + '\n' + src[1] + '\n' + src[2] + '\nonmessage=function(e){var r=ENGINE.simulateMatch(e.data.prog,e.data.P,{opponent:e.data.opponent,intensity:e.data.intensity});var opp=r.opponent||null;if(opp){delete opp.poseAt;delete opp.stoneAt;}r.opponent=null;delete r.poseAt;delete r.stoneAt;postMessage({id:e.data.id,r:r,opp:opp});};';
   });
   workerSrc.then(function (code) {
     try {
@@ -356,7 +354,18 @@
     return oppLoaded[oppChoice.slug] || null;
   }
   function currentOpponentName() { var o = currentOpponent(); return o && o.name; }
-  function oppData(o) { return o ? (o.brain ? { name: o.name, brain: o.brain, params: o.params || params } : { name: o.name, program: o.program, params: o.params || params }) : null; }
+  /* un cerveau récurrent garde un état caché : un nouvel agent (état à zéro) pour chaque match simulé */
+  function freshBrain(b) {
+    if (!b || !b.model) return b;
+    var nb = Object.assign({}, b);
+    nb.choose = window.RUNTIME.chooser(b.model, brainExpect(b));
+    return nb;
+  }
+  function brainExpect(b) {
+    var cat = BrainActs.filterByFamilles(b.familles);
+    return { nIn: window.ENV.nInputs(b.entrees), nOut: cat.length, obsVersion: window.ENV.OBS_VERSION, catalogueVersion: BrainActs.CATALOGUE_VERSION };
+  }
+  function oppData(o) { return o ? (o.brain ? { name: o.name, brain: freshBrain(o.brain), params: o.params || params } : { name: o.name, program: o.program, params: o.params || params }) : null; }
   /* cerveau ou stratégie manquante : chargée depuis le serveur, puis on relance fn */
   function ensureOpponent(fn) {
     var slug = oppChoice.slug;
@@ -389,10 +398,11 @@
     if (worker) worker.postMessage(data);
     else setTimeout(function () { var r = ENGINE.simulateMatch(data.prog, data.P, { opponent: data.opponent, intensity: data.intensity }); accept(r, r.opponent); }, 0);
   }
-  function brainSpec(name, layers, cfg) {
+  /* cerveau : modèle récurrent (poids v2) ou MLP (layers) ; tout est lu dans le fichier de poids et la configuration */
+  function brainSpec(name, layers, cfg, weights) {
     var familles = (cfg.actions && cfg.actions.familles) || BrainActs.FAMILLES.map(function (f) { return f.id; });
     var acts = ((cfg.reseau && cfg.reseau.couches) || []).map(function (c) { return c.activation; });
-    var model = (pilot.weights && (pilot.weights.model || pilot.weights)) || null;
+    var model = window.RUNTIME ? window.RUNTIME.modeleDe(weights) : null;
     return {
       name: name,
       brain: {
@@ -400,12 +410,12 @@
         acts: acts,
         entrees: cfg.entrees || window.ENV.GROUPS.map(function (g) { return g.id; }),
         familles: familles,
-        model: (model && model.hidden_dim) ? model : null
+        model: model
       }
     };
   }
   function recomputeLive(opp) {
-    if (!window.ENV || !window.NET || !BrainActs) {
+    if (!window.ENV || !window.NET || !window.RUNTIME || !BrainActs) {
       $('busy').hidden = true;
       toast('Moteur du cerveau introuvable.', 'bad');
       return;
@@ -419,13 +429,12 @@
       try {
         var inten = opp ? oppChoice.intensity : 'aucun', oppSpec = oppData(opp), ours, theirs;
         if (pilot.mode === 'cerveau') {
-          var bs = brainSpec(pilot.name, pilot.layers, pilot.cfg);
-          var useMcts = $('cMcts') && $('cMcts').checked;
-          var env = window.ENV.create({ entrees: bs.brain.entrees, familles: bs.brain.familles, params: params, adversaire: { intensite: inten }, skipContacts: false, onError: 'penalite', filterSafety: true, mcts: useMcts });
-          var chooser = (bs.brain.model && window.NET && window.NET.chooserFromRecurrent)
-            ? window.NET.chooserFromRecurrent(bs.brain.model)
+          var bs = brainSpec(pilot.name, pilot.layers, pilot.cfg, pilot.weights);
+          var env = window.ENV.create({ entrees: bs.brain.entrees, familles: bs.brain.familles, params: params, adversaire: { intensite: inten }, skipContacts: false, onError: 'penalite', filterSafety: true });
+          var chooser = bs.brain.model
+            ? window.RUNTIME.chooser(bs.brain.model, { nIn: env.nInputs, nOut: env.nOutputs, obsVersion: window.ENV.OBS_VERSION, catalogueVersion: BrainActs.CATALOGUE_VERSION })
             : window.ENV.chooserFromLayers(bs.brain.layers, bs.brain.acts);
-          env.play(chooser, { params: params, intensite: inten, opponent: oppSpec, filterSafety: true, mcts: useMcts });
+          env.play(chooser, { params: params, intensite: inten, opponent: oppSpec, filterSafety: true });
           ours = env.program(); theirs = env.opponentProgram();
         } else {
           var pm = window.ENV.playProgram(prog, params, oppSpec, inten, false);
@@ -453,11 +462,10 @@
     TEND = Math.max(MATCH, Math.ceil(R.T + 1));
     $('track').setAttribute('aria-valuemax', String(TEND));
     var tot = $('tot'), nErr = R.errors.length;
-    tot.textContent = 'Durée ' + fmt(R.T) + ' s' + (R.T <= MATCH ? '' : ' (+' + fmt(R.T - MATCH) + ' s)');
+    tot.textContent = 'Durée ' + fmt(R.T) + ' s' + (R.T <= MATCH ? '' : ' (+' + fmt(R.T - MATCH) + ' s)') + (nErr ? ' · ' + nErr + ' erreur' + (nErr > 1 ? 's' : '') + ' moteur' : '');
     tot.className = 'tot ' + (R.T <= MATCH && !nErr ? 'ok' : 'bad');
-    showStepInfo(); buildTrail(); buildOppTrail(); buildShots(); updateCannon(); computeBad(); drawStrip(); renderResults(); renderAlerts(); renderTimeline();
+    showStepInfo(); buildTrail(); buildOppTrail(); buildShots(); computeBad(); drawStrip(); renderResults(); renderAlerts(); renderTimeline();
     if (them) them.group.visible = !!R.opponent;
-    if (graalOpp) graalOpp.visible = !!R.opponent;
     if (time > TEND) time = TEND;
   }
 
@@ -466,9 +474,6 @@
   function gripTop(g) { return SCORE.gripTop(g); }
   function hullPer(P) { return SCORE.hullPer(P); }
   function inCastle(x, y) { return SCORE.inCastle(x, y); }
-  /* empreinte du robot : triangle, + canon de la face C une fois déployé (séance de tir) */
-  function canOut(t) { return R && R.balls.tDeploy != null && t >= R.balls.tDeploy; }
-  function robotFoot(p, t) { return SCORE.robotFoot(R, params, p, t); }
   var countPer = true;
   function graalAt(t) { return SCORE.graalAt(R, t); }
   function graalPos(t) { return SCORE.graalPos(R, params, t); }
@@ -557,7 +562,6 @@
     var m = new THREE.Mesh(new THREE.BoxGeometry(320, 110, 110), ghostMat);
     m.add(new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry), ghostEdge)); m.visible = false; scene.add(m); return m;
   });
-  var ghostG = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), ghostMat); ghostG.add(new THREE.LineSegments(new THREE.EdgesGeometry(ghostG.geometry), ghostEdge)); ghostG.visible = false; scene.add(ghostG);
   /* trajectoire de l'étape sélectionnée : ligne, points et robot à l'arrivée (flèche : face des angles) */
   var trajG = new THREE.Group(); scene.add(trajG); var trajKey = '';
   function updateTraj(st, inf) {
@@ -572,20 +576,18 @@
       var dot = new THREE.Mesh(new THREE.SphereGeometry(j === st.pts.length - 1 ? 16 : 11, 12, 8), dm); dot.position.set(w[0], 8, w[1]); trajG.add(dot);
     });
     trajG.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), lm));
-    var pe = R.poseAt(inf.t1), tri = triPoly(pe).map(function (v) { var w = W(v[0], v[1]); return new THREE.Vector3(w[0], 7, w[1]); });
+    var pe = R.poseAt(inf.t1), tri = GEOM.robotPoly(pe).map(function (v) { var w = W(v[0], v[1]); return new THREE.Vector3(w[0], 7, w[1]); });
     tri.push(tri[0].clone()); trajG.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(tri), lm));
     var a = nv(pe.h + 120 * ({ A: 0, B: 1, C: 2 }[st.fa] || 0)), we = W(pe.x, pe.y), wf = W(pe.x + 260 * a[0], pe.y + 260 * a[1]);
     trajG.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(we[0], 9, we[1]), new THREE.Vector3(wf[0], 9, wf[1])]), new THREE.LineBasicMaterial({ color: 0xf5c518 })));
   }
   function updateGhost() {
     var stT = sel >= 0 ? prog[sel] : null; updateTraj(stT, stT && R ? R.stepInfo[sel] : null);
-    var st = sel >= 0 ? prog[sel] : null, isG = st && st.a === 'poserGraal' && st.gm === 'xy';
+    var st = sel >= 0 ? prog[sel] : null, isG = false;
     var isC = st && (st.a === 'mur' || st.a === 'tour' || st.a === 'porte');
     var inf = st && (st.a === 'deposer' || isG || isC) && R ? R.stepInfo[sel] : null, gh = inf && inf.ghost;
     /* position du fantôme : la saisie (dépôt, construction manuelle) ou celle calculée par le moteur */
     var bx = isC && st.pm !== 'manuel' && gh && gh.T ? gh.T[0] : st && st.x, by = isC && st.pm !== 'manuel' && gh && gh.T ? gh.T[1] : st && st.y, ba = isC && st.pm !== 'manuel' && gh && gh.T ? gh.ang : st && +st.ang || 0;
-    ghostG.visible = !!(isG && gh);
-    if (ghostG.visible) { var gw = W(st.x, st.y); ghostG.scale.setScalar(params.gs); ghostG.position.set(gw[0], gh.feet[0].zc, gw[1]); }
     ghosts.forEach(function (m, j) {
       var ft = !isG && gh && gh.feet[j]; m.visible = !!ft; if (!ft) return;
       var a = ba * Math.PI / 180, u = [Math.cos(a), Math.sin(a)], v = [-Math.sin(a), Math.cos(a)];
@@ -595,44 +597,84 @@
     var c = inf && inf.err ? 0xd62f2f : 0x2fbf71; ghostMat.color.setHex(c); ghostEdge.color.setHex(c);
   }
 
-  /* robots (jaune = nous, bleu = adversaire en miroir) */
+  /* robots (jaune = nous, bleu = adversaire en miroir).
+     Tout vient de GEOM / SPEC : empreinte au sol (GEO.hull), plaques, roues, nacelles (GEO.rangees, GEO.colonne), canon (GEO.canon), ascenseur (GEOM.fourchePtsR). */
   var yellow = mat(0xf2b600, 0.5, 0.1), blue = mat(0x3a6fd0, 0.55, 0.15), dark = mat(0x39414e, 0.5, 0.3), black = mat(0x1d2128, 0.8, 0);
-  var shp = new THREE.Shape();
-  [180, 300, 60].forEach(function (a, i) { var r = a * Math.PI / 180, x = GEO.R * Math.cos(r), z = GEO.R * Math.sin(r); if (i) shp.lineTo(x, -z); else shp.moveTo(x, -z); });
-  var plateGeo = new THREE.ExtrudeGeometry(shp, { depth: 20, bevelEnabled: false });
+  var D2R = Math.PI / 180, CHS = SPEC.robot.chassis, PLATE = CHS.plaque_haute.polygone_repere_robot, ROUES = SPEC.robot.entrainement.roues;
+  var PLATE_T = 6;                       /* épaisseur de dessin des plaques (visuel, hypothèse) */
+  var MAST = { r: 35, h: 430 };          /* mât de balise centré, Ø 70 mm jusqu'à 430 mm (docs/CONTRATS.md §2) */
+  var CAN_LEN = 160;                     /* longueur dessinée du tube du canon (visuel, hypothèse) */
+  var STONE_LX = GEO.dPierre - GEO.rin;  /* centre d'une pierre tenue, dans le repère de la nacelle : 90 mm */
+  function polyShape(pts, k, dy) { var sh = new THREE.Shape(); pts.forEach(function (q, i) { var x = q[0] * k, y = -q[1] * k; if (i) sh.lineTo(x, y); else sh.moveTo(x, y); }); return sh; }
+  var hullGeo = new THREE.ShapeGeometry(polyShape(GEO.hull, 1));
+  var hullEdge = new THREE.BufferGeometry().setFromPoints(GEO.hull.map(function (q) { return new THREE.Vector3(q[0], 0, q[1]); }));
+  var topGeo = new THREE.ExtrudeGeometry(polyShape(PLATE, 1), { depth: PLATE_T, bevelEnabled: false });
+  var lowGeo = new THREE.ExtrudeGeometry(polyShape(PLATE, CHS.plaque_basse.rayon_sommets / CHS.plaque_haute.rayon_sommets), { depth: PLATE_T, bevelEnabled: false });
+  function forkGeo(fx) { return new THREE.ExtrudeGeometry(polyShape(GEOM.fourchePtsR(fx), 1), { depth: GEO.fourche.cao.travEp, bevelEnabled: false }); }
   function makeBot(scheme) {
     var bot = new THREE.Group(); scene.add(bot);
-    var elecM = scheme.elec, modM = scheme.mod, banner = scheme.banner;
-    [70, 220].forEach(function (y) { var pl = new THREE.Mesh(plateGeo, dark); pl.rotation.x = -Math.PI / 2; pl.position.y = y; pl.castShadow = true; bot.add(pl); });
-    var elec = cyl(70, 70, 130, elecM, 3); elec.rotation.y = Math.PI / 6; elec.position.set(-25, 155, 0); bot.add(elec);
-    var lidar = cyl(38, 38, 40, black); lidar.position.set(-30, 260, 0); bot.add(lidar);
-    [180, 300, 60].forEach(function (a) { var r = a * Math.PI / 180, g = new THREE.Group(); g.position.set(150 * Math.cos(r), 50.8, 150 * Math.sin(r)); g.rotation.y = -r; bot.add(g); var wh = cyl(50.8, 50.8, 39.5, black, 24); wh.rotation.z = Math.PI / 2; g.add(wh); });
-    var rc = nv(240), bau = cyl(22, 22, 25, mat(banner, 0.4, 0.1)); bau.position.set(60 * rc[0], 245, 60 * rc[1]); bot.add(bau);
+    var mastM = scheme.elec, modM = scheme.mod, banner = scheme.banner;
+    /* empreinte réelle au sol (translucide) et son contour */
+    var foot = new THREE.Mesh(hullGeo, new THREE.MeshBasicMaterial({ color: scheme.elec.color, transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide }));
+    foot.rotation.x = -Math.PI / 2; foot.position.y = 1.5; bot.add(foot);
+    var edge = new THREE.LineLoop(hullEdge, new THREE.LineBasicMaterial({ color: scheme.elec.color })); edge.position.y = 2; bot.add(edge);
+    /* plaques et montants */
+    var low = new THREE.Mesh(lowGeo, dark); low.rotation.x = -Math.PI / 2; low.position.y = CHS.plaque_basse.z_centre - PLATE_T / 2; low.castShadow = true; bot.add(low);
+    var top = new THREE.Mesh(topGeo, dark); top.rotation.x = -Math.PI / 2; top.position.y = GEO.toit - PLATE_T; top.castShadow = true; bot.add(top);
+    PLATE.forEach(function (q) { var c = cyl(8, 8, GEO.toit, dark, 10); c.position.set(q[0], GEO.toit / 2, q[1]); bot.add(c); });
+    /* roues omnidirectionnelles : axe radial */
+    ROUES.angles_deg_repere_robot.forEach(function (a) {
+      var r = a * D2R, g = new THREE.Group(); g.position.set(ROUES.rayon_implantation * Math.cos(r), ROUES.diametre / 2, ROUES.rayon_implantation * Math.sin(r)); g.rotation.y = -r; bot.add(g);
+      var wh = cyl(ROUES.diametre / 2, ROUES.diametre / 2, 25, black, 24); wh.rotation.z = Math.PI / 2; g.add(wh);
+    });
+    /* mât de balise */
+    var mast = cyl(MAST.r, MAST.r, MAST.h - GEO.toit, mastM, 24); mast.position.set(0, (MAST.h + GEO.toit) / 2, 0); bot.add(mast);
+    var ring = cyl(MAST.r + 3, MAST.r + 3, 14, mat(banner, 0.4, 0.1), 24); ring.position.set(0, MAST.h - 7, 0); bot.add(ring);
+    /* nacelle de la face k (0 = A, 1 = B), repère : x normale, y haut, z latéral ; rotation autour de la normale */
     function makeModule(k) {
-      var face = new THREE.Group(); face.rotation.y = -k * 120 * Math.PI / 180; bot.add(face);
+      var face = new THREE.Group(); face.rotation.y = -k * 120 * D2R; bot.add(face);
       var mod = new THREE.Group(); mod.position.x = GEO.rin; face.add(mod);
-      [-175, 175].forEach(function (z) { var u = box(20, 345, 20, modM); u.position.set(-40, 172.5, z); mod.add(u); });
-      var tb = box(20, 15, 370, modM); tb.position.set(-40, 337.5, 0); mod.add(tb);
+      var hw = GEO.faceLong / 2 - 12;
+      [-hw, hw].forEach(function (z) { var u = box(10, GEO.toit, 10, modM); u.position.set(6, GEO.toit / 2, z); mod.add(u); });
+      var tb = box(10, 10, 2 * hw + 10, modM); tb.position.set(6, GEO.toit - 5, 0); mod.add(tb);
       var carr = new THREE.Group(); mod.add(carr);
-      var cross = box(14, 14, 330, modM); cross.position.set(-40, 0, 0); carr.add(cross);
-      var ring = new THREE.Mesh(new THREE.TorusGeometry(58, 3.5, 10, 48), new THREE.MeshStandardMaterial({ color: banner, roughness: 0.5 })); ring.rotation.y = Math.PI / 2; ring.position.set(-34, 0, 0); carr.add(ring);
+      var cross = box(10, 12, 2 * hw, modM); cross.position.set(6, 0, 0); carr.add(cross);
       var grip = new THREE.Group(); carr.add(grip);
-      var spine = box(6, 200, 14, modM); spine.position.set(-27, -20, 0); grip.add(spine);
+      var depth = GEO.saillie - GEO.nacDos, xm = (GEO.nacDos + GEO.saillie) / 2;
+      var col = box(depth, GEO.colonne.z1 - GEO.colonne.z0, 2 * GEO.colonne.hu, modM); col.position.set(xm, (GEO.colonne.z0 + GEO.colonne.z1) / 2, 0); grip.add(col);
       var mats = [0, 1, 2].map(function () { return new THREE.MeshStandardMaterial({ color: banner, roughness: 0.55 }); });
-      BARS.forEach(function (b, i) {
-        var bar = box(6, 14, 2 * (b.hl - b.r) + 20, modM); bar.position.set(-27, b.y, 0); grip.add(bar);
-        [-80, 80].forEach(function (z) { var c = cyl(b.r * 0.4, b.r, 24, mats[i]); c.rotation.z = -Math.PI / 2; c.position.set(-12, b.y, z); grip.add(c); });
+      GEO.rangees.forEach(function (rg, i) {
+        var bar = box(depth, 2 * rg.r, 2 * rg.hl, mats[i]); bar.position.set(xm, rg.z, 0); grip.add(bar);
+        [-rg.hl, rg.hl].forEach(function (z) { var c = cyl(rg.r, rg.r, depth, mats[i], 16); c.rotation.z = Math.PI / 2; c.position.set(xm, rg.z, z); grip.add(c); });
       });
-      var gcup = cyl(8, 16, 24, mats[0]); gcup.rotation.z = -Math.PI / 2; gcup.position.set(-12, -110, 0); grip.add(gcup);
-      var lab = box(4, 40, 40, k ? mat(0x2aa3a3, 0.5, 0.1) : mat(0x8a5cd0, 0.5, 0.1)); lab.position.set(-60, 300, 0); mod.add(lab);
+      var lab = box(4, 40, 40, k ? mat(0x2aa3a3, 0.5, 0.1) : mat(0x8a5cd0, 0.5, 0.1)); lab.position.set(2, GEO.toit - 30, 0); mod.add(lab);
       return { carr: carr, grip: grip, mats: mats };
     }
     var MOD = { A: makeModule(0), B: makeModule(1) };
+    /* face C : canon (rentré au départ) et ascenseur du Graal (fourche à 2 dents) */
+    var faceC = new THREE.Group(); faceC.rotation.y = -240 * D2R; bot.add(faceC);
+    var canTube = cyl(1, 1, 1, mat(0x5a6170, 0.4, 0.6), 20); faceC.add(canTube);
+    var liftCarr = box(30, 55, 21, mat(0x7a8190, 0.5, 0.4)); faceC.add(liftCarr);
+    var rail = box(10, GEO.toit, 21, dark); rail.position.set(GEO.rin + 15, GEO.toit / 2, 120.5); faceC.add(rail);
+    var forkMesh = new THREE.Mesh(forkGeo(GEO.fourche.fxRentree), mat(0xc9ced8, 0.4, 0.5)); forkMesh.rotation.x = -Math.PI / 2; forkMesh.castShadow = true; bot.add(forkMesh);
+    var forkFx = GEO.fourche.fxRentree;
+    function placeC(C) {
+      C = C || GEO.C0;
+      var el = GEO.canon.el * D2R, rec = GEO.canon.course - (C.can || 0);
+      var mx = GEO.rin + GEO.canon.horsFace - rec * Math.cos(el), my = GEO.canon.hauteur - rec * Math.sin(el);
+      canTube.scale.set(GEO.canon.d / 2, CAN_LEN, GEO.canon.d / 2); canTube.rotation.set(0, 0, el - Math.PI / 2);
+      canTube.position.set(mx - Math.cos(el) * CAN_LEN / 2, my - Math.sin(el) * CAN_LEN / 2, GEO.canon.y);
+      var fz = GEOM.fourcheZ(C.fz);
+      liftCarr.position.set(GEO.rin + 25, (fz[0] + fz[1]) / 2, 120.5);
+      if (Math.abs(C.fx - forkFx) > 0.05) { forkMesh.geometry.dispose(); forkMesh.geometry = forkGeo(C.fx); forkFx = C.fx; }
+      forkMesh.position.y = C.fz;
+    }
     var tmpM = new THREE.Matrix4(), tmpQ = new THREE.Quaternion(), tmpV = new THREE.Vector3(), tmpS = new THREE.Vector3(), loc = new THREE.Object3D();
     function place(p) {
       if (!p) return;
       var w = W(p.x, p.y); bot.position.set(w[0], 0, w[1]); bot.rotation.y = -p.h * Math.PI / 180;
       ['A', 'B'].forEach(function (f) { if (p[f]) { MOD[f].carr.position.y = p[f].hc; MOD[f].grip.rotation.x = p[f].rot * Math.PI / 180; } });
+      placeC(p.C);
       bot.updateMatrixWorld(true);
     }
     function fromGrip(mesh, f, lx, ly, ry) {
@@ -646,8 +688,21 @@
   var them = makeBot({ elec: blue, mod: yellow, banner: 0xf2b600 });
   them.group.visible = false;
   var robot = us.group, MOD = us.MOD;
-  var graalM = box(60, 60, 60, new THREE.MeshStandardMaterial({ color: 0xe8c547, roughness: 0.3, metalness: 0.6 })); scene.add(graalM);
-  var graalOpp = box(60, 60, 60, new THREE.MeshStandardMaterial({ color: 0x9ec0ff, roughness: 0.3, metalness: 0.6 })); graalOpp.visible = false; scene.add(graalOpp);
+  /* Graal (spec : base 62 x 62, hauteur 100, 2 anses basses) : la taille de la base suit le paramètre gs */
+  function makeGraal(color) {
+    var g = new THREE.Group(), m = new THREE.MeshStandardMaterial({ color: color, roughness: 0.3, metalness: 0.6 }), A = GEO.graal.anse;
+    var body = box(1, 1, 1, m); g.add(body);
+    var anses = [-1, 1].map(function (sg) { var a = box(A.saillie + 4, 14, A.long, m); g.add(a); return { m: a, sg: sg }; });
+    g.userData = { body: body, anses: anses, gs: 0 };
+    g.visible = false; scene.add(g); return g;
+  }
+  function sizeGraal(g, gs) {
+    var u = g.userData; if (u.gs === gs) return; u.gs = gs;
+    u.body.scale.set(gs, GEO.graal.h, gs); u.body.position.y = GEO.graal.h / 2;
+    u.anses.forEach(function (a) { a.m.position.set(0, GEO.graal.anse.dessous + 7, a.sg * (gs / 2 + (GEO.graal.anse.saillie - 4) / 2)); });
+  }
+  var graalM = makeGraal(0xe8c547);
+  var graalOpp = makeGraal(0x9ec0ff);
   var ballMat = new THREE.MeshStandardMaterial({ color: 0xf2b600, roughness: 0.8 }), balls = [];
   var ballMatOpp = new THREE.MeshStandardMaterial({ color: 0x3a6fd0, roughness: 0.8 }), ballsOpp = [];
   for (var bi = 0; bi < 10; bi++) { var bm = new THREE.Mesh(new THREE.SphereGeometry(22.5, 16, 12), ballMat); bm.castShadow = true; scene.add(bm); balls.push(bm); }
@@ -659,19 +714,6 @@
     return [a[1] + (c[1] - a[1]) * u, a[2] + (c[2] - a[2]) * u, a[3] + (c[3] - a[3]) * u];
   }
   for (var bj = 0; bj < 10; bj++) { var bo = new THREE.Mesh(new THREE.SphereGeometry(22.5, 16, 12), ballMatOpp); bo.castShadow = true; bo.visible = false; scene.add(bo); ballsOpp.push(bo); }
-  /* canon sur la face C (dimensions et élévation des paramètres), pour chacun des deux robots */
-  function makeCannon(bot) {
-    var g = new THREE.Group(); g.rotation.y = -240 * Math.PI / 180; bot.group.add(g);
-    var tube = cyl(1, 1, 1, mat(0x5a6170, 0.4, 0.6), 20); g.add(tube);
-    return tube;
-  }
-  function setCannon(tube, P) {
-    var L = P.cl || 0, Wd = P.cw || 40, el = (P.bel || 0) * Math.PI / 180, len = Math.max(60, L + 120);
-    tube.scale.set(Wd / 2, len, Wd / 2); tube.rotation.set(0, 0, -(Math.PI / 2 - el));
-    tube.position.set(GEO.rin + L - Math.cos(el) * len / 2, (P.bh || 250) - Math.sin(el) * len / 2, 0);
-  }
-  var canTube = makeCannon(us), canTubeOpp = makeCannon(them);
-  function updateCannon() { setCannon(canTube, params); if (R && R.opponent) setCannon(canTubeOpp, R.opponent.params); }
   var shotLines = null, shotLinesOpp = null;
   function buildShots() {
     [shotLines, shotLinesOpp].forEach(function (g) { if (g) { scene.remove(g); g.children.forEach(function (l) { l.geometry.dispose(); }); } });
@@ -817,16 +859,17 @@
   function outcome(T) { return SCORE.outcome(R, params, T); }
   function scoreOf(o) { return SCORE.scoreOf(o, params); }
   function renderResults() {
-    var T = R.T, tE = Math.min(T, MATCH), o = outcome(tE), sc = scoreOf(o);
+    var T = R.T, tE = MATCH, o = outcome(tE), sc = scoreOf(o); /* évaluation à T = 100 s (trône, boulets et Graal ne comptent qu'à la fin du match, docs/CONTRATS.md §3) */
+    R.gLevel = sc.niveauGraal;
     $('scoreV').textContent = sc.total; $('totPts').textContent = sc.total + ' pts';
     var oppR = R.opponent, oppSc = null;
     if (oppR) {
-      oppSc = SCORE.scoreAt(oppR, oppR.params, Math.min(oppR.T, MATCH));
+      oppSc = SCORE.scoreAt(oppR, oppR.params, MATCH);
       $('scoreOpp').hidden = false; $('scoreOpp').textContent = 'adv. ' + oppSc.total + ' pts';
       $('totPts').textContent = sc.total + ' · adv. ' + oppSc.total;
     } else { $('scoreOpp').hidden = true; $('scoreOpp').textContent = ''; }
-    $('score').title = 'Score estimé ' + (T > MATCH ? 'à 100 s' : 'en fin de programme') + ' : détail dans l\'onglet Résultat';
-    var h = '<div class="scorebox"><div class="big"><b>' + sc.total + '</b> pts</div><p class="note">Score estimé ' + (T > MATCH ? 'à 100 s : ce qui est fait après ne compte pas' : 'en fin de programme') + '. Barème du compteur de points' + (oppR ? ', face à l\'adversaire (' + ((currentOpponent() && currentOpponent().name) || 'miroir') + ' : ' + oppSc.total + ' pts).' : '.') + '</p></div>';
+    $('score').title = 'Score estimé ' + 'à 100 s' + ' : détail dans l\'onglet Résultat';
+    var h = '<div class="scorebox"><div class="big"><b>' + sc.total + '</b> pts</div><p class="note">Score estimé à 100 s' + (T > MATCH ? ' : ce qui est fait après ne compte pas' : '') + '. Barème du compteur de points' + (oppR ? ', face à l\'adversaire (' + ((currentOpponent() && currentOpponent().name) || 'miroir') + ' : ' + oppSc.total + ' pts).' : '.') + '</p></div>';
     sc.rows.forEach(function (r) {
       var sub = 0; r[1].forEach(function (x) { sub += x[2]; });
       h += '<div class="sgrp"><div class="sh"><span>' + esc(r[0]) + '</span><b>' + sub + ' pts</b></div>';
@@ -836,6 +879,9 @@
     if (params.gs <= 60) h += '<p class="note bad" style="padding:0 14px">Le Graal fait ' + params.gs + ' mm : le règlement exige un cube strictement plus grand que 60 mm.</p>';
     var rows = [];
     rows.push(['Durée du programme', fmt(T) + ' s', T <= MATCH]);
+    rows.push(['Erreurs moteur', R.errors.length ? R.errors.length + ' (voir Alertes)' : 'aucune', !R.errors.length]);
+    var gk = graalAt(tE).k;
+    rows.push(['Graal', (GRAAL_ETAT[gk] || gk) + ' · niveau ' + sc.niveauGraal, gk === 'retire' ? false : null]);
     rows.push(['Pierres prises', Object.keys(o.fin).filter(function (k) { return !o.fin[k].home; }).length + R.stones.filter(function (st) { return R.stoneAt(st, tE).k === 'held'; }).length + ' / 30', null]);
     rows.push(['Pierres dans une zone', Object.keys(o.inZ).length + ' (dont ' + Object.keys(o.inOwn).length + ' chez nous)', null]);
     var adv = o.walls.concat(o.towers, o.doors).filter(function (z) { return !own(z); });
@@ -875,16 +921,13 @@
 
   /* ---------- mise à jour de la vue ---------- */
   var red = new THREE.Color(0xd62f2f), green = new THREE.Color(0x2fbf71), dragging = false, lastPlayIdx = -2;
-  function placeGraal(mesh, ge, holder, homeX, homeY, gs, pHold, ride) {
-    mesh.scale.setScalar(gs / 60);
-    if (!ge || ge.k === 'home') { var gw = W(homeX, homeY); mesh.position.set(gw[0], gs / 2, gw[1]); mesh.rotation.set(0, 0, 0); return; }
-    if (ge.k === 'held') holder.fromGrip(mesh, ge.f, gs / 2, -110, 0);
-    else if (ge.k === 'ride' && ride) { var gw2 = W(ride.c[0], ride.c[1]); mesh.position.set(gw2[0], ride.top - gs / 2, gw2[1]); mesh.rotation.set(0, -ride.ang * Math.PI / 180, 0); }
-    else {
-      if (!ge._p) { holder.place(ge.pose); holder.fromGrip(mesh, ge.f, gs / 2, -110, 0); ge._p = mesh.position.clone(); ge._q = mesh.quaternion.clone(); if (pHold) holder.place(pHold); }
-      mesh.position.copy(ge._p); mesh.quaternion.copy(ge._q);
-    }
+  /* q = SCORE.graalPos : { k, c, ang, bottom, top } (home, ascenseur, toit ou posé) ; null si le Graal est retiré de la table */
+  function placeGraal(mesh, q, gs) {
+    if (!q) { mesh.visible = false; return; }
+    sizeGraal(mesh, gs); mesh.visible = true;
+    var w = W(q.c[0], q.c[1]); mesh.position.set(w[0], q.bottom, w[1]); mesh.rotation.set(0, -q.ang * D2R, 0);
   }
+  var GRAAL_ETAT = { home: 'au départ', ascenseur: 'sur la fourche', toit: 'sur le toit', retire: 'retiré (erreur)', gone: 'retiré (erreur)' };
   function update(t) {
     if (!R) return;
     var tt = Math.min(t, R.T), groups = [], opp = R.opponent;
@@ -901,22 +944,22 @@
       m.material.color.setHex(outZ ? 0xe03b3b : m.userData.col); m.material.emissive.setHex(outZ ? 0x5a0000 : 0x000000);
       if (e.k === 'home') { var h = m.userData.home; m.position.set(h.x, h.y, h.z); m.rotation.set(0, h.ry, 0); return; }
       if (e.k === 'free') {
-        if (!e._p) { holder.place(e.pose); holder.fromGrip(m, e.f, 55, 110 * (e.l - 1), Math.PI / 2); e._p = m.position.clone(); e._q = m.quaternion.clone(); }
+        if (!e._p) { holder.place(e.pose); holder.fromGrip(m, e.f, STONE_LX, GEOM.stoneZc(e.l), Math.PI / 2); e._p = m.position.clone(); e._q = m.quaternion.clone(); }
         m.position.copy(e._p); m.quaternion.copy(e._q); return;
       }
       groups.push([m, e, holder]);
     });
-    var ge = graalAt(tt);
     var c = checks(tt), p = c.p; us.place(p);
     var po = opp ? opp.poseAt(Math.min(t, opp.T)) : null;
     if (opp) them.place(po);
-    groups.forEach(function (g) { g[2].fromGrip(g[0], g[1].f, 55, 110 * (g[1].l - 1), Math.PI / 2); });
-    placeGraal(graalM, ge, us, params.gx, params.gy, params.gs, p, ge.k === 'ride' ? graalPos(tt) : null);
-    if (opp) { var tO = Math.min(t, opp.T), geO = SCORE.graalAt(opp, tO); placeGraal(graalOpp, geO, them, opp.params.gx, opp.params.gy, opp.params.gs || params.gs, po, geO.k === 'ride' ? SCORE.graalPos(opp, opp.params, tO) : null); }
+    groups.forEach(function (g) { g[2].fromGrip(g[0], g[1].f, STONE_LX, GEOM.stoneZc(g[1].l), Math.PI / 2); });
+    var gq = graalPos(tt), gk = graalAt(tt).k;
+    placeGraal(graalM, gq, params.gs);
+    graalOpp.visible = false;
+    if (opp) { var tO = Math.min(t, opp.T); placeGraal(graalOpp, SCORE.graalPos(opp, opp.params, tO), opp.params.gs || params.gs); }
     ['A', 'B'].forEach(function (f) { for (var j = 0; j < 3; j++) { var on = p[f].vac[j]; us.MOD[f].mats[j].color.copy(on ? green : red); us.MOD[f].mats[j].emissive.copy(green).multiplyScalar(on ? 0.2 : 0); } });
     if (po) ['A', 'B'].forEach(function (f) { if (!po[f]) return; for (var j = 0; j < 3; j++) { var on = po[f].vac[j]; them.MOD[f].mats[j].color.copy(on ? green : red); them.MOD[f].mats[j].emissive.copy(green).multiplyScalar(on ? 0.2 : 0); } });
     var shots = R.balls.shots || [], nOn = 0, nIn = 0;
-    canTube.visible = canOut(t);
     function flyBalls(meshes, res, bot, tb, count) {
       var sh = res.balls.shots || [], nO = 0, nI = 0;
       meshes.forEach(function (bm, i) {
@@ -930,13 +973,15 @@
     }
     var fb = flyBalls(balls, R, us, Math.min(t, TEND), params.bn); nOn = fb.on; nIn = fb.in;
     if (opp) {
-      canTubeOpp.visible = opp.balls.tDeploy != null && Math.min(t, opp.T) >= opp.balls.tDeploy;
       flyBalls(ballsOpp, opp, them, Math.min(t, opp.T), opp.params.bn);
     }
     var hR = $('hR'), hS = $('hS'), hP = $('hP'), hB = $('hBall');
     hR.textContent = Math.round(c.robotH) + ' mm ' + (c.robotH <= 350.5 ? '✓' : '✗'); hR.className = c.robotH <= 350.5 ? 'ok' : 'bad';
-    if (c.n) { var okS = c.oTop <= c.oLim + 0.5; hS.textContent = Math.round(c.oTop) + ' / ' + c.oLim + ' mm ' + (okS ? '✓' : '✗'); hS.className = okS ? 'ok' : 'bad'; } else { hS.textContent = '-'; hS.className = ''; }
+    if (c.n) { var okS = c.oTop <= c.oLim + 0.5; hS.textContent = Math.round(c.oTop) + ' / ' + (c.oLim === Infinity ? 'sans limite' : c.oLim + ' mm') + ' ' + (okS ? '✓' : '✗'); hS.className = okS ? 'ok' : 'bad'; } else { hS.textContent = '-'; hS.className = ''; }
     hP.textContent = Math.round(c.per) + ' / ' + c.plim + ' mm ' + (c.per <= c.plim + 0.5 ? '✓' : '✗'); hP.className = c.per <= c.plim + 0.5 ? 'ok' : 'bad';
+    var hG = $('hG'), hC = $('hC'), gst = (GRAAL_ETAT[gk] || gk) + (R.gLevel != null && (t >= R.T || t >= MATCH) ? ' · niveau ' + R.gLevel : '');
+    hG.textContent = gst; hG.className = gk === 'retire' || gk === 'gone' ? 'bad' : gk === 'toit' ? 'ok' : '';
+    hC.textContent = (p.C && p.C.can > 0.5 ? 'sorti ' + Math.round(p.C.can) + ' mm' : 'rentré') + ' · fourche ' + Math.round(p.C ? p.C.fx : 0) + ' / ' + Math.round(p.C ? p.C.fz : 0);
     $('hA').textContent = Math.round(p.A.hc) + ' / ' + Math.round(p.A.rot) + '°'; $('hB').textContent = Math.round(p.B.hc) + ' / ' + Math.round(p.B.rot) + '°';
     var hOpp = $('hOpp');
     if (opp) {
@@ -999,10 +1044,10 @@
   function importObj(o) {
     if (!o || !Array.isArray(o.program)) throw new Error('le JSON doit contenir une liste « program ».');
     var valid = ACTIONS.map(function (a) { return a[0]; });
-    o.program.forEach(upgradeStep);
+    o.program.forEach(upgradeStep); dropParams(o.params);
     var p2 = o.program.filter(function (s) { return s && valid.indexOf(s.a) >= 0; }).map(function (s) { var d = defaults(s.a); for (var k in d) if (s[k] !== undefined) d[k] = s[k]; if (s.tm === undefined && d.tm !== undefined) d.tm = false; if (s.a === 'deposer' && s.r === undefined) d.r = s.o === 'debout' ? 90 : 0; return d; });
     setPilotMode('strategie');
-    prog = p2; params = Object.assign({}, DEF, o.params || {}); sel = -1; writeParams(); readParams(); changed(true);
+    prog = p2; params = Object.assign({}, DEF, dropParams(o.params) || {}); sel = -1; writeParams(); readParams(); changed(true);
     return p2.length;
   }
   $('bExport').addEventListener('click', function () {
@@ -1138,7 +1183,7 @@
     r.poseAt = function (t) { return ENGINE.poseAtK(r.K, t); };
     r.stoneAt = function (st, t) { var e = st.tl[0]; for (var i = 0; i < st.tl.length; i++) if (st.tl[i].t <= t) e = st.tl[i]; return e; };
     var sR = R, sP = params; R = r; params = P;
-    try { return { pts: scoreOf(outcome(Math.min(r.T, MATCH))).total, T: r.T }; } finally { R = sR; params = sP; }
+    try { return { pts: scoreOf(outcome(MATCH)).total, T: r.T }; } finally { R = sR; params = sP; }
   }
   function queueStat(s) { if (!statQ.some(function (q) { return statKey(q) === statKey(s); })) statQ.push(s); nextStat(); }
   function nextStat() {
@@ -1254,7 +1299,7 @@
       }, function () { return { j: j, w: null }; });
     }).then(function (pair) {
       var j = pair.j, w = pair.w;
-      if (!window.ENV || !window.NET || !BrainActs) throw new Error('moteur cerveau absent');
+      if (!window.ENV || !window.NET || !window.RUNTIME || !BrainActs) throw new Error('moteur cerveau absent');
       var couches = (j.reseau && j.reseau.couches) || [{ neurones: 64, activation: 'relu' }, { neurones: 64, activation: 'relu' }];
       var familles = (j.actions && j.actions.familles) || BrainActs.FAMILLES.map(function (f) { return f.id; });
       var nIn = window.ENV.nInputs(j.entrees);
@@ -1263,9 +1308,10 @@
       setPilotMode('cerveau', { slug: slug, name: j.name, layers: layers, weights: w, cfg: j });
       if (!keepDrawer) closeDrawer();
       oursKind = 'cerveau'; renderMatch();
-      toast(w && (w.layers || w.model)
+      var entraine = !!(w && (w.layers || window.RUNTIME.modeleDe(w)));
+      toast(entraine
         ? '« ' + j.name + ' » joue en direct'
-        : '« ' + j.name + ' » sans poids entraînés : décisions aléatoires parmi les actions valides', (w && (w.layers || w.model)) ? 'ok' : 'bad');
+        : '« ' + j.name + ' » sans poids entraînés : décisions aléatoires parmi les actions valides', entraine ? 'ok' : 'bad');
       time = 0; setPlaying(true);
       recompute();
     }, function (e) { toast('Impossible d\'ouvrir le cerveau : ' + e.message, 'bad'); });
@@ -1335,13 +1381,13 @@
       return api('GET', '../api/cerveaux/' + slug + '/poids').then(function (w) { return { j: j, w: w }; }, function () { return { j: j, w: null }; });
     }).then(function (pair) {
       var j = pair.j, w = pair.w;
-      if (!window.ENV || !window.NET || !BrainActs) throw new Error('moteur cerveau absent');
+      if (!window.ENV || !window.NET || !window.RUNTIME || !BrainActs) throw new Error('moteur cerveau absent');
       var couches = (j.reseau && j.reseau.couches) || [{ neurones: 64, activation: 'relu' }, { neurones: 64, activation: 'relu' }];
       var familles = (j.actions && j.actions.familles) || BrainActs.FAMILLES.map(function (f) { return f.id; });
       var layers = (w && w.layers) ? w.layers : window.NET.randomWeights(window.ENV.nInputs(j.entrees), couches, BrainActs.filterByFamilles(familles).length, j.graine || 1);
-      var spec = brainSpec(j.name, layers, j);
+      var spec = brainSpec(j.name, layers, j, w);
       oppLoaded['cerveau:' + slug] = { name: 'Cerveau · ' + j.name, brain: spec.brain, params: params };
-      if (!(w && w.layers)) toast('« ' + j.name + ' » sans poids entraînés : décisions aléatoires parmi les actions valides', 'bad');
+      if (!(w && (w.layers || spec.brain.model))) toast('« ' + j.name + ' » sans poids entraînés : décisions aléatoires parmi les actions valides', 'bad');
     });
   }
   $('bSave').addEventListener('click', save);
@@ -1379,13 +1425,6 @@
     b.addEventListener('click', function () { camMode = b.dataset.cam; setCam(camMode); document.querySelectorAll('[data-cam]').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); }); });
   });
   $('cLab').addEventListener('change', function (e) { labels.visible = e.target.checked; });
-  if ($('cMcts')) {
-    $('cMcts').checked = lsGet('icamlot-mcts-enabled') === '1';
-    $('cMcts').addEventListener('change', function (e) {
-      lsSet('icamlot-mcts-enabled', e.target.checked ? '1' : null);
-      if (pilot.mode === 'cerveau') recompute();
-    });
-  }
   $('cTrail').addEventListener('change', function (e) { showTrail = e.target.checked; if (trail) trail.visible = showTrail; if (shotLines) shotLines.visible = showTrail; if (shotLinesOpp) shotLinesOpp.visible = showTrail; });
   $('cOppTrail').addEventListener('change', function (e) { showOppTrail = e.target.checked; if (trailOpp) trailOpp.visible = showOppTrail; });
   $('cPer').addEventListener('change', function (e) { countPer = e.target.checked; if (R) { computeBad(); drawStrip(); renderAlerts(); renderResults(); } });
