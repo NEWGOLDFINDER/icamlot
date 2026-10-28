@@ -476,6 +476,23 @@
         "source": "équipe, 2026-10-28",
         "nombre": 6,
         "note": "1 pompe par pierre (2 ventouses par pompe), 3 pompes par face ; 1 capteur de pression par pompe"
+      },
+      "course_axe_requise_par_la_conception": {
+        "statut": "mesure",
+        "source": "engine/geom.js HC_MIN/HC_MAX et rejeu de ENGINE.PROGRAMME_REFERENCE",
+        "plage_geometrique_mm": [
+          135,
+          273
+        ],
+        "plage_utilisee_par_la_reference_mm": [
+          160,
+          270
+        ],
+        "conflit": "course déclarée du vérin 100 mm < 110 mm utilisés par la référence (porte : axe à 265–270 mm ; dépôt tourné à 160 mm)"
+      },
+      "vitesse_chariot_note": {
+        "statut": "herite",
+        "note": "valeur héritée du simulateur ; vitesses déclarées des vérins : actionneurs_carte.verins (84 à vide / 75 à 120 N), à intégrer par le chantier moteur"
       }
     },
     "canon_C": {
@@ -568,8 +585,26 @@
         "statut": "declare",
         "source": "équipe, 2026-10-28",
         "role": "axes Z des nacelles A et B",
-        "course_mm": "a_definir",
-        "vitesse_mm_s": "a_definir"
+        "course_mm": {
+          "statut": "declare",
+          "valeur": 100
+        },
+        "vitesse_mm_s": "a_definir",
+        "designation_equipe": "vérin « allan » (désignation donnée par l'équipe)",
+        "vitesse_a_vide_mm_s": {
+          "statut": "declare",
+          "valeur": 84,
+          "note": "100 mm en environ 1,19 s ; 1,25 s avec les rampes d'accélération"
+        },
+        "vitesse_pleine_charge_mm_s": {
+          "statut": "declare",
+          "valeur": 75,
+          "charge_N": 120
+        },
+        "duree_100mm_avec_rampes_s": {
+          "statut": "declare",
+          "valeur": 1.25
+        }
       },
       "servo": {
         "statut": "declare",

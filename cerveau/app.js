@@ -512,11 +512,11 @@
     }, function (e) { procError('Arrêt du processus ' + b.dataset.stop + ' impossible : ' + e.message); toast(e.message, 'bad'); loadProcs(); });
   });
   $('bProcAll').addEventListener('click', function () {
-    toast('Arrêter tous les processus de calcul ? Les tâches en attente démarreront ensuite.', 'bad', [['Tout arrêter', function () {
+    toast('Arrêter tous les processus de calcul et annuler les tâches en attente ?', 'bad', [['Tout arrêter', function () {
       $('bProcAll').disabled = true;
       api('POST', API + '/processus/stop-all').then(function (r) {
         procError(r.survivants && r.survivants.length ? 'Encore actifs après SIGKILL : ' + r.survivants.join(', ') : '');
-        toast((r.tues || []).length + ' processus arrêtés.', 'ok'); loadProcs(); poll();
+        toast((r.tues || []).length + ' processus arrêtés, ' + (r.annulees || []).length + ' tâches en attente annulées.', 'ok'); loadProcs(); poll();
       }, function (e) { procError('Arrêt de tous les processus impossible : ' + e.message); toast(e.message, 'bad'); loadProcs(); });
     }], ['Annuler']]);
   });

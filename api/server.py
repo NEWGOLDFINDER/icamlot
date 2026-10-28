@@ -1124,8 +1124,18 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.send_json(404, {"error": "Ce pid n'est pas un processus de calcul du projet."})
             return self.send_json(200, {"pid": pid, **stop_listed([pid])})
         if kind == "procs_stop_all":
+            # « Tout arrêter » annule aussi la file d'attente (équipe, 2026-10-28) : rien ne redémarre ensuite.
+            annulees = []
+            with _job_lock:
+                for j in list_jobs():
+                    if j.get("status") == "queued" and ID_RE.match(j.get("id") or ""):
+                        j["status"] = "stopped"
+                        j["error"] = "Annulée par « Tout arrêter »."
+                        atomic_json(job_path(j["id"]), j)
+                        annulees.append(j["id"])
             pids = [q["pid"] for q in list_processes()]
             res = stop_listed(pids) if pids else {"tues": [], "sigkill": False, "survivants": [], "taches": [], "grace_s": STOP_GRACE_S}
+            res["annulees"] = annulees
             return self.send_json(200, res)
         if kind in ("job_pause", "job_resume", "job_stop"):
             if not ID_RE.match(slug or "") or not os.path.exists(job_path(slug)):

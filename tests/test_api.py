@@ -271,11 +271,17 @@ def test_stop_processus_et_stop_all(tmp_path):
         assert status_of(base, jid)["status"] == "stopped"
         tr2, wk2 = running_with_workers(base, jid2)
         assert status_of(base, jid2)["status"] == "running"
-        # tout arrêter
+        # tout arrêter : arrête les processus ET annule la file d'attente
+        jid3 = launch(base, "test-proc3")
+        assert status_of(base, jid3)["status"] == "queued"
         st, r, _ = req("POST", "/api/processus/stop-all", {}, base=base)
-        assert st == 200 and jid2 in r["taches"], (st, r)
+        assert st == 200 and jid2 in r["taches"] and r["annulees"] == [jid3], (st, r)
         wait_for(lambda: all(gone(p) for p in [tr2] + wk2), "arrêt de tous les processus", 20)
         assert status_of(base, jid2)["status"] == "stopped"
+        assert status_of(base, jid3)["status"] == "stopped"
+        time.sleep(3)
+        st, r, _ = req("GET", "/api/processus", base=base)
+        assert st == 200 and r["processus"] == [], r
         st, r, _ = req("POST", "/api/processus/stop-all", {}, base=base)
         assert st == 200 and r["tues"] == []
     finally:
