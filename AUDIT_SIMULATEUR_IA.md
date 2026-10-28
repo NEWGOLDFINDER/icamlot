@@ -262,3 +262,75 @@ Deux voies (choix à faire, voir questions) :
 ### Phase 6 — Documentation et tests
 - Mettre `README.md`, `PROJECT.md` et le rapport de benchmark en accord avec la réalité mesurée.
 - Faire en sorte que la CI exécute les golden tests, le test de cohérence masque/moteur et le test de parité.
+
+---
+
+## 6. Données reçues le 2026-10-28 et conséquences
+
+Sources :
+- `Structure_robot_p.STEP` (base roulante) ;
+- règlement général Eurobot v1.4 ;
+- `playmat_1.zip` (`table.svg` officiel) ;
+- réponses de l'équipe (caméras, machine d'entraînement, échéance, rôle du réseau, ascenseur du Graal, adversaires).
+
+Tout est consigné dans `spec/regles_2027.json` et `spec/robot.json`. Chaque valeur y porte sa source et un statut : *mesuré*, *déclaré*, *hérité* ou *à définir*.
+
+### 6.1 Ce que la CAO change dans le simulateur
+
+| Grandeur | Simulateur actuel | Robot réel (STEP) |
+|---|---|---|
+| Forme | triangle équilatéral de 400 mm de côté | triangle tronqué, 3 faces de 262 mm à 110,3 mm du centre, roues aux coins |
+| Rayon maximal au sol | 230,9 mm | 212,4 mm (roues) |
+| Hauteur | non modélisée (350 supposé) | 341,2 mm, soit **8,8 mm de marge** sous 350 |
+| Entraînement | non modélisé | holonome, 3 roues omni Ø 60 mm à 192 mm du centre, à 120° |
+| Périmètre au départ | 1200 mm exactement | **1173,1 mm, soit 26,9 mm de marge** |
+
+### 6.2 Conséquences de conception (calculées, `tools/mesure_step.py --saillies`)
+
+- **Au départ (limite 1200 mm)** : un mécanisme sur toute la largeur des 3 faces ne peut dépasser que d'environ **30 mm** (1183,8 mm de périmètre à 30 mm, 1208,7 mm à 40 mm). Pinces et canon doivent être repliés au départ.
+- **En cours de match (limite 1400 mm)**, avec une pierre de 320 × 110 mm tenue à plat contre une face :
+
+  | Écart entre pince et face | 1 face chargée | 2 faces chargées |
+  |---|---|---|
+  | 0 mm | 1334 mm | **1485 mm** |
+  | 20 mm | 1373 mm | **1558 mm** |
+
+  **Si les pierres tenues comptent dans le périmètre** (le simulateur actuel les compte ; les règlements fournis ne le précisent pas), porter des piles à plat sur deux faces en même temps est **interdit**. Or c'est précisément la stratégie « double face » imposée par le masque actuel. **Point à faire trancher par l'arbitrage avant tout entraînement.**
+- **Hauteur 430 mm** : le simulateur limite les objets à 430 mm dans le château. Ce chiffre est la hauteur du **support de balise** (général G.2), pas une limite d'objets. Le règlement de jeu autorise les éléments de jeu à dépasser 350 mm dans les zones de construction et le château, sans valeur maximale. Les actionneurs restent limités à 350 mm.
+- **Support de balise obligatoire** : au centre du toit, dans un cercle de Ø 200 mm, section de Ø 70 à 100 × 100 mm, jusqu'à 430 ± 5 mm. Il occupe le toit où doit se poser le Graal (niveau 4).
+
+### 6.3 Ascenseur du Graal (escalier vertical à crochets sur la face C)
+
+Il est compatible avec le règlement à ces conditions :
+- crochets et escalier toujours ≤ 350 mm ;
+- Graal lâché libre sur le toit (341,2 mm > 300 mm) ;
+- montée faite dans le château.
+
+Il s'accorde naturellement avec la règle de confinement : le Graal démarre dans la salle du trône et le robot y finit le match. Le monter **à la fin**, dans le trône, rapporte **25 pts** (5 + 4 × 5) sans jamais faire sortir le Graal du château. La stratégie actuelle (porter le Graal jusqu'à la porte M3) rapporte 20 pts et coûte environ 13 s de trajets.
+
+### 6.4 Perception déclarée et observations du réseau
+
+- **Lidar** : triangulation de la pose, plus position de l'adversaire. C'est cohérent avec les entrées « pose » et « adversaire » actuelles.
+- **Caméras sur les faces A et B** : le robot voit les pierres (ArUco 13) et les 4 tags fixes de la table, en (600, 600), (2400, 600), (600, 1400) et (2400, 1400) d'après `table.svg`. Il ne sait donc qu'un paquet a disparu **que s'il l'a vu**. L'observation « paquets » devra être une croyance (dernier état vu + âge de l'information), et non l'état réel du simulateur comme aujourd'hui dans le moteur PyTorch.
+
+### 6.5 Moyens d'entraînement et choix du simulateur
+
+Ryzen 5 3600 (12 threads) + RTX 3060. Le moteur JS mesuré ici donne environ 0,11 match/s par cœur, avec une machine partagée et une politique aléatoire. Avec 12 workers, l'estimation pessimiste est d'environ 1,3 match/s, soit **plus de 100 000 matchs par jour**. C'est suffisant pour un PPO sur macro-actions (15 à 40 décisions par match).
+
+**Choix recommandé : voie A** :
+- entraîner directement sur le moteur JS de référence, en pool de processus ;
+- le GPU sert uniquement aux mises à jour du réseau ;
+- le moteur PyTorch abstrait est retiré de la boucle d'entraînement.
+
+À confirmer par une mesure sur la machine réelle.
+
+### 6.6 Calendrier jusqu'à mai 2027
+
+| Période | Contenu | Critère de sortie |
+|---|---|---|
+| nov. 2026 | Phases 0-1 : spec, géométrie réelle du châssis, conformité au règlement (§4.2), masque = préconditions du moteur | 0 action valide en erreur sur 10 000 états ; golden tests |
+| déc. 2026 | Phase 2 : pool de workers JS + PPO ; phase 3 : adversaires (réseau ou stratégie enregistrée, déjà supportés par `env.js`) | débit mesuré sur la machine de l'équipe |
+| janv.-févr. 2027 | Phase 4 : entraînement, évaluation sur au moins 200 matchs par adversaire ; intégration des cotes de pinces, canon et ascenseur dès qu'elles existent en CAO | score moyen et taux de victoire avec intervalle de confiance |
+| mars 2027 | Phase 5 : runner embarqué (observation + masque uniques), croyance issue du lidar et des caméras, essais en rejeu | même décision en simulation et sur le robot pour des états enregistrés |
+| avr. 2027 | Recalage des durées et vitesses mesurées sur le robot, réentraînement, gel | écart de durée simulation/robot ≤ 10 % par action |
+| mai 2027 | Compétition | — |

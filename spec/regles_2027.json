@@ -1,0 +1,170 @@
+{
+  "_sources": {
+    "jeu": "Règlement Eurobot 2027, version OFFICIELLE 1.0 (Eurobot2027_Rules_FR.pdf)",
+    "general": "Règlement général Eurobot, version OFFICIELLE 1.4 (Eurobot_General_Rules_SR_FR.pdf)",
+    "plan": "playmat_1.zip / table.svg (viewBox 3000 x 2000 mm, repère identique à engine/engine.js)"
+  },
+  "unites": "mm, s, points",
+  "match": {
+    "duree_s": 100,
+    "phase_attaque_debut_s": 85,
+    "preparation_max_s": 180,
+    "_ref": "jeu E.4.b ; général H.1, H.2, H.3"
+  },
+  "table": {
+    "longueur_x": 3000,
+    "largeur_y": 2000,
+    "bordure_hauteur": 70,
+    "bordure_epaisseur": 22,
+    "_ref": "jeu D.2"
+  },
+  "zones_depart": {
+    "trone_jaune": { "x": [0, 500], "y": [750, 1250] },
+    "trone_bleu": { "x": [2500, 3000], "y": [750, 1250] },
+    "_ref": "jeu D.3 (carré de 500 x 500 mm, ligne incluse) ; table.svg calques Zone_jaune / Zone_bleu"
+  },
+  "ecuries_pami": {
+    "jaune": [{ "x": [5, 195], "y": [5, 295] }, { "x": [5, 195], "y": [1705, 1995] }],
+    "bleu": [{ "x": [2805, 2995], "y": [5, 295] }, { "x": [2805, 2995], "y": [1705, 1995] }],
+    "_ref": "table.svg calque PAMI (zone_depart_*) ; jeu D.4 : 200 x 300 mm"
+  },
+  "pierres": {
+    "dimensions": [320, 110, 110],
+    "masse_g_environ": 90,
+    "nombre": 30,
+    "aruco_id": 13,
+    "_ref": "jeu D.4, G.2"
+  },
+  "carrieres": {
+    "_ref": "table.svg calque stock (contours 319 x 109 mm) ; jeu D.4 : 3 pierres à plat empilées",
+    "pierres_par_carriere": 3,
+    "liste": [
+      { "id": "P1", "c": [750, 55], "axe_long": "x" },
+      { "id": "P2", "c": [1250, 55], "axe_long": "x" },
+      { "id": "P3", "c": [1750, 55], "axe_long": "x" },
+      { "id": "P4", "c": [2250, 55], "axe_long": "x" },
+      { "id": "P5", "c": [750, 1945], "axe_long": "x" },
+      { "id": "P6", "c": [1250, 1945], "axe_long": "x" },
+      { "id": "P7", "c": [1750, 1945], "axe_long": "x" },
+      { "id": "P8", "c": [2250, 1945], "axe_long": "x" },
+      { "id": "P9", "c": [1500, 500], "axe_long": "y" },
+      { "id": "P10", "c": [1500, 1500], "axe_long": "y" }
+    ],
+    "attribution_equipe": "aucune (jeu D.4 : zones réparties sur la table)"
+  },
+  "remparts_jaune": {
+    "_ref": "table.svg calque dépose (rectangles tracés à l'intérieur de la ligne) ; jeu D.4 : murs 200 x 400, tours Ø 200",
+    "murs": [
+      { "id": "M1", "c": [250, 400], "grand_axe_deg": 0 },
+      { "id": "M2", "c": [679.3, 570.8], "grand_axe_deg": 45 },
+      { "id": "M3", "c": [850, 1000], "grand_axe_deg": 90 },
+      { "id": "M4", "c": [679.3, 1429.5], "grand_axe_deg": -45 },
+      { "id": "M5", "c": [250, 1600], "grand_axe_deg": 0 }
+    ],
+    "tours": [
+      { "id": "T1", "c": [500, 400] },
+      { "id": "T2", "c": [850, 750] },
+      { "id": "T3", "c": [850, 1250] },
+      { "id": "T4", "c": [500, 1600] }
+    ],
+    "mur_dimensions": [400, 200],
+    "tour_diametre": 200,
+    "bleu": "symétrie x -> 3000 - x"
+  },
+  "aruco_table": {
+    "_ref": "table.svg calque ArUcos (tags de 100 mm, bordure blanche de 120 mm)",
+    "centres": [[600, 600], [2400, 600], [600, 1400], [2400, 1400]],
+    "taille": 100,
+    "ids": "non lisibles dans le SVG (motifs graphiques) : à relever sur la table réelle",
+    "plages_reservees": {
+      "robots_bleu": [1, 5],
+      "robots_jaune": [6, 10],
+      "aire_de_jeu": [11, 50],
+      "equipe_bleue": [51, 70],
+      "equipe_jaune": [71, 90],
+      "_ref": "général G.6"
+    }
+  },
+  "construction": {
+    "_ref": "jeu E.1",
+    "pierre_validee": "tout ou partie de la projection verticale dans la zone, ou posée sur une pierre déjà valide pour la zone",
+    "mur": "3 pierres horizontales empilées, dans une zone rectangulaire",
+    "tour": "1 pierre verticale, dans une zone circulaire",
+    "porte": "2 pierres verticales surmontées d'1 pierre horizontale, dans une zone rectangulaire de mur (n'importe laquelle)",
+    "une_construction_par_zone": true,
+    "une_porte_par_chateau": true,
+    "pierre_une_seule_construction": true,
+    "element_controle_en_fin_de_match_non_compte": true,
+    "stockage_max_cour": 3,
+    "vol_chateau_adverse": "seulement si toutes les carrières sont vides et sans détruire le château, sinon pénalité >= 50 pts"
+  },
+  "graal": {
+    "_ref": "jeu E.2",
+    "position_depart": "dans la salle du trône de l'équipe, entièrement contenu, non contrôlé par le robot",
+    "taille_min": "plus grand qu'un cube de 60 mm",
+    "confinement": "ne doit jamais sortir de la cour du château et de ses remparts pendant tout le match ; sinon retiré de la table",
+    "graal_adverse": "interdit de le déplacer",
+    "niveaux": {
+      "1": "sur 1 pierre horizontale",
+      "2": "sur 2 pierres horizontales",
+      "3": "sur 3 pierres horizontales ou sur 1 pierre verticale",
+      "4": "sur le toit du robot (> 300 mm), libre de tout actionneur et de tout moyen de fixation"
+    },
+    "niveau_sur_porte": "non défini par le règlement : à faire préciser (FAQ / referee@planete-sciences.org)",
+    "depassement_hauteur": "autorisé seulement dans les zones de construction et les limites du château"
+  },
+  "retour_du_roi": {
+    "_ref": "jeu E.3",
+    "evaluation": "fin de match, robot arrêté dans sa salle du trône",
+    "partiel": "une partie de la projection verticale du robot dans l'aire",
+    "complet": "toute la projection verticale du robot dans l'aire"
+  },
+  "assaut": {
+    "_ref": "jeu E.4",
+    "boulets_par_equipe": 10,
+    "boulet_diametre": 45,
+    "boulet_par_pami_max": 1,
+    "tireurs": "robot et PAMI",
+    "validation_boulet": "tout ou partie de la projection verticale dans la cour du château adverse en fin de match",
+    "position_de_tir_imposee": false
+  },
+  "bareme": {
+    "_ref": "jeu F",
+    "pierre": 1,
+    "mur": 5,
+    "tour": 5,
+    "porte": 20,
+    "graal_present": 5,
+    "graal_par_niveau": 5,
+    "trone_partiel": 5,
+    "trone_complet": 10,
+    "douve_par_pami": 5,
+    "attaque_pami": 5,
+    "boulet_au_moins_1": 5,
+    "boulets_au_moins_3_supplement": 15
+  },
+  "robot_limites": {
+    "_ref": "général F.3, G.2, F.4.c",
+    "perimetre_depart_max": 1200,
+    "perimetre_deploye_max": 1400,
+    "perimetre_definition": "périmètre de l'enveloppe convexe de la projection verticale au sol",
+    "hauteur_max_robot_et_objets_manipules": 350,
+    "hauteur_max_bouton_arret_urgence": 375,
+    "support_balise_hauteur": [425, 435],
+    "support_balise_position": "dans un cercle de Ø 200 mm autour du centre du robot",
+    "support_balise_section": "enveloppe convexe entre cercle Ø 70 et carré de 100 x 100 mm, du sommet du robot au support",
+    "zone_autocollant": "100 x 70 mm libre sur une face verticale",
+    "pieces_saillantes": "interdites",
+    "systeme_evitement_obligatoire": true,
+    "pierres_tenues_comptent_dans_le_perimetre": "non précisé par les règlements fournis : à faire confirmer"
+  },
+  "penalites_utiles_simulation": {
+    "_ref": "général H.4",
+    "perte_piece_robot": -20,
+    "degradation_table_ou_element": -30,
+    "evitement_non_fonctionnel": -30,
+    "robot_bouge_apres_fin": -50,
+    "une_seule_penalite_par_match": "la plus haute",
+    "score_negatif": "ramené à 0"
+  }
+}
