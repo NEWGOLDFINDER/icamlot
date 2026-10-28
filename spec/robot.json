@@ -351,12 +351,13 @@
       "source": "équipe, 2026-10-28",
       "modele": "Arducam OV9281 (global shutter, 1 Mpx mono)",
       "nombre": "1 par face de préhension (A et B)",
-      "usage": "recalage sur tags ArUco",
+      "usage": "lecture des tags ArUco pour se recaler avant la préhension (préhension précise)",
       "objectif_et_champ": {
         "statut": "a_definir",
         "note": "le champ dépend de l'objectif (ex. 2,4 mm : 130° diag / 110° H / 90° V ; 3,15 mm : 160° diag / 126° H) — référence exacte à fournir"
       },
-      "hauteur_et_inclinaison": "a_definir"
+      "hauteur_et_inclinaison": "a_definir",
+      "usage_source": "équipe, 2026-10-28"
     },
     "odometrie": {
       "statut": "declare",
@@ -379,9 +380,18 @@
       "valeur": "Raspberry Pi 5 + 2 ESP32-S3-DevKitC-1-N8 (non représentés dans la CAO)",
       "esp32_1_navigation": "2 RoboClaw (UART1 J4, UART2 J5), 2 PMW3389, gyroscope LSM6DSOX ; relié au Pi 5 par USB (données seules)",
       "esp32_2_actionneurs": "6 pompes à vide DFRobot FIT0801 (GPIO8–13), 6 capteurs de pression MPXV6115V via 2 ADS1115 (I2C 0x48/0x49), 2 vérins électriques (ponts en H Pololu VNH5019, recopie par potentiomètre GPIO1/2), 1 servo MG90S « lanceur » (GPIO7), tirette (GPIO14)",
-      "liaison_esp32_2_pi": "a_definir (le guide ne le précise que pour l'ESP32 n°1)",
+      "liaison_esp32_2_pi": {
+        "statut": "declare",
+        "source": "équipe, 2026-10-28",
+        "valeur": "USB (comme l'ESP32 n°1)"
+      },
       "protocole_serie": "a_definir",
-      "alimentation": "batterie 4S 14,8 V, BAU coupant toute la carte ; 12 V moteurs et vérins hors carte"
+      "alimentation": "batterie 4S 14,8 V, BAU coupant toute la carte ; 12 V moteurs et vérins hors carte",
+      "firmware": {
+        "statut": "declare",
+        "source": "équipe, 2026-10-28",
+        "valeur": "pas encore écrit"
+      }
     }
   },
   "mecanismes": {
@@ -463,9 +473,9 @@
       },
       "pompes": {
         "statut": "declare",
-        "source": "docs/sources/ICAMELOT_2027_guide_de_la_carte.pdf (version du 25/10/2026) §7–8",
+        "source": "équipe, 2026-10-28",
         "nombre": 6,
-        "note": "6 pompes et 6 capteurs de pression pour 12 ventouses : correspondance pompe ↔ ventouses à confirmer (hypothèse cohérente : 1 pompe par pierre, 2 ventouses)"
+        "note": "1 pompe par pierre (2 ventouses par pompe), 3 pompes par face ; 1 capteur de pression par pompe"
       }
     },
     "canon_C": {
@@ -492,7 +502,12 @@
         "hauteur": 189
       },
       "chargeur": "4 colonnes de 3 places au centre du robot, 10 boulets",
-      "lanceur": "2 volants (principe)"
+      "lanceur": "2 volants (principe)",
+      "commande": {
+        "statut": "declare",
+        "source": "équipe, 2026-10-28",
+        "valeur": "une seule sortie « séance de tir » à activer ; l'ESP32 gère le reste"
+      }
     },
     "ascenseur_graal": {
       "statut": "propose",
@@ -548,13 +563,28 @@
     "actionneurs_carte": {
       "statut": "declare",
       "source": "docs/sources/ICAMELOT_2027_guide_de_la_carte.pdf (version du 25/10/2026)",
-      "verins": 2,
-      "servo": "1 MG90S (lanceur)",
+      "verins": {
+        "nombre": 2,
+        "statut": "declare",
+        "source": "équipe, 2026-10-28",
+        "role": "axes Z des nacelles A et B",
+        "course_mm": "a_definir",
+        "vitesse_mm_s": "a_definir"
+      },
+      "servo": {
+        "statut": "declare",
+        "source": "équipe, 2026-10-28",
+        "valeur": "servo MG90S « lanceur » non pris en compte dans le simulateur"
+      },
       "gpio_libres": {
         "esp32_1": 11,
         "esp32_2": "GPIO41, GPIO42 (prévus pour une carte de vannes)"
       },
-      "ecart_avec_la_conception": "a_definir : la conception simulée utilise 2 axes Z de nacelle, 2 rotations de nacelle (0/90/180), l'ascenseur du Graal (montée + coulisse) et le canon (déploiement + lanceur à 2 volants) ; la carte ne pilote que 2 vérins et 1 servo"
+      "ecart_avec_la_conception": {
+        "statut": "declare",
+        "source": "équipe, 2026-10-28",
+        "valeur": "rotations des nacelles, ascenseur du Graal et canon pilotés par un des 2 ESP32 (lequel : a_definir)"
+      }
     }
   },
   "demarrage": {
