@@ -33,6 +33,9 @@ var SWAP = { A: 'B', B: 'A' };
 function capPhys(h) { return 60 - h; }
 function mid(id) { if (!id) return id; var s = String(id); return s.indexOf('.') >= 0 ? ENGINE.mirrorId(s.split('.')[0]) + '.' + s.split('.')[1] : ENGINE.mirrorId(s); }
 function mirFoot(F) { return F.map(function (v) { return [3000 - v[0], v[1]]; }); }
+/* angle de nacelle : le miroir change u (droite vue de face) en -u, donc rot en -rot ; 0 et 180 sont leur propre miroir (-180 est
+   hors de la plage [-90, 180] de la spec) ; tour et porte : 90° par défaut */
+function rotPhys(r) { return r == null ? r : +r === 180 || +r === 0 ? +r : -r; }
 function mirrorBrick(st) {
   var o = JSON.parse(JSON.stringify(st));
   if (o.f && SWAP[o.f]) o.f = SWAP[o.f];
@@ -41,6 +44,9 @@ function mirrorBrick(st) {
   if (o.s) o.s = mid(o.s);
   if (o.a === 'deposer') { if (o.x != null) o.x = 3000 - o.x; if (o.ang != null) o.ang = 180 - o.ang; }
   if (o.a === 'traj' && o.pts) o.pts = o.pts.map(function (q) { var r = Object.assign({}, q); if (q.x != null) r.x = 3000 - q.x; if (q.a != null && q.a !== '') r.a = capPhys(q.a); return r; });
+  if (o.a === 'tourner' && o.r != null) o.r = rotPhys(o.r);
+  if (o.a === 'deposer' && (o.r != null || o.o === 'debout')) o.r = rotPhys(o.r != null ? o.r : 90);
+  if (o.a === 'tour' || o.a === 'porte') o.r = rotPhys(o.r != null ? o.r : 90);
   return o;
 }
 function mirrorBelief(b) {
@@ -48,7 +54,8 @@ function mirrorBelief(b) {
   m.team = b.team === 'blue' ? 'yellow' : 'blue';
   m.pose = { x: 3000 - b.pose.x, y: b.pose.y, h: capPhys(b.pose.h) };
   m.pinces = {};
-  ['A', 'B'].forEach(function (f) { var g = JSON.parse(JSON.stringify(b.pinces[f])); g.slots = (g.slots || [null, null, null]).map(function (id) { return id ? mid(id) : null; }); m.pinces[SWAP[f]] = g; });
+  ['A', 'B'].forEach(function (f) { var g = JSON.parse(JSON.stringify(b.pinces[f])); g.slots = (g.slots || [null, null, null]).map(function (id) { return id ? mid(id) : null; }); g.rot = rotPhys(g.rot); g.rotReelle = rotPhys(g.rotReelle); m.pinces[SWAP[f]] = g; });
+
   if (b.adversaire) { m.adversaire.x = 3000 - b.adversaire.x; m.adversaire.vx = -(b.adversaire.vx || 0); }
   var ids = ENGINE.PK.map(function (p) { return p.id; });
   m.pierres = (b.pierres || []).map(function (s) { var o = JSON.parse(JSON.stringify(s)); o.id = mid(s.id); o.pk = ids.indexOf(ENGINE.mirrorId(ENGINE.PK[s.pk].id)); o.foot = mirFoot(s.foot); return o; });
@@ -93,7 +100,7 @@ function mesureEtats(N) {
     });
     if (same) maskOk++;
     /* répartition : nacelle à 90° (pierres décalées latéralement, chiralité des nacelles) ou non */
-    var a90 = ['A', 'B'].some(function (f) { var g = bY.pinces[f]; return Math.abs(g.rot - 90) < 0.5 || (g.rotReelle != null && Math.abs(g.rotReelle - 90) < 0.5); });
+    var a90 = ['A', 'B'].some(function (f) { var g = bY.pinces[f]; return Math.abs(Math.abs(g.rot) - 90) < 0.5 || (g.rotReelle != null && Math.abs(Math.abs(g.rotReelle) - 90) < 0.5); });
     var dN = mY.filter(function (v, i) { return v !== mB[i]; }).length;
     sep[a90 ? 'n90' : 'nAutre'].etats++; sep[a90 ? 'n90' : 'nAutre'].diff += dN;
   });
@@ -101,7 +108,7 @@ function mesureEtats(N) {
   console.log('   obs(jaune) == obs(bleu miroir) hors bit d\'équipe : ' + obsOk + ' / ' + N);
   console.log('   indices d\'observation différents (nombre d\'états) : ' + JSON.stringify(diffIdx));
   console.log('   masque identique : ' + maskOk + ' / ' + N + ' ; actions différentes : ' + nDiffAct + ' / ' + nAct + ' ' + JSON.stringify(diffFam));
-  console.log('   actions différentes, états avec une nacelle à 90° : ' + sep.n90.diff + ' sur ' + sep.n90.etats + ' états ; autres états : ' + sep.nAutre.diff + ' sur ' + sep.nAutre.etats + ' états');
+  console.log('   actions différentes, états avec une nacelle à ±90° : ' + sep.n90.diff + ' sur ' + sep.n90.etats + ' états ; autres états : ' + sep.nAutre.diff + ' sur ' + sep.nAutre.etats + ' états');
   exemples.forEach(function (e) { console.log('     ' + e); });
   return { obsOk: obsOk, maskOk: maskOk, N: N, nDiffAct: nDiffAct, nAct: nAct };
 }

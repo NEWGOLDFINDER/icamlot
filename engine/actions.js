@@ -14,13 +14,16 @@
    moment (pendant le trajet, en fin de trajet, avant de partir, ou sur place). */
 (function (root) {
   /* 3.2 (chantier symétrie, contrat §15) : en bleu, les faces A et B du catalogue sont échangées (face A = vraie face B) */
-  var CATALOGUE_VERSION = 'icamlot-catalogue-3.2';
+  /* 3.3 (chantier rotation -90°, contrat §16) : « Préparer la pince » à -90° ; tour à -90° si la pince y est déjà ; angles en miroir
+     pour le bleu (+θ de l'équipe = -θ réel) */
+  var CATALOGUE_VERSION = 'icamlot-catalogue-3.3';
   var FACES = ['A', 'B'];
   var PACKS = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'P9', 'P10'];
   var MURS = ['M1', 'M2', 'M3', 'M4', 'M5'];
   var TOURS = ['T1', 'T2', 'T3', 'T4'];
   var COTES = ['ext', 'int'];
-  var ANGLES = [0, 90, 180];
+  /* angles de nacelle : spec/robot.json, pince_A_et_B.rotation_angles_deg (-90, 0, 90, 180) */
+  var ANGLES = root.SPEC.robot.mecanismes.pince_A_et_B.rotation_angles_deg.slice();
 
   /* Hypothèses (paramètres nommés ; aucune de ces valeurs n'est dans spec/*.json). */
   var HYPOTHESES = {
@@ -94,7 +97,7 @@
     { id: 'attendre', label: 'Finir le match sur place (attendre 100 s)', n: 1 },
     { id: 'stockage', label: 'Stocker / reprendre des pierres dans la cour (3 au plus)', n: 8 },
     { id: 'traj', label: 'Aller à un point de passage', n: 8 },
-    { id: 'preparerPince', label: 'Préparer la pince (angle, pendant le trajet suivant)', n: 6 },
+    { id: 'preparerPince', label: 'Préparer la pince (angle, pendant le trajet suivant)', n: 2 * ANGLES.length },
     { id: 'lacher', label: 'Lâcher les pierres sur place', n: 2 },
     { id: 'attenteCourte', label: 'Attendre sur place (courte durée)', n: HYPOTHESES.attentesCourtes.length }
   ];
@@ -228,12 +231,14 @@
       case 'tour':
         if (!E().zoneById(st.z) || E().zoneById(st.z).tan !== undefined) return 'Zone de tour inconnue.';
         if (!heldList(b, f).some(function (x) { return x.id === st.s; })) return 'La pierre ' + st.s + ' n\'est pas tenue par la face ' + f + '.';
-        if (!balayageOk(heldMask(b, f), true, b.pinces[f].rot, 90)) return 'Rotation impossible sous 350 mm.';
+        if (rotDebout(st) == null) return 'Pierres debout : angle de pince 90 ou -90°.';
+        if (!balayageOk(heldMask(b, f), true, b.pinces[f].rot, rotDebout(st))) return 'Rotation impossible sous 350 mm.';
         return zoneTakenB(b, st.z);
       case 'porte':
         hs = heldList(b, f);
         if (!E().zoneById(st.z) || E().zoneById(st.z).tan === undefined) return 'Zone de mur inconnue.';
         if (!(hs.length === 3 && hs.every(function (x, i) { return x.sl === i; })) || b.pinces[f].rot !== 0) return 'Il faut une pile de 3 pierres à plat sur la face ' + f + ' (rangées 1, 2 et 3).';
+        if (rotDebout(st) == null) return 'Pierres debout : angle de pince 90 ou -90°.';
         var cas = E().inPoly(E().zoneById(st.z).c[0], E().zoneById(st.z).c[1], E().CASTLE) ? 'jaune' : 'bleu';
         if ((b.portes || []).some(function (id) { var z = E().zoneById(id); return z && (E().inPoly(z.c[0], z.c[1], E().CASTLE) ? 'jaune' : 'bleu') === cas; })) return 'Une seule porte par château (E.1.b).';
         return zoneTakenB(b, st.z);
@@ -249,14 +254,14 @@
         return null;
       case 'deposer':
         hs = heldList(b, f);
-        var rot = st.r != null ? +st.r : 0;
-        if ([0, 90, 180].indexOf(rot) < 0) return 'Angle de pince : 0, 90 ou 180°.';
+        var rot = st.r != null ? +st.r : (st.o === 'debout' ? 90 : 0);
+        if (!G().rotOk(rot)) return ANGLE_MSG;
         if (!hs.length) return 'La face ' + f + ' ne tient aucune pierre.';
-        if (rot !== 90 && !contiguous(hs)) return 'Pile à plat impossible : il manque une pierre au milieu de la pince.';
+        if (!debout(rot) && !contiguous(hs)) return 'Pile à plat impossible : il manque une pierre au milieu de la pince.';
         if (!balayageOk(heldMask(b, f), st.tm ? true : heldInCastleB(b, f), b.pinces[f].rot, rot)) return 'Rotation impossible sous 350 mm.';
         /* hauteur d'axe qui pose la pierre la plus basse au sol (comme le moteur) : dans la course de la pince ? */
         var cs = Math.cos(rot * D2R), sls = hs.map(function (x) { return x.sl; }), lLow = cs > 0 ? Math.min.apply(null, sls) : Math.max.apply(null, sls);
-        if (rot !== 90 && !zOk(55 - G().stoneZc(lLow) * cs)) return 'Dépôt au sol : pince hors de sa course pour la rangée ' + (lLow + 1) + '.';
+        if (!debout(rot) && !zOk(55 - G().stoneZc(lLow) * cs)) return 'Dépôt au sol : pince hors de sa course pour la rangée ' + (lLow + 1) + '.';
         var feet = depositFeetB(b, f, hs, [+st.x, +st.y], +st.ang || 0, rot);
         why = stockPreB(b, feet); if (why) return why;
         /* place libre : une pierre déjà au point de dépôt mettrait la pince hors de sa course */
@@ -269,7 +274,7 @@
         return stockPreB(b, hs.map(function (x) { return heldFootAt(b, f, x.sl); }));
       case 'tourner':
         var r = +st.r;
-        if ([0, 90, 180].indexOf(r) < 0) return 'Angle de pince : 0, 90 ou 180°.';
+        if (!G().rotOk(r)) return ANGLE_MSG;
         if (!balayageOk(heldMask(b, f), st.tm ? true : heldInCastleB(b, f), b.pinces[f].rot, r)) return 'Rotation impossible sous 350 mm.';
         /* en temps masqué, la rotation a lieu pendant le prochain trajet, peut-être hors du château : elle doit y être faisable */
         if (st.tm && !balayageOk(heldMask(b, f), false, b.pinces[f].rot, r)) return 'Rotation impossible sous 350 mm hors du château (préparation pendant un trajet).';
@@ -287,6 +292,12 @@
     fos.forEach(function (fo) { cx += fo.cx / fos.length; cy += fo.cy / fos.length; });
     return fos.map(function (fo) { return G().rectPoly({ cx: fo.cx + T[0] - cx, cy: fo.cy + T[1] - cy, hl: fo.hl, hn: fo.hn, ang: fo.ang }); });
   }
+  var ANGLE_MSG = 'Angle de pince : ' + ANGLES.join(', ').replace(/, ([^,]*)$/, ' ou $1') + '°.';
+  /* pierres debout : nacelle à +90 ou -90° ; tour et porte : champ r (90 par défaut), comme le moteur */
+  function debout(rot) { return Math.abs(Math.cos(rot * D2R)) < 0.5; }
+  function rotDebout(st) { var r = st.r != null ? +st.r : 90; return G().rotOk(r) && debout(r) ? r : null; }
+  /* angle de la pince dans le repère de l'équipe (bleu : miroir, +θ réel = -θ de l'équipe) */
+  function teamRot(rot, team) { return team === 'blue' ? G().mirrorRot(rot) : rot; }
   function contiguous(hs) { var sl = hs.map(function (x) { return x.sl; }); return Math.max.apply(null, sl) - Math.min.apply(null, sl) + 1 === hs.length; }
   /* pierres tenues par f dans un château (n'importe lequel, comme heldInCastle du moteur) */
   function heldInCastleB(b, f) {
@@ -358,9 +369,12 @@
         return { a: 'prendre', f: act.f, mode: act.mode, s: act.p + '.' + n, tm: true };
       case 'mur': return { a: 'mur', f: act.f, z: act.z, side: act.side };
       case 'tour':
-        var id = (b.pinces[realFace(act.f, team)].slots || [])[act.rang - 1];
+        var g = b.pinces[realFace(act.f, team)], id = (g.slots || [])[act.rang - 1];
         if (!id) return null;
-        return { a: 'tour', f: act.f, z: act.z, s: ownStoneId(id, team), tm: true };
+        /* pierre debout à -90° (repère de l'équipe) si la pince y est déjà (préparée) ; sinon à +90° (défaut du moteur) */
+        var tb = { a: 'tour', f: act.f, z: act.z, s: ownStoneId(id, team), tm: true };
+        if (Math.abs(teamRot(g.rot, team) + 90) < 0.5) tb.r = -90;
+        return tb;
       case 'porte': return { a: 'porte', f: act.f, z: act.z, side: act.side };
       case 'tir': return { a: 'tir' };
       case 'monterGraal': return { a: 'monterGraal' };
@@ -410,6 +424,7 @@
     if (norm.a === 'lacher') { norm.a = 'deposerZone'; if (norm.q == null) norm.q = 'pile'; }
     if (norm.a === 'deposerZone' && norm.q == null) norm.q = 'pile';
     if (norm.a === 'attendreJusqua' && +norm.sec >= E().MATCH) norm.sec = E().MATCH;
+    if ((norm.a === 'tour' || norm.a === 'porte') && norm.r != null && +norm.r === 90) delete norm.r;
     for (var i = 0; i < catalogue.length; i++) {
       var act = catalogue[i];
       if (!quickMatch(act, norm)) continue;
@@ -575,18 +590,20 @@
         }); });
         return out;
       case 'porte':
-        z = en.zoneById(st.z); phi = st.side === 'ext' ? z.nin : z.nin + 180; n = nv(phi); t = lv(phi); over[st.f] = { hc: 160, rot: 90 };
-        var O2 = [z.c[0] - DP * n[0] + 55 * t[0], z.c[1] - DP * n[1] + 55 * t[1]];
+        var rtP = rotDebout(st) || 90, uP = 55 * Math.sin(rtP * D2R);
+        z = en.zoneById(st.z); phi = st.side === 'ext' ? z.nin : z.nin + 180; n = nv(phi); t = lv(phi); over[st.f] = { hc: 160, rot: rtP };
+        var O2 = [z.c[0] - DP * n[0] + uP * t[0], z.c[1] - DP * n[1] + uP * t[1]];
         /* recul où la pile tourne dans le château (100 à 300 mm) */
         var bk = []; for (var bd = 100; bd <= 300; bd += 50) bk.push([O2[0] - bd * n[0], O2[1] - bd * n[1]]);
         cand(O2, phi - 120 * fk(st.f), over, null, bk);
-        out[0].porteF = st.f;
+        out[0].porteF = st.f; out[0].rt = rtP;
         return out;
       case 'tour':
-        z = en.zoneById(st.z); over[st.f] = { hc: 160, rot: 90 };
+        var rtT = rotDebout(st) || 90;
+        z = en.zoneById(st.z); over[st.f] = { hc: 160, rot: rtT };
         var sl0 = -1; heldList(b, st.f).forEach(function (q) { if (q.id === st.s) sl0 = q.sl; });
-        var zl = G().stoneZc(sl0 < 0 ? 1 : sl0);
-        for (phi = 0; phi < 360; phi += 10) { n = nv(phi); t = lv(phi); var Ot = [z.c[0] - DP * n[0] - zl * t[0], z.c[1] - DP * n[1] - zl * t[1]]; cand(Ot, phi - 120 * fk(st.f), over, null, backN(Ot, n, 80)); out[out.length - 1].tourF = st.f; }
+        var zl = G().stoneZc(sl0 < 0 ? 1 : sl0) * Math.sin(rtT * D2R);
+        for (phi = 0; phi < 360; phi += 10) { n = nv(phi); t = lv(phi); var Ot = [z.c[0] - DP * n[0] - zl * t[0], z.c[1] - DP * n[1] - zl * t[1]]; cand(Ot, phi - 120 * fk(st.f), over, null, backN(Ot, n, 80)); out[out.length - 1].tourF = st.f; out[out.length - 1].rt = rtT; }
         return out;
       case 'monterGraal':
         var P = b.params || {}, Gc = [P.gx, P.gy];
@@ -752,16 +769,17 @@
     if (c.tir && b.params && b.params.tirDepuisTrone !== false && !footIn(p, E().throneOf(b.team))) return false;
     if (!c.back.length) return true;
     return c.back.some(function (q) {
-      if (c.tourF && Math.abs(b.pinces[c.tourF].rot - 90) > 0.5 && !balayageOk(heldMask(b, c.tourF), false, b.pinces[c.tourF].rot, 90)) {
+      if (c.tourF && Math.abs(b.pinces[c.tourF].rot - c.rt) > 0.5 && !balayageOk(heldMask(b, c.tourF), false, b.pinces[c.tourF].rot, c.rt)) {
         /* tour : la pile tourne au point de recul, pierres dans un château, sans contact (comme towerCheck du moteur) */
         var pr = poseOf(b, q[0], q[1], c.h), r0 = b.pinces[c.tourF].rot;
-        if (!heldInCastleAt(b, pr, c.tourF, [r0, (r0 + 90) / 2, 90])) return false;
-        return [r0, (r0 + 90) / 2, 90].every(function (r) { var o = {}; o[c.tourF] = { rot: r }; return !poseHit(b, poseOf(b, q[0], q[1], c.h, o), c.excl, cache); });
+        if (!heldInCastleAt(b, pr, c.tourF, [r0, (r0 + c.rt) / 2, c.rt])) return false;
+        return [r0, (r0 + c.rt) / 2, c.rt].every(function (r) { var o = {}; o[c.tourF] = { rot: r }; return !poseHit(b, poseOf(b, q[0], q[1], c.h, o), c.excl, cache); });
       }
       if (c.porteF) {
-        /* porte : recul où la pile tourne de 0 à 90° dans le château, sans contact */
-        var p0 = poseOf(b, q[0], q[1], c.h), o90 = {}; o90[c.porteF] = { rot: 90 };
-        return heldInCastleAt(b, p0, c.porteF, [0, 45, 90]) && !poseHit(b, p0, c.excl, cache) && !poseHit(b, poseOf(b, q[0], q[1], c.h, o90), c.excl, cache);
+        /* porte : recul où la pile tourne de 0 à ±90° dans le château, sans contact */
+        var p0 = poseOf(b, q[0], q[1], c.h), o90 = {}; o90[c.porteF] = { rot: c.rt };
+        return heldInCastleAt(b, p0, c.porteF, [0, c.rt / 2, c.rt]) && !poseHit(b, p0, c.excl, cache) && !poseHit(b, poseOf(b, q[0], q[1], c.h, o90), c.excl, cache);
+
       }
       return !poseHit(b, poseOf(b, q[0], q[1], c.h, c.over), c.excl, cache);
     });
