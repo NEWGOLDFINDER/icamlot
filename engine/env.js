@@ -8,6 +8,7 @@
      team: 'yellow' | 'blue',
      t: secondes depuis le départ,
      pose: { x, y, h },                         lidar (triangulation) ; h = normale de la face A ; B à h + 120, C à h + 240
+                                                 (faces et cap RÉELS ; l'observation et le catalogue bleus échangent A et B, §15)
      pinces: { A: { rot, hc, slots: [id|null, id|null, id|null], rotReelle }, B: {...} }   codeurs + vide : angle (0/90/180, angle
                                                  demandé), hauteur d'axe, rotReelle = angle réel si une rotation préparée attend (sinon null),
                                                  pierre tenue par rangée (1, 2, 3) ; id = 'P6.3' (paquet d'origine . niveau 1..3)
@@ -33,7 +34,8 @@
 (function (root) {
   var MATCH = 100;
   /* 3.1 (chantier adversaires, contrat §14) : groupe « physique » (caractéristiques effectives de notre robot pour ce match) */
-  var OBS_VERSION = 'icamlot-obs-3.1';
+  /* 3.2 (chantier symétrie, contrat §15) : en bleu, face « A » de l'équipe = vraie face B (cap, pinces, rayons) */
+  var OBS_VERSION = 'icamlot-obs-3.2';
 
   /* Caméras des faces A et B (décision d'équipe, 2026-10-28) : elles ne servent qu'à lire les étiquettes ArUco des pierres pour
      l'ajustement (x, y, ω) de la préhension. Une carrière (et une pierre posée par l'adversaire) n'est donc mise à jour que
@@ -52,14 +54,14 @@
 
   var GROUPS = [
     { id: 'temps', label: 'Temps', vars: [{ id: 'temps', nom: 'Temps', desc: 'temps restant / 100 s ; phase d\'attaque ouverte (t >= 85 s)', n: 2 }] },
-    { id: 'robot', label: 'Robot', vars: [{ id: 'robot', nom: 'Pose et enveloppe', desc: 'x / 3000, y / 2000, cos(cap A), sin(cap A) (repère de l\'équipe), dans le château, dans la salle du trône, équipe bleue, rayon de l\'enveloppe (châssis + pierres) / 500 mm', n: 8 }] },
-    { id: 'pinces', label: 'Pinces A et B', vars: [{ id: 'pinces', nom: 'État des pinces', desc: 'Pour A puis B : pierre en rangée 1, 2, 3 ; angle / 180 ; hauteur d\'axe (course 135-273 mm) ; pile de 3 à plat', n: 12 }] },
+    { id: 'robot', label: 'Robot', vars: [{ id: 'robot', nom: 'Pose et enveloppe', desc: 'x / 3000, y / 2000, cos(cap A), sin(cap A) (repère de l\'équipe ; en bleu, la face A de l\'équipe est la vraie face B), dans le château, dans la salle du trône, équipe bleue, rayon de l\'enveloppe (châssis + pierres) / 500 mm', n: 8 }] },
+    { id: 'pinces', label: 'Pinces A et B', vars: [{ id: 'pinces', nom: 'État des pinces', desc: 'Pour A puis B (faces de l\'équipe ; en bleu, vraie B puis vraie A) : pierre en rangée 1, 2, 3 ; angle / 180 ; hauteur d\'axe (course 135-273 mm) ; pile de 3 à plat', n: 12 }] },
     { id: 'mecanismes', label: 'Canon et ascenseur', vars: [{ id: 'mecanismes', nom: 'Canon, fourche, tir', desc: 'canon sorti / course ; fourche : position, hauteur (normalisées) ; séance de tir faite', n: 4 }] },
     { id: 'graal', label: 'Graal', vars: [{ id: 'graal', nom: 'État du Graal', desc: 'au départ, sur la fourche, sur le toit, retiré', n: 4 }] },
     { id: 'paquets', label: 'Carrières (caméras)', vars: [{ id: 'paquets', nom: 'Pierres par carrière', desc: 'P1 à P10 (repère de l\'équipe) : pierres vues / 3, âge de l\'information / 100 s', n: 20 }] },
     { id: 'constructions', label: 'Constructions propres', vars: [{ id: 'constructions', nom: 'Murs, tours, stock', desc: 'M1-M5 : 0 vide, 0,5 occupée, 1 porte ; T1-T4 : occupée ; pierres stockées dans la cour / 3', n: 10 }] },
     { id: 'adversaire', label: 'Adversaire (lidar)', vars: [{ id: 'adversaire', nom: 'Position et vitesse adverses', desc: 'vu, x / 3000, y / 2000, vx / v, vy / v (repère de l\'équipe, v = notre vitesse, bornées à ±1), âge de la mesure / 5 s', n: 6 }] },
-    { id: 'spatial', label: 'Dégagement', vars: [{ id: 'spatial', nom: 'Rayons', desc: 'distance libre (obstacles connus) dans 8 directions à partir de la face A, tous les 45° dans le sens trigonométrique du repère de l\'équipe, / 1000 mm', n: 8 }] },
+    { id: 'spatial', label: 'Dégagement', vars: [{ id: 'spatial', nom: 'Rayons', desc: 'distance libre (obstacles connus) dans 8 directions à partir de la face A de l\'équipe, tous les 45° dans le sens trigonométrique du repère de l\'équipe, / 1000 mm', n: 8 }] },
     { id: 'echec', label: 'Retour d\'exécution', vars: [{ id: 'echec', nom: 'Échec', desc: 'la dernière action a échoué', n: 1 }] },
     { id: 'physique', label: 'Caractéristiques physiques', vars: [{ id: 'physique', nom: 'Caractéristiques de notre robot (ce match)', desc: 'pour ' + root.ADVERSAIRES.PHYSIQUE.map(function (d) { return d.nom.toLowerCase(); }).join(', ') + ' : valeur effective / valeur nominale de la spec - 1 (bornée à ±1 ; mise en route du canon, nominale nulle : écart en s)', n: root.ADVERSAIRES.PHYSIQUE.length }] }
   ];
@@ -158,12 +160,37 @@
     };
   }
 
+  /* Croyance du miroir physique (contrat §15), involutive : jaune <-> bleu, x -> 3000 - x, cap -> ENGINE.mirrorCap, pinces A <-> B,
+     ids et empreintes en miroir. Sert à l'embarqué (modèle interne bleu en repère réel, croyance rendue dans le repère de l'équipe)
+     et aux tests de symétrie. Pour une croyance bleue réelle, le résultat est la croyance du robot jaune qui vit la même situation. */
+  function mirrorBelief(b) {
+    var m = JSON.parse(JSON.stringify(b));
+    function mid(id) { if (!id) return id; var s = String(id); return s.indexOf('.') >= 0 ? mirrorId(s.split('.')[0]) + '.' + s.split('.')[1] : mirrorId(s); }
+    function foot(F) { return F.map(function (v) { return [3000 - v[0], v[1]]; }); }
+    var ids = ENGINE.PK.map(function (p) { return p.id; });
+    m.team = b.team === 'blue' ? 'yellow' : 'blue';
+    m.pose = { x: 3000 - b.pose.x, y: b.pose.y, h: ENGINE.mirrorCap(b.pose.h) };
+    m.pinces = {};
+    ['A', 'B'].forEach(function (f) { var g = JSON.parse(JSON.stringify(b.pinces[f])); g.slots = (g.slots || [null, null, null]).map(function (id) { return id ? mid(id) : null; }); m.pinces[ENGINE.mirrorFace(f)] = g; });
+    if (b.adversaire) { m.adversaire.x = 3000 - b.adversaire.x; m.adversaire.vx = -(b.adversaire.vx || 0); }
+    m.pierres = (b.pierres || []).map(function (s) { var o = JSON.parse(JSON.stringify(s)); o.id = mid(s.id); o.pk = ids.indexOf(mirrorId(ENGINE.PK[s.pk].id)); o.foot = foot(s.foot); return o; });
+    m.portes = (b.portes || []).map(mid);
+    m.etrangeres = (b.etrangeres || []).map(function (s) { var o = JSON.parse(JSON.stringify(s)); o.foot = foot(s.foot); return o; });
+    m.paquets = {}; Object.keys(b.paquets || {}).forEach(function (k) { m.paquets[mirrorId(k)] = b.paquets[k]; });
+    if (b.params) { if (b.params.gx != null) m.params.gx = 3000 - b.params.gx; m.params.ga = 180 - (b.params.ga || 0); }
+    if (b.echecs) m.echecs = { t: b.echecs.t, briques: (b.echecs.briques || []).map(ENGINE.mirrorStep) };
+    return m;
+  }
+
   /* ------------------------------------------------------------------ observation (fonction pure de la croyance) */
   function observeBelief(b, groups) {
     groups = groups || DEFAULT_GROUPS;
     var blue = b.team === 'blue', out = [];
     function X(x) { return blue ? 3000 - x : x; }
-    function H(h) { return blue ? 180 - h : h; }
+    /* repère de l'équipe (contrat §15) : en bleu, la face « A » est la vraie face B (pinces dans l'ordre B, A) et le cap est celui
+       de la vraie face B mis en miroir (ENGINE.mirrorCap) */
+    function H(h) { return blue ? ENGINE.mirrorCap(h) : h; }
+    var FACES_EQ = blue ? ['B', 'A'] : ['A', 'B'];
     function own(id) { return blue ? mirrorId(id) : id; }
     function push() { for (var i = 0; i < arguments.length; i++) out.push(arguments[i]); }
     var G = root.GEOM, GE = geo();
@@ -173,10 +200,11 @@
         var h = H(b.pose.h) * D2R, r = GE.R;
         ['A', 'B'].forEach(function (f) { (b.pinces[f].slots || []).forEach(function (sid, l) { if (sid) ACTIONS.heldFootAt(b, f, l).forEach(function (v) { r = Math.max(r, Math.hypot(v[0] - b.pose.x, v[1] - b.pose.y)); }); }); });
         push(clamp01(X(b.pose.x) / 3000), clamp01(b.pose.y / 2000), Math.cos(h), Math.sin(h),
-          ENGINE.inPoly(b.pose.x, b.pose.y, ENGINE.castleOf(b.team)) ? 1 : 0, ENGINE.inPoly(b.pose.x, b.pose.y, ENGINE.throneOf(b.team)) ? 1 : 0,
+          /* château et trône testés dans le repère de l'équipe (même résultat au bord pour une situation et son miroir) */
+          ENGINE.inPoly(X(b.pose.x), b.pose.y, ENGINE.CASTLE) ? 1 : 0, ENGINE.inPoly(X(b.pose.x), b.pose.y, ENGINE.THRONE) ? 1 : 0,
           blue ? 1 : 0, clamp01(r / NORM.rayonEnveloppe));
       } else if (id === 'pinces') {
-        ['A', 'B'].forEach(function (f) {
+        FACES_EQ.forEach(function (f) {
           var g = b.pinces[f], sl = g.slots || [null, null, null];
           push(sl[0] ? 1 : 0, sl[1] ? 1 : 0, sl[2] ? 1 : 0, clamp01(g.rot / 180), clamp01((g.hc - GE.hcMin) / (GE.hcMax - GE.hcMin)), sl[0] && sl[1] && sl[2] && Math.abs(g.rot) < 0.5 ? 1 : 0);
         });
@@ -207,18 +235,25 @@
     });
     return out;
   }
-  /* rayons : calculés en repère réel ; pour le bleu, le sens de balayage est inversé (miroir du sens trigonométrique) */
+  /* rayons : calculés dans le repère de l'équipe (obstacles connus mis en miroir pour le bleu), à partir de la face « A » de
+     l'équipe (en bleu, la vraie face B, contrat §15), dans le sens trigonométrique de ce repère. Calcul fait dans le même repère
+     pour les deux équipes : une situation et son miroir donnent exactement les mêmes rayons. */
   function rays(b) {
-    var polys = [];
-    ENGINE.PK.forEach(function (pk) { var q = b.paquets[pk.id]; if (!q || q.n > 0) polys.push(root.GEOM.rectPoly({ cx: pk.x, cy: pk.y, hl: 160, hn: 55, ang: pk.tan + 90 })); });
-    (b.pierres || []).concat(b.etrangeres || []).forEach(function (s) { polys.push(s.foot); });
-    if (b.graal === 'home' && b.params && b.params.gx != null) polys.push(ENGINE.graalPoly([b.params.gx, b.params.gy], b.params.ga || 0));
+    var polys = [], blue = b.team === 'blue';
+    function X(x) { return blue ? 3000 - x : x; }
+    function mp(P) { return blue ? P.map(function (v) { return [3000 - v[0], v[1]]; }) : P; }
+    ENGINE.PK.forEach(function (pk) { var q = b.paquets[pk.id]; if (!q || q.n > 0) polys.push(mp(root.GEOM.rectPoly({ cx: pk.x, cy: pk.y, hl: 160, hn: 55, ang: pk.tan + 90 }))); });
+    (b.pierres || []).concat(b.etrangeres || []).forEach(function (s) { polys.push(mp(s.foot)); });
+    if (b.graal === 'home' && b.params && b.params.gx != null) polys.push(mp(ENGINE.graalPoly([b.params.gx, b.params.gy], b.params.ga || 0)));
     var boxes = polys.map(function (P) { var xs = P.map(function (v) { return v[0]; }), ys = P.map(function (v) { return v[1]; }); return [Math.min.apply(null, xs), Math.max.apply(null, xs), Math.min.apply(null, ys), Math.max.apply(null, ys)]; });
-    var o = b.adversaire && b.adversaire.x != null ? b.adversaire : null, sgn = b.team === 'blue' ? -1 : 1, out = [];
+    var o = b.adversaire && b.adversaire.x != null ? { x: X(b.adversaire.x), y: b.adversaire.y } : null, out = [];
+    /* pose arrondie à 1e-9 mm / degré (tolérance numérique) : 3000 - (3000 - x) n'est pas toujours x en virgule flottante */
+    function r9(v) { return Math.round(v * 1e9) / 1e9; }
+    var px = r9(X(b.pose.x)), py = r9(b.pose.y), h0 = r9(blue ? ENGINE.mirrorCap(b.pose.h) : b.pose.h);
     for (var k = 0; k < 8; k++) {
-      var a = (b.pose.h + sgn * 45 * k) * D2R, dx = Math.cos(a), dy = Math.sin(a), free = NORM.rayon;
+      var a = (h0 + 45 * k) * D2R, dx = Math.cos(a), dy = Math.sin(a), free = NORM.rayon;
       for (var d = NORM.pasRayon; d <= NORM.rayon; d += NORM.pasRayon) {
-        var x = b.pose.x + d * dx, y = b.pose.y + d * dy, hit = x < 0 || x > 3000 || y < 0 || y > 2000;
+        var x = px + d * dx, y = py + d * dy, hit = x < 0 || x > 3000 || y < 0 || y > 2000;
         if (!hit && o && Math.hypot(x - o.x, y - o.y) < NORM.rayonAdversaire) hit = true;
         for (var i = 0; i < polys.length && !hit; i++) { var bx = boxes[i]; if (x >= bx[0] && x <= bx[1] && y >= bx[2] && y <= bx[3] && ENGINE.inPoly(x, y, polys[i])) hit = true; }
         if (hit) { free = d; break; }
@@ -640,7 +675,7 @@
 
   var api = {
     MATCH: MATCH, OBS_VERSION: OBS_VERSION, VISION: VISION, NORM: NORM, GROUPS: GROUPS, DEFAULT_GROUPS: DEFAULT_GROUPS, nInputs: nInputs,
-    create: create, mirrorId: mirrorId, mirrorStep: mirrorStep, blueParams: blueParams, pickOpponent: pickOpponent,
+    create: create, mirrorId: mirrorId, mirrorStep: mirrorStep, mirrorBelief: mirrorBelief, blueParams: blueParams, pickOpponent: pickOpponent,
     chooserFromLayers: chooserFromLayers, chooserFromRecurrent: chooserFromRecurrent, recurrentForward: recurrentForward,
     brainSpec: brainSpec, brainAgent: brainAgent, makeMind: makeMind, opponentSetup: opponentSetup, playProgram: playProgram, qualify: qualify,
     newMemory: newMemory, updateMemory: updateMemory, beliefFromSim: beliefFromSim, observeBelief: observeBelief, lidarOf: lidarOf,

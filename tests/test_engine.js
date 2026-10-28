@@ -28,7 +28,7 @@ console.log('Moteur ' + ENGINE.VERSION + ', barème ' + ctx.BAREME_VERSION + ', 
 
 console.log('\n1. Catalogue v3');
 var ALL = ACTIONS.ALL;
-check('versions exposées', ACTIONS.CATALOGUE_VERSION === 'icamlot-catalogue-3.1' && ENV.OBS_VERSION === 'icamlot-obs-3.1');
+check('versions exposées', ACTIONS.CATALOGUE_VERSION === 'icamlot-catalogue-3.2' && ENV.OBS_VERSION === 'icamlot-obs-3.2');
 check('familles = catalogue', sum(ACTIONS.FAMILLES.map(function (f) { return f.n; })) === ALL.length, ALL.length + ' actions');
 check('labels uniques', new Set(ALL.map(function (a) { return a.label; })).size === ALL.length);
 check('plus de prendreGraal / poserGraal / staging / repickup', !ALL.some(function (a) { return /Graal$|staging|repickup/.test(a.famille) && a.famille !== 'monterGraal'; }));
@@ -127,37 +127,67 @@ var ob = env0.reset({}).obs;
 check('observation bornée', ob.length === ENV.nInputs() && ob.every(function (v) { return v >= -1 && v <= 1 && isFinite(v); }), ob.length + ' entrées');
 
 console.log('\n5. Miroir bleu');
+/* Miroir physique (chantier symétrie, contrat §15) : le robot n'est pas symétrique (A, B, C à h, h + 120, h + 240). Le vrai robot
+   bleu qui reproduit une situation jaune est celui dont la face B joue le rôle de la face A : cap réel 180 - (h + 120) = 60 - h,
+   pinces A et B échangées, face C inchangée. */
 function mirrorBelief(b) {
   var m = JSON.parse(JSON.stringify(b)), mid = function (id) { return id && id.indexOf('.') >= 0 ? ENGINE.mirrorId(id.split('.')[0]) + '.' + id.split('.')[1] : ENGINE.mirrorId(id); };
   m.team = b.team === 'blue' ? 'yellow' : 'blue';
-  m.pose.x = 3000 - b.pose.x; m.pose.h = 180 - b.pose.h;
-  ['A', 'B'].forEach(function (f) { m.pinces[f].slots = b.pinces[f].slots.map(function (id) { return id ? mid(id) : null; }); });
+  m.pose.x = 3000 - b.pose.x; m.pose.h = ENGINE.mirrorCap(b.pose.h);
+  m.pinces = {};
+  ['A', 'B'].forEach(function (f) { var g = JSON.parse(JSON.stringify(b.pinces[f])); g.slots = b.pinces[f].slots.map(function (id) { return id ? mid(id) : null; }); m.pinces[ENGINE.mirrorFace(f)] = g; });
   if (b.adversaire) { m.adversaire.x = 3000 - b.adversaire.x; m.adversaire.vx = -(b.adversaire.vx || 0); }
   m.pierres = b.pierres.map(function (s) { var o = JSON.parse(JSON.stringify(s)); o.id = mid(s.id); o.pk = ENGINE.PK.map(function (p) { return p.id; }).indexOf(ENGINE.mirrorId(ENGINE.PK[s.pk].id)); o.foot = s.foot.map(function (v) { return [3000 - v[0], v[1]]; }); return o; });
   m.portes = b.portes.map(mid);
   m.etrangeres = (b.etrangeres || []).map(function (s) { var o = JSON.parse(JSON.stringify(s)); o.foot = s.foot.map(function (v) { return [3000 - v[0], v[1]]; }); return o; });
   m.paquets = {}; Object.keys(b.paquets).forEach(function (k) { m.paquets[ENGINE.mirrorId(k)] = b.paquets[k]; });
   m.params.gx = 3000 - b.params.gx; m.params.ga = 180 - b.params.ga;
+  if (b.echecs) m.echecs = { t: b.echecs.t, briques: (b.echecs.briques || []).map(ENGINE.mirrorStep) };
   return m;
 }
-/* état sans pierre tenue (le robot est chiral : B est à h + 120 dans les deux équipes) */
+var teamIdx = 2 + 6;
+function obsDiff(b1, b2) { var o1 = ENV.observeBelief(b1), o2 = ENV.observeBelief(b2); return o1.map(function (v, i) { return Math.abs(v - o2[i]) > 1e-9 ? i : -1; }).filter(function (i) { return i >= 0; }); }
 var envM = ENV.create({ skipContacts: true }); envM.reset({});
-var bY = envM.belief(), bB = mirrorBelief(bY);
-var oY = ENV.observeBelief(bY), oB = ENV.observeBelief(bB), teamIdx = 2 + 6;
-var diff = oY.map(function (v, i) { return Math.abs(v - oB[i]) > 1e-9 ? i : -1; }).filter(function (i) { return i >= 0; });
-check('observation bleue = observation jaune (sauf le bit d\'équipe)', diff.length === 1 && diff[0] === teamIdx, 'indices différents : ' + JSON.stringify(diff));
+var bY = envM.belief(), bB = mirrorBelief(bY), diff = obsDiff(bY, bB);
+check('observation bleue = observation jaune au départ (sauf le bit d\'équipe)', diff.length === 1 && diff[0] === teamIdx, 'indices différents : ' + JSON.stringify(diff));
 check('masque bleu = masque jaune au départ', JSON.stringify(ACTIONS.maskBelief(bY)) === JSON.stringify(ACTIONS.maskBelief(bB)));
-/* état au milieu d'un match (pierres posées, adversaire) : les rayons et les carrières suivent le miroir */
-var envM2 = ENV.create({ skipContacts: true }), st2 = envM2.reset({ intensite: 'realiste', seed: 3 }), rM = rng(3);
-for (var q = 0; q < 12 && !st2.done; q++) st2 = envM2.step(randomPick(rM, envM2, st2.mask));
-var bY2 = envM2.belief(); bY2.pinces.A.slots = [null, null, null]; bY2.pinces.B.slots = [null, null, null];
-var bB2 = mirrorBelief(bY2), d2 = ENV.observeBelief(bY2).map(function (v, i) { return Math.abs(v - ENV.observeBelief(bB2)[i]) > 1e-9 ? i : -1; }).filter(function (i) { return i >= 0; });
-check('miroir en cours de match (rayons, carrières, constructions, adversaire)', d2.length === 1 && d2[0] === teamIdx, JSON.stringify(d2));
+/* états en cours de match, pierres tenues comprises (pinces échangées), adversaire, pierres posées, carrières vues.
+   Masque : les asymétries physiques résiduelles (disposition interne de la face C, pierres décalées à gauche par une nacelle à 90°)
+   peuvent changer quelques actions ; SEUIL_MASQUE_MIROIR (hypothèse de test) = part minimale d'actions identiques (mesure du
+   chantier : 99,1 % sur 200 états, tests/mesure_symetrie.js). */
+var SEUIL_MASQUE_MIROIR = 0.98;
+var nEt = 0, nTenues = 0, obsKo = [], nAct = 0, nSame = 0, rM = rng(3);
+for (var ep = 0; ep < 3; ep++) {
+  var envM2 = ENV.create({ skipContacts: true }), st2 = envM2.reset({ intensite: ep % 2 ? 'realiste' : 'aucun', seed: 3 + ep });
+  for (var q = 0; q < 10 && !st2.done; q++) {
+    var bY2 = envM2.belief(), bB2 = mirrorBelief(bY2), d2 = obsDiff(bY2, bB2);
+    nEt++; if (['A', 'B'].some(function (f) { return bY2.pinces[f].slots.some(Boolean); })) nTenues++;
+    if (!(d2.length === 1 && d2[0] === teamIdx)) obsKo.push(nEt + ':' + JSON.stringify(d2));
+    if (q % 3 === 0) { var mY2 = ACTIONS.maskBelief(bY2), mB2 = ACTIONS.maskBelief(bB2); mY2.forEach(function (v, i) { nAct++; if (v === mB2[i]) nSame++; }); }
+    st2 = envM2.step(randomPick(rM, envM2, st2.mask));
+  }
+}
+check('miroir en cours de match : observation identique hors bit d\'équipe (' + nEt + ' états, ' + nTenues + ' avec pierres tenues)', !obsKo.length && nTenues > 0, obsKo.slice(0, 3).join(' '));
+check('miroir en cours de match : masque identique pour au moins ' + SEUIL_MASQUE_MIROIR * 100 + ' % des actions', nSame / nAct >= SEUIL_MASQUE_MIROIR, (100 * nSame / nAct).toFixed(2) + ' % de ' + nAct);
 var bl = ENV.blueParams(ENGINE.DEF), simB = ENGINE.makeSim(bl, { skipContacts: true }), memB = ENV.newMemory();
 ENV.updateMemory(memB, simB, 0, 0, null, null);
 var oBlue = ENV.observeBelief(ENV.beliefFromSim(simB, memB, null)), oYel = ENV.observeBelief(env0.reset({}).obs ? env0.belief() : null);
 check('robot bleu au départ (moteur) vu comme le jaune', oBlue.filter(function (v, i) { return Math.abs(v - oYel[i]) > 1e-9; }).length === 1);
-check('ACTIONS.realStep : dépôt et ids en miroir', (function () { var s = ACTIONS.realStep({ a: 'deposer', f: 'A', q: 'pile', x: 300, y: 620, ang: 0, r: 0 }, 'blue'); var t = ACTIONS.realStep({ a: 'tour', f: 'B', z: 'T2', s: 'P6.3' }, 'blue'); return s.x === 2700 && s.ang === 180 && t.z === 'T6' && t.s === 'P7.3'; })());
+check('ACTIONS.realStep : dépôt, ids et faces (A <-> B) en miroir', (function () { var s = ACTIONS.realStep({ a: 'deposer', f: 'A', q: 'pile', x: 300, y: 620, ang: 0, r: 0 }, 'blue'); var t = ACTIONS.realStep({ a: 'tour', f: 'B', z: 'T2', s: 'P6.3' }, 'blue'); return s.x === 2700 && s.ang === 180 && s.f === 'B' && t.z === 'T6' && t.s === 'P7.3' && t.f === 'A' && ACTIONS.realStep(t, 'yellow') === t; })());
+/* la même action du catalogue produit le même effet en miroir : prise P1 face A (jaune) <-> prise P4 par la vraie face B (bleu) */
+(function () {
+  var iP1 = ACTIONS.ALL.filter(function (a) { return a.a === 'prendre' && a.mode === 'pile' && a.f === 'A' && a.p === 'P1'; })[0].i;
+  function joue(team) {
+    var P = team === 'blue' ? ENGINE.blueParams(ENGINE.DEF) : Object.assign({}, ENGINE.DEF), sim = ENGINE.makeSim(P, { skipContacts: true }), mem = ENV.newMemory();
+    ENV.updateMemory(mem, sim, 0, 0, null, null);
+    var b = ENV.beliefFromSim(sim, mem, null), st = ACTIONS.toProgramStep(ACTIONS.ALL[iP1], b), t0 = sim.time(), info = sim.exec(ACTIONS.realStep(st, team));
+    ENV.updateMemory(mem, sim, t0, sim.time(), st, info);
+    return { b: ENV.beliefFromSim(sim, mem, null), err: info.err };
+  }
+  var y = joue('yellow'), b = joue('blue'), d = obsDiff(y.b, b.b);
+  check('même action, même effet en miroir (prendre P1 face A : vraie face B en bleu, observation identique hors bit d\'équipe)',
+    !y.err && !b.err && b.b.pinces.B.slots.join() === 'P4.1,P4.2,P4.3' && y.b.pinces.A.slots.join() === 'P1.1,P1.2,P1.3' && d.length === 1 && d[0] === teamIdx, JSON.stringify(d));
+})();
 
 console.log('\n6. Masque -> moteur (' + N_DEC + ' décisions aléatoires par série, sans puis avec adversaire)');
 /* causes dépendant du trajet ou de la pose choisie par le moteur (non vérifiables sans planifier/exécuter) */
@@ -188,7 +218,39 @@ function serie(withOpp, seed) {
   console.log('     trajet ou pose choisie par le moteur : ' + o.path + ' (' + pc(o.path) + ') ; adversaire / croyance : ' + o.opp + ' (' + pc(o.opp) + ') ; autres : ' + o.nOther + ' (' + pc(o.nOther) + ') ' + JSON.stringify(o.other));
   return o;
 }
-var S0 = serie(false, 11), S1 = serie(true, 12);
+/* même mesure pour notre robot en BLEU, seul (chantier symétrie, contrat §15) : croyance, masque, brique du catalogue en repère
+   de l'équipe, exécutée par le moteur bleu en repère réel (ACTIONS.realStep : faces A <-> B) */
+function serieBleu(seed) {
+  var r = rng(seed), o = { dec: 0, fail: 0, path: 0, opp: 0, other: {}, eps: 0, t: Date.now(), sansFinir: 0, sansAttente: 0, att: 0 }, cat = ACTIONS.ALL, envC = { catalogue: cat };
+  var iFin = cat.map(function (a) { return a.a; }).indexOf('finir'), iAtt = []; cat.forEach(function (a, i) { if (a.famille === 'attenteCourte') iAtt.push(i); });
+  while (o.dec < N_DEC) {
+    var sim = ENGINE.makeSim(ENGINE.blueParams(Object.assign({}, ENGINE.DEF, { seed: seed * 1000 + o.eps })), { skipContacts: true }), mem = ENV.newMemory(), kk = 0; o.eps++;
+    ENV.updateMemory(mem, sim, 0, 0, null, null);
+    while (sim.time() < ENV.MATCH - 0.05 && kk < 80 && o.dec < N_DEC) {
+      var b = ENV.beliefFromSim(sim, mem, null), mask = ACTIONS.maskBelief(b, cat);
+      if (!mask.some(function (x) { return x; })) break;
+      if (!mask[iFin]) o.sansFinir++;
+      if (iAtt.some(function (i) { return !mask[i]; })) o.sansAttente++;
+      var pick = randomPick(r, envC, mask); if (iAtt.indexOf(pick) >= 0) o.att++;
+      var st = ACTIONS.toProgramStep(cat[pick], b), t0 = sim.time(), info = sim.exec(ACTIONS.realStep(st, 'blue'));
+      ENV.updateMemory(mem, sim, t0, sim.time(), st, info); kk++; o.dec++;
+      if (cat[pick].a === 'finir') break;
+      if (!info.err) continue;
+      o.fail++;
+      if (OPP.test(info.err)) o.opp++;
+      else if (PATH.test(info.err)) o.path++;
+      else { var key = info.err.replace(/[0-9]+([.,][0-9]+)?/g, '#'); o.other[key] = (o.other[key] || 0) + 1; }
+    }
+  }
+  o.nOther = o.fail - o.path - o.opp;
+  function pc(n) { return (100 * n / o.dec).toFixed(2) + ' %'; }
+  console.log('   BLEU sans adversaire : ' + o.dec + ' décisions, ' + o.eps + ' matchs, ' + ((Date.now() - o.t) / o.dec).toFixed(1) + ' ms/décision ; échecs ' + o.fail + ' = ' + pc(o.fail));
+  console.log('     trajet ou pose choisie par le moteur : ' + o.path + ' (' + pc(o.path) + ') ; autres : ' + o.nOther + ' (' + pc(o.nOther) + ') ' + JSON.stringify(o.other));
+  return o;
+}
+var S0 = serie(false, 11), S1 = serie(true, 12), SB = serieBleu(11);
+check('bleu, sans adversaire : échecs toutes causes < 2 %', SB.fail / SB.dec < 0.02, (100 * SB.fail / SB.dec).toFixed(2) + ' %');
+check('bleu : « finir » et attentes courtes toujours valides avant 100 s', !SB.sansFinir && !SB.sansAttente, SB.sansFinir + ' / ' + SB.sansAttente);
 check('sans adversaire : échecs hors trajet < 2 %', S0.nOther / S0.dec < 0.02, (100 * S0.nOther / S0.dec).toFixed(2) + ' %');
 check('avec adversaire : échecs hors trajet et hors adversaire < 2 %', S1.nOther / S1.dec < 0.02, (100 * S1.nOther / S1.dec).toFixed(2) + ' %');
 /* cohérence masque -> moteur (chantier moteur-2 : le masque joue l'étape à blanc avec le planificateur du moteur) */

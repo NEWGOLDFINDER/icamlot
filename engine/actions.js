@@ -1,7 +1,9 @@
 /* Catalogue v3 des macro-actions du réseau, conversion en briques du moteur et masque pur (contrat §4 de docs/CONTRATS.md).
 
    - Le catalogue est écrit dans le repère de l'équipe (repère jaune) : P1..P10, M1..M5, T1..T4, points de passage W*, stocks S*.
-     Pour l'équipe bleue, ACTIONS.realStep applique le miroir (ids et coordonnées) avant d'envoyer la brique au moteur.
+     Pour l'équipe bleue, ACTIONS.realStep applique le miroir (ids, coordonnées, faces A <-> B : ENGINE.mirrorStep) avant
+     d'envoyer la brique au moteur. Les faces du catalogue sont celles du repère de l'équipe : en bleu, « face A » désigne la vraie
+     face B (et inversement), pour que la même action produise le même effet en miroir (contrat §15).
    - toProgramStep(act, belief) renvoie LA brique de programme de l'action (repère de l'équipe). ENV.step exécute exactement
      cette brique ; env.program() l'enregistre ; ENGINE.simulate la rejoue à l'identique.
    - maskBelief(belief, catalogue) : fonction pure de la croyance (voir ENV.BELIEF_DOC dans engine/env.js).
@@ -11,7 +13,8 @@
    Temps masqué automatique (contrat §7.1) : toutes les briques qui le permettent portent tm: true ; le moteur choisit le
    moment (pendant le trajet, en fin de trajet, avant de partir, ou sur place). */
 (function (root) {
-  var CATALOGUE_VERSION = 'icamlot-catalogue-3.1';
+  /* 3.2 (chantier symétrie, contrat §15) : en bleu, les faces A et B du catalogue sont échangées (face A = vraie face B) */
+  var CATALOGUE_VERSION = 'icamlot-catalogue-3.2';
   var FACES = ['A', 'B'];
   var PACKS = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'P9', 'P10'];
   var MURS = ['M1', 'M2', 'M3', 'M4', 'M5'];
@@ -340,6 +343,8 @@
     return ownStones(b).filter(function (o) { return dist(o.c, c) < 40; }).sort(function (a, d) { return a.bottom - d.bottom; });
   }
   function ownStoneId(id, team) { return mirId(id, team); }
+  /* face réelle d'une face du repère de l'équipe (bleu : A <-> B, contrat §15) */
+  function realFace(f, team) { return team === 'blue' ? E().mirrorFace(f) : f; }
 
   /* Brique de programme de l'action (repère de l'équipe, comme une stratégie écrite pour le jaune), ou null si l'action
      ne désigne rien dans cet état (pile vide, rangée vide...). belief est la croyance (repère réel). */
@@ -353,7 +358,7 @@
         return { a: 'prendre', f: act.f, mode: act.mode, s: act.p + '.' + n, tm: true };
       case 'mur': return { a: 'mur', f: act.f, z: act.z, side: act.side };
       case 'tour':
-        var id = (b.pinces[act.f].slots || [])[act.rang - 1];
+        var id = (b.pinces[realFace(act.f, team)].slots || [])[act.rang - 1];
         if (!id) return null;
         return { a: 'tour', f: act.f, z: act.z, s: ownStoneId(id, team), tm: true };
       case 'porte': return { a: 'porte', f: act.f, z: act.z, side: act.side };
@@ -368,7 +373,7 @@
       case 'lacher': return { a: 'deposerZone', f: act.f, q: 'pile' };
       case 'stocker':
         /* pose à plat au sol : à 0° si la rangée 1 est tenue, sinon retournée à 180° si la rangée 3 l'est (la pierre la plus basse touche le sol) */
-        var s = stockById(act.stock), sl = (b.pinces[act.f].slots || []), r0 = sl[0] || !sl[2] ? 0 : 180;
+        var s = stockById(act.stock), sl = (b.pinces[realFace(act.f, team)].slots || []), r0 = sl[0] || !sl[2] ? 0 : 180;
         return { a: 'deposer', f: act.f, q: 'pile', x: s.x, y: s.y, ang: s.ang, r: r0, tm: true };
       case 'reprendre':
         var stk = stockStack(b, act.stock);
@@ -380,11 +385,11 @@
     return null;
   }
 
-  /* Brique en repère réel (envoyée au moteur) : ids en miroir et coordonnées de dépôt / trajectoire en miroir pour le bleu.
-     seDeplacer est déjà mis en miroir par le moteur (repère de l'équipe). */
+  /* Brique en repère réel (envoyée au moteur) : ids, faces (A <-> B, contrat §15) et coordonnées de dépôt / trajectoire en
+     miroir pour le bleu. seDeplacer est déjà mis en miroir par le moteur (repère de l'équipe). */
   function realStep(st, team) {
     if (!st || team !== 'blue') return st;
-    /* ENGINE.mirrorStep met aussi en miroir deposer.x/ang et les points de traj (chantier moteur-2) */
+    /* ENGINE.mirrorStep échange les faces A et B, met en miroir deposer.x/ang et les points de traj (cap : ENGINE.mirrorCap) */
     return E().mirrorStep(st);
   }
 
@@ -860,7 +865,7 @@
     CATALOGUE_VERSION: CATALOGUE_VERSION, HYPOTHESES: HYPOTHESES,
     FACES: FACES, PACKS: PACKS, MURS: MURS, TOURS: TOURS, COTES: COTES, ANGLES: ANGLES, FAMILLES: FAMILLES, ALL: ALL,
     WAYPOINTS_INFO: WAYPOINTS_INFO, STOCKS: STOCKS,
-    filterByFamilles: filterByFamilles, toProgramStep: toProgramStep, realStep: realStep, sameStep: sameStep, indexOfStep: indexOfStep,
+    filterByFamilles: filterByFamilles, toProgramStep: toProgramStep, realStep: realStep, realFace: realFace, sameStep: sameStep, indexOfStep: indexOfStep,
     maskBelief: maskBelief, explainBelief: explainBelief, preBelief: preBelief, approaches: approaches,
     stockCount: stockCount, stored: stored, heldFootAt: heldFootAt,
     _poseHitNow: function (b, tol, dx, dy) { return poseHit(b, poseOf(b, b.pose.x + (dx || 0), b.pose.y + (dy || 0), b.pose.h), null, {}, tol); }
