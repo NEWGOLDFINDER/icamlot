@@ -59,7 +59,7 @@ ok(/rotation impossible sous 350 mm/.test(r1.infos[1].err || ''), 'pile tournée
 var r2 = run([{ a: 'prendre', f: 'B', mode: 'pierre', s: 'P1.3' }, { a: 'tourner', f: 'B', r: 180 }]);
 ok(/rotation impossible sous 350 mm/.test(r2.infos[1].err || '') && r2.infos[1].dt === 0, 'retournement à 180° d\'une pierre en rangée 3 refusé sans avancer le temps', r2.infos[1].err);
 var r3 = run([{ a: 'tourner', f: 'A', r: 180 }, { a: 'tourner', f: 'A', r: 0 }]);
-ok(!r3.infos[0].err && !r3.infos[1].err && proche(r3.infos[0].dt, 3, 0.05), 'nacelle vide 0 → 180° exécutée (3 s)', r3.infos[0].dt.toFixed(2) + ' s');
+ok(!r3.infos[0].err && !r3.infos[1].err && r3.infos[0].dt >= 3 - 0.05 && r3.infos[0].dt <= 3 + 4 * E.DEF.trz + 0.05, 'nacelle vide 0 → 180° exécutée (3 s + rampes des vérins Z)', r3.infos[0].dt.toFixed(2) + ' s');
 
 /* ------------------------------------------------------------------ */
 titre('Programme de référence (golden)');
@@ -203,6 +203,48 @@ ok(Rd && !Rd.errors.concat(Rd.opponent.errors).some(function (e) { return /Erreu
 var d = E.makeDuel({ blue: { params: E.blueParams({}) } }), excD = null;
 try { d.run({ yellow: E.programAgent(ref.slice(0, 4)), blue: E.programAgent(ref.slice(0, 4).map(E.mirrorStep)) }); d.finish(); } catch (e) { excD = e; }
 ok(!excD, 'makeDuel + run sans exception', excD && excD.message);
+
+/* ------------------------------------------------------------------ */
+titre('Chantier moteur-2');
+(function () { var r = run(ref), b = r.sim.balls(); ok(b.tDeploy >= E.T_ATTAQUE - E.DEF.bdep - E.DEF.bspin - 1e-6 && b.shots && b.shots[0].t >= E.T_ATTAQUE - 1e-6, 'canon sorti juste à temps pour la phase d\'attaque (pas avant 85 s - sortie - mise en route)', 'sortie à ' + b.tDeploy.toFixed(2) + ' s, 1er tir à ' + b.shots[0].t.toFixed(2) + ' s'); })();
+ok(proche(E.DEF.trz, Math.round((1.25 - 100 / 84) * 1000) / 1000, 1e-12) && E.DEF.vz === L.SPEC.robot.mecanismes.pince_A_et_B.vitesse_chariot_mm_s, 'vérins Z : vitesse et rampes lues dans la spec', E.DEF.vz + ' mm/s, ' + E.DEF.trz.toFixed(3) + ' s par mouvement');
+/* mirrorStep : dépôt et trajectoire en repère réel mis en miroir (comme ACTIONS.realStep) */
+var mD = E.mirrorStep({ a: 'deposer', f: 'A', q: 'pile', x: 300, y: 620, ang: 30, r: 0 }), mT = E.mirrorStep({ a: 'traj', pts: [{ x: 500, y: 400, a: 10 }, { x: 600, y: 700 }] });
+ok(mD.x === 2700 && mD.ang === 150 && mD.y === 620 && mT.pts[0].x === 2500 && mT.pts[0].a === 170 && mT.pts[1].x === 2400 && mT.pts[1].a === undefined, 'mirrorStep : deposer.x/ang et points de traj en miroir');
+/* PRE.deposer : le stockage est évalué avec les empreintes de la pose réelle (grand axe selon ang) */
+(function () {
+  var base = run([{ a: 'prendre', f: 'A', p: 'P1' }, { a: 'prendre', f: 'B', p: 'P2' }, { a: 'deposer', f: 'A', q: 'pile', x: 300, y: 1320, ang: 0, r: 0 }]);
+  var sn = base.sim.snapshot(), n = 0, incoh = [];
+  ok(base.sim.stockage() === 3 && !base.sim.errors().length, 'trois pierres stockées dans la cour', base.sim.stockage() + ' ; ' + base.sim.errors().map(function (e) { return e.msg; }).join(' | '));
+  /* points près des zones de construction (le grand axe décide si la pile est dans une zone ou stockée) */
+  [[250, 650, 0], [250, 650, 90], [480, 760, 45], [480, 760, 135], [560, 1000, 0], [560, 1000, 90], [200, 560, 0], [200, 560, 90], [430, 1180, 135], [430, 1180, 45]].forEach(function (q) {
+    base.sim.restore(sn);
+    var st = { a: 'deposer', f: 'B', q: 'pile', x: q[0], y: q[1], ang: q[2], r: 0 }, pre = base.sim.preconditions(st), e = base.sim.exec(st), stk = base.sim.errors().some(function (x) { return /Stockage/.test(x.msg); });
+    n++;
+    if (!!(pre && /Stockage/.test(pre)) !== stk && !(e.err && !/Stockage/.test(e.err))) incoh.push(q.join(',') + ' pre=' + pre + ' exec=' + e.err);
+  });
+  ok(!incoh.length, 'PRE.deposer : stockage prédit = stockage après la pose réelle', n + ' dépôts' + (incoh.length ? ' ; ' + incoh.join(' ; ') : ''));
+})();
+
+/* planification à blanc : pure, et monde reconstruit depuis un état */
+(function () {
+  var r = run(ref.slice(0, 4)), sim = r.sim, avant = JSON.stringify([sim.time(), sim.pose(), sim.errors().length, sim.result(false).K.length, sim.stockage()]);
+  var pe = sim.planifierEtape(ref[4]), pl = sim.planifier(null, { x: 1500, y: 1000, h: sim.pose().h }), dans = sim.planifier(null, { x: E.PK[4].x, y: E.PK[4].y, h: 0 });
+  var apres = JSON.stringify([sim.time(), sim.pose(), sim.errors().length, sim.result(false).K.length, sim.stockage()]);
+  ok(avant === apres, 'planifier / planifierEtape sans effet sur la simulation');
+  ok(pe.ok && pe.trajet && pe.trajet.points.length > 0, 'planifierEtape : trajet trouvé pour l\'étape suivante du programme de référence', pe.raison || (pe.trajet.points.length + ' points, ' + pe.trajet.duree.toFixed(2) + ' s'));
+  ok(pl && pl.points.length > 0 && dans === null, 'planifier : trajet vers le centre, aucun vers une carrière occupée');
+  var e1 = sim.exec(ref[4]);
+  ok(!e1.err && Math.abs(e1.t1 - e1.t0) > 0, 'exec après planifierEtape : même étape réussie', e1.err || '');
+  var b = { t: 12, team: 'yellow', pose: { x: 800, y: 1000, h: 30 }, pinces: { A: { hc: 180, rot: 0, slots: ['P1.1', 'P1.2', 'P1.3'] }, B: { hc: 165, rot: 0, slots: [null, null, null] } },
+    meca: { can: 0, fx: GE.fourche.fxRentree, fz: GE.fourche.fzHaut }, graal: 'home', paquets: { P1: { n: 0 } }, pierres: [], etrangeres: [] };
+  var W = E.makeSim({ x0: 800, y0: 1000, h0: 30 }, { skipContacts: true, etat: b }), wp = W.pose();
+  var lp = sim.lastPlan(), mono = lp && lp.K.every(function (k, i) { return !i || k.t >= lp.K[i - 1].t - 1e-9; });
+  ok(lp && lp.K.length > 1 && mono && Math.abs(lp.K[0].t - lp.t0) < 1e-9 && Math.abs(lp.K[lp.K.length - 1].t - lp.t1) < 1e-9 && lp.K[0].A.vac.length === 3 && lp.K[0].C.fx != null, 'lastPlan : points clés de la dernière étape (t, x, y, h, A, B, C)', lp && lp.K.length + ' points');
+  var rc = sim.recaler({ x: sim.pose().x + 5, y: sim.pose().y, h: sim.pose().h, t: sim.time() + 0.3 }), rc2 = sim.recaler({ t: 1 });
+  ok(rc.horloge === 'recalée' && /ignorée/.test(rc2.horloge) && !sim.errors().slice(-1).some(function (e) { return /Erreur interne/.test(e.msg); }), 'recaler : pose et horloge mesurées (horloge en avant seulement)', rc2.horloge);
+  ok(wp.x === 800 && wp.h === 30 && W.time() === 12 && W.held().A && W.held().A.stack.length === 3 && !W.errors().length, 'monde reconstruit (opts.etat) : pose, horloge, pierres tenues, sans erreur de départ');
+})();
 
 console.log('\n' + nOk + ' réussis, ' + nKo + ' échoués.');
 process.exit(nKo ? 1 : 0);
