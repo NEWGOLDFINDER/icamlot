@@ -13,7 +13,7 @@
      meca: { can, fx, fz },                     canon sorti (mm), fourche de l'ascenseur (position, hauteur) : codeurs
      graal: 'home' | 'ascenseur' | 'toit' | 'retire',
      tir: booléen (séance de tir faite),
-     adversaire: null | { x, y, t },            lidar : position du robot adverse et instant de la mesure
+     adversaire: null | { x, y, vx, vy, t },    lidar : position (mm) et vitesse (mm/s) du robot adverse, instant de la mesure
      pierres: [ { id, pk, foot: [[x, y] x4], bottom, top, vertical, grp } ]   pierres posées par CE robot (il sait où il les a
                                                  lâchées) ; pk = index du paquet d'origine ; grp = pierres lâchées ensemble
      portes: [ 'M3', ... ],                     portes construites par ce robot (ids réels)
@@ -32,9 +32,13 @@
   /* Modèle de visibilité des caméras des faces A et B : HYPOTHÈSES (spec/robot.json : modele_cameras_et_champ = « a_definir »).
      Une carrière est vue si son centre est à moins de portee mm de la caméra et à moins de demiAngle degrés de l'axe de la face.
      Pas d'occultation. Les instants de vue sont échantillonnés tous les pas secondes pendant chaque action. */
-  var VISION = { demiAngle: 35, portee: 1500, pas: 0.5, masqueeParCharge: false };
+  var VISION = { demiAngle: 35, portee: 1500, pas: 0.5, masqueeParCharge: false,
+    /* lidar : l'adversaire est toujours vu (pas d'occultation) ; vitesse estimée sur periodeLidar s (HYPOTHÈSES) */
+    periodeLidar: 0.1 };
   /* Normalisations : bornes documentées, toutes les entrées sont dans [0, 1] (ou [-1, 1] pour cos/sin). */
-  var NORM = { age: 100, rayonEnveloppe: 500, rayon: 1000, pasRayon: 25, rayonAdversaire: 212.35 };
+  var NORM = { age: 100, rayonEnveloppe: 500, rayon: 1000, pasRayon: 25, rayonAdversaire: 212.35, ageAdversaire: 5 };
+  /* vitesse de référence pour normaliser la vitesse adverse : la nôtre (spec/robot.json, vitesse_lineaire_mm_s) */
+  function vRef() { var v = SPEC.robot.entrainement && SPEC.robot.entrainement.vitesse_lineaire_mm_s; return (v && v.valeur != null ? v.valeur : v) || ENGINE.DEF.v * 1000; }
 
   var GROUPS = [
     { id: 'temps', label: 'Temps', vars: [{ id: 'temps', nom: 'Temps', desc: 'temps restant / 100 s ; phase d\'attaque ouverte (t >= 85 s)', n: 2 }] },
@@ -44,7 +48,7 @@
     { id: 'graal', label: 'Graal', vars: [{ id: 'graal', nom: 'État du Graal', desc: 'au départ, sur la fourche, sur le toit, retiré', n: 4 }] },
     { id: 'paquets', label: 'Carrières (caméras)', vars: [{ id: 'paquets', nom: 'Pierres par carrière', desc: 'P1 à P10 (repère de l\'équipe) : pierres vues / 3, âge de l\'information / 100 s', n: 20 }] },
     { id: 'constructions', label: 'Constructions propres', vars: [{ id: 'constructions', nom: 'Murs, tours, stock', desc: 'M1-M5 : 0 vide, 0,5 occupée, 1 porte ; T1-T4 : occupée ; pierres stockées dans la cour / 3', n: 10 }] },
-    { id: 'adversaire', label: 'Adversaire (lidar)', vars: [{ id: 'adversaire', nom: 'Position adverse', desc: 'vu, x / 3000, y / 2000 (repère de l\'équipe)', n: 3 }] },
+    { id: 'adversaire', label: 'Adversaire (lidar)', vars: [{ id: 'adversaire', nom: 'Position et vitesse adverses', desc: 'vu, x / 3000, y / 2000, vx / v, vy / v (repère de l\'équipe, v = notre vitesse, bornées à ±1), âge de la mesure / 5 s', n: 6 }] },
     { id: 'spatial', label: 'Dégagement', vars: [{ id: 'spatial', nom: 'Rayons', desc: 'distance libre (obstacles connus) dans 8 directions à partir de la face A, tous les 45° dans le sens trigonométrique du repère de l\'équipe, / 1000 mm', n: 8 }] },
     { id: 'echec', label: 'Retour d\'exécution', vars: [{ id: 'echec', nom: 'Échec', desc: 'la dernière action a échoué', n: 1 }] }
   ];
@@ -100,6 +104,12 @@
     if (brick && info && info.err && t1 - t0 < 1e-9) mem.echecs.briques.push(JSON.parse(JSON.stringify(brick)));
     mem.tVu = t1;
   }
+  /* mesure lidar simulée de l'autre robot à l'instant t : position et vitesse (différence sur periodeLidar) */
+  function lidarOf(other, t) {
+    if (!other) return null;
+    var p = other.poseAtT(t), q = other.poseAtT(Math.max(0, t - VISION.periodeLidar)), dt = Math.min(t, VISION.periodeLidar);
+    return { x: p.x, y: p.y, vx: dt > 0 ? (p.x - q.x) / dt : 0, vy: dt > 0 ? (p.y - q.y) / dt : 0, t: t };
+  }
   function beliefFromSim(sim, mem, oppPose) {
     var P = sim.params(), p = sim.pose(), held = sim.held(), t = sim.time();
     function slots(f) { var h = held[f]; return h && h.stack ? h.stack.map(function (s) { return s ? s.id : null; }) : [null, null, null]; }
@@ -115,7 +125,7 @@
       meca: { can: p.C.can, fx: p.C.fx, fz: p.C.fz },
       graal: sim.graal().cur.k,
       tir: !!sim.balls().shots,
-      adversaire: oppPose && oppPose.x != null ? { x: oppPose.x, y: oppPose.y, t: t } : null,
+      adversaire: oppPose && oppPose.x != null ? { x: oppPose.x, y: oppPose.y, vx: oppPose.vx || 0, vy: oppPose.vy || 0, t: oppPose.t != null ? oppPose.t : t } : null,
       pierres: pierres, portes: pl, paquets: paquets, etrangeres: [], echec: !!mem.echec,
       echecs: mem.echecs ? { t: mem.echecs.t, briques: mem.echecs.briques.slice() } : { t: t, briques: [] },
       params: { gx: P.gx, gy: P.gy, ga: P.ga || 0, tx: P.tx, ty: P.ty, bn: P.bn, tirDepuisTrone: P.tirDepuisTrone }
@@ -162,7 +172,9 @@
         push(clamp01(ACTIONS.stockCount(b) / SPEC.regles.construction.stockage_max_cour));
       } else if (id === 'adversaire') {
         var o = b.adversaire;
-        if (o && o.x != null) push(1, clamp01(X(o.x) / 3000), clamp01(o.y / 2000)); else push(0, 0, 0);
+        var vr = vRef(), cl = function (v) { return Math.max(-1, Math.min(1, v)); };
+        if (o && o.x != null) push(1, clamp01(X(o.x) / 3000), clamp01(o.y / 2000), cl((blue ? -1 : 1) * (o.vx || 0) / vr), cl((o.vy || 0) / vr), clamp01((b.t - (o.t != null ? o.t : b.t)) / NORM.ageAdversaire));
+        else push(0, 0, 0, 0, 0, 0);
       } else if (id === 'spatial') rays(b).forEach(function (v) { out.push(v); });
       else if (id === 'echec') push(b.echec ? 1 : 0);
     });
@@ -321,7 +333,7 @@
       next: function (sim, other) {
         var t = sim.time();
         if (t >= MATCH - 0.05 || n >= 300) return null;
-        var b = mind.belief(sim, other ? other.poseAtT(t) : null), d = mind.decide(b), st;
+        var b = mind.belief(sim, lidarOf(other, t)), d = mind.decide(b), st;
         n++;
         st = d.idx < 0 ? { a: 'attendreJusqua', sec: MATCH } : ACTIONS.toProgramStep(spec.catalogue[d.idx], b);
         mind.played(sim, b, d.idx, st);
@@ -369,8 +381,19 @@
     var PEN = { erreur: +rec.penalite_erreur || 0, contact: +rec.penalite_contact || 0, invalide: +rec.penalite_invalide || 0 };
     var duel = null, sim = null, mem = null, opp = null, lastScore = 0, done = false, history = [], penalties = 0, cur = null;
 
+    /* adversaire du match (décision §9) : scenario.opponent, sinon un de opts.adversaires (choisi par la graine ou
+       scenario.adversaire = index), sinon opts.opponent, sinon le programme de référence en miroir */
+    var pool = (opts.adversaires || []).slice();
+    function opponentSpecOf(scenario) {
+      if (scenario.opponent) return scenario.opponent;
+      if (pool.length) {
+        var k = scenario.adversaire != null ? +scenario.adversaire : Math.floor(mulberry((scenario.seed || 0) + 101)() * pool.length);
+        return pool[((k % pool.length) + pool.length) % pool.length];
+      }
+      return opts.opponent || { program: ENGINE.PROGRAMME_REFERENCE };
+    }
     function syncOpp(upTo) { if (opp) duel.advanceBlue(opp.agent, upTo == null ? sim.time() : upTo); }
-    function oppPose() { return duel && duel.hasBlue ? duel.sims.blue.poseAtT(sim.time()) : null; }
+    function oppPose() { return duel && duel.hasBlue ? lidarOf(duel.sims.blue, sim.time()) : null; }
     function scoreNow() { return SCORE.scoreAt(sim.result(false), sim.params(), Math.min(sim.time(), MATCH)).total; }
     function belief() { syncOpp(); return beliefFromSim(sim, mem, oppPose()); }
     function state() {
@@ -395,7 +418,7 @@
       scenario = scenario || {};
       var P = Object.assign({}, params, scenario.params || {});
       if (scenario.seed != null) P.seed = scenario.seed;
-      opp = opponentSetup(scenario.opponent || opts.opponent, P, scenario.intensite || intensity);
+      opp = opponentSetup(opponentSpecOf(scenario), P, scenario.intensite || intensity);
       duel = ENGINE.makeDuel({ params: P, skipContacts: skipContacts, blue: opp ? { params: opp.params } : null });
       sim = duel.sims.yellow;
       mem = newMemory();
@@ -536,7 +559,7 @@
     create: create, mirrorId: mirrorId, mirrorStep: mirrorStep, blueParams: blueParams, pickOpponent: pickOpponent,
     chooserFromLayers: chooserFromLayers, chooserFromRecurrent: chooserFromRecurrent, recurrentForward: recurrentForward,
     brainSpec: brainSpec, brainAgent: brainAgent, makeMind: makeMind, opponentSetup: opponentSetup, playProgram: playProgram, qualify: qualify,
-    newMemory: newMemory, updateMemory: updateMemory, beliefFromSim: beliefFromSim, observeBelief: observeBelief
+    newMemory: newMemory, updateMemory: updateMemory, beliefFromSim: beliefFromSim, observeBelief: observeBelief, lidarOf: lidarOf
   };
   /* ENV.EXAMPLE est remplacé par ENGINE.PROGRAMME_REFERENCE (alias conservé pour la commande « example » du worker) */
   Object.defineProperty(api, 'EXAMPLE', { get: function () { return ENGINE.PROGRAMME_REFERENCE; }, enumerable: true });
