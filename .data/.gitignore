@@ -1,0 +1,3 @@
+# points de reprise et sorties d entraînement locales (non versionnés)
+modeles/*.dernier.pt
+modeles/*.tmp

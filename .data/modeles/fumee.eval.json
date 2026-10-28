@@ -1,0 +1,113 @@
+{
+  "matchs": 24,
+  "score": {
+    "moyenne": 76.0,
+    "ecart_type": 0.0,
+    "min": 76.0,
+    "max": 76.0,
+    "ic95": 0.0
+  },
+  "erreurs_par_match": {
+    "moyenne": 0.0,
+    "ecart_type": 0.0,
+    "min": 0.0,
+    "max": 0.0,
+    "ic95": 0.0
+  },
+  "erreurs_moteur": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "matchs_sans_erreur": 24,
+  "duels": 12,
+  "victoires": 12,
+  "egalites": 0,
+  "defaites": 0,
+  "taux_victoire": 1.0,
+  "score_adversaire": {
+    "moyenne": 54.0,
+    "ecart_type": 0.0,
+    "min": 54.0,
+    "max": 54.0,
+    "ic95": 0.0
+  },
+  "crashs": 0,
+  "tronques": 0,
+  "actions_invalides": 0,
+  "detail_moyen": {
+    "boulets": 20.0,
+    "graal": 20.0,
+    "murs": 20.0,
+    "pierres": 6.0,
+    "porte": 0.0,
+    "roi": 10.0,
+    "tours": 0.0
+  },
+  "par_adversaire": {
+    "sans adversaire · aucun": {
+      "matchs": 12,
+      "score": {
+        "moyenne": 76.0,
+        "ecart_type": 0.0,
+        "min": 76.0,
+        "max": 76.0,
+        "ic95": 0.0
+      },
+      "taux_victoire": null
+    },
+    "strategie:exemple · realiste": {
+      "matchs": 12,
+      "score": {
+        "moyenne": 76.0,
+        "ecart_type": 0.0,
+        "min": 76.0,
+        "max": 76.0,
+        "ic95": 0.0
+      },
+      "taux_victoire": 1.0
+    }
+  },
+  "duree_s": 17.344154596328735,
+  "matchs_par_s": 1.383751503522698,
+  "decisions": 216,
+  "decisions_par_s": 12.453763531704281,
+  "protocole": {
+    "matchs": 24,
+    "graine": 10000,
+    "adversaires": [
+      "strategie:exemple"
+    ],
+    "intensites": [
+      "aucun",
+      "realiste"
+    ],
+    "graine_tirage": 1,
+    "glouton": true,
+    "obs_version": "empreinte:0674f241f0ab4e76",
+    "catalogue_version": "empreinte:229f666a3de8854e"
+  },
+  "mise_a_jour": 6,
+  "champion": true
+}

@@ -67,6 +67,17 @@ def test_normalisation_et_rms():
     assert z.abs().max() <= 5.0
 
 
+def test_nombre_de_parametres_annonce_par_l_api():
+    import importlib.util
+    from pathlib import Path
+    spec = importlib.util.spec_from_file_location("api_server", Path(__file__).resolve().parents[2] / "api" / "server.py")
+    srv = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(srv)
+    for n_in, n_out, h in ((56, 130, 128), (37, 106, 64), (10, 7, 32)):
+        m = RecurrentActorCritic(n_in, n_out, hidden=h)
+        assert srv.n_params_recurrent(n_in, n_out, h) == sum(p.numel() for p in m.parameters())
+
+
 def test_sauvegarde_aller_retour(tmp_path):
     m = RecurrentActorCritic(7, 3, hidden=12, encodeur=(16,), activation="tanh")
     m.set_obs_stats(np.arange(7.0), np.ones(7) * 4)
