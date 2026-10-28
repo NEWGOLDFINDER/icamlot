@@ -48,8 +48,9 @@
     /* robot « coincé » (en contact, ou aucun déplacement de pasCoince mm sans contact) : le planificateur du moteur ne trouve
        alors aucun passage (mesuré) ; les actions avec trajet sont masquées */
     pasCoince: 20,
-    /* atteignabilité : 'grille' (A* sur la grille du planificateur, robot exact au cap d'arrivée) ou 'disque' (rapide, approché) */
-    planification: 'grille',
+    /* atteignabilité : 'moteur' (le moteur joue l'étape à blanc sur le monde reconstruit depuis la croyance : choix de la pose
+       et planificateur certifié du moteur, celui qu'exec essaie en premier), 'grille' (ancien A* du masque) ou 'disque' (approché) */
+    planification: 'moteur',
     planMax: 4000,
     /* case libre : sans contact avec cette tolérance (mm, négative = marge exigée) ; le moteur vérifie ensuite le tracé au mm */
     margeGrille: 1,
@@ -753,6 +754,7 @@
     /* échec appris : la même brique vient d'échouer à cet instant, le monde n'a pas changé */
     if (b.echecs && b.echecs.t === b.t && (b.echecs.briques || []).some(function (x) { return sameStep(x, st); })) return 'Vient d\'échouer à cet instant.';
     var ap = approaches(act, st, b);
+    if (HYPOTHESES.planification === 'moteur') return engineCheck(st, b, ap, cache);
     if (!ap) return pendingOk(b, st, cache);
     if (st.a === 'tir') {
       /* le tir doit commencer avant 100 s : trajet (distance / v, rotation / w), sortie et mise en route du canon */
@@ -778,6 +780,24 @@
     }
     if (!ap.some(function (c) { return planOk(b, c, cache); })) return 'Hors d\'atteinte (aucun passage sur la grille du planificateur).';
     return null;
+  }
+  /* monde du moteur reconstruit depuis la croyance (une fois par appel du masque) */
+  function worldOf(b, cache) {
+    if (cache.world) return cache.world;
+    var P = { team: b.team, x0: b.pose.x, y0: b.pose.y, h0: b.pose.h };
+    Object.keys(b.params || {}).forEach(function (k) { if (b.params[k] != null) P[k] = b.params[k]; });
+    return (cache.world = E().makeSim(P, { skipContacts: true, etat: b }));
+  }
+  /* atteignabilité par le moteur : l'étape est jouée à blanc (planifierEtape) jusqu'à son premier trajet, cherché par le
+     planificateur certifié ; une étape acceptée ainsi réussit dans exec (même choix de pose, exec essaie d'abord ce planificateur) */
+  function engineCheck(st, b, ap, cache) {
+    if (ap && st.a === 'tir') {
+      var P2 = b.params || {}, v = (P2.v || 0.5) * 1000, w = P2.w || 120, tg = ap[0].O;
+      var dh2 = Math.abs(((ap[0].h - b.pose.h) % 360 + 540) % 360 - 180);
+      if (b.t + Math.max(dist(tg, [b.pose.x, b.pose.y]) / v, dh2 / w) + (P2.bdep > 0 ? P2.bdep : 0.1) + (P2.bspin > 0 ? P2.bspin : 0) >= E().MATCH) return 'Tir : la position de tir serait atteinte après 100 s.';
+    }
+    var r = worldOf(b, cache).planifierEtape(st, { mode: 'disque', verifier: true });
+    return r.ok ? null : r.raison || 'Refusé par le moteur.';
   }
   /* fonctions pures : la grille d'atteignabilité est calculée une fois par appel, au besoin */
   function explainBelief(b, catalogue) { var cache = {}; return (catalogue || ALL).map(function (a) { return explain(a, b, cache); }); }

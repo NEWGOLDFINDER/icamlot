@@ -115,10 +115,16 @@
     return [Math.max(T.lo[i0], T.lo[i1]), Math.min(T.hi[i0], T.hi[i1])];
   }
   /* balayage de a0 à a1 : { ok, marge } (marge = min(hi - lo), comme tools/conception_pince.py, course de l'axe comprise) */
+  var BAL = new Map();
   function balayage(mask, chateau, a0, a1) {
+    var key = mask + (chateau ? 'c' : 'h') + a0 + ',' + a1, r = BAL.get(key);
+    if (r) return { ok: r.ok, marge: r.marge };
     var n = Math.max(1, Math.ceil(Math.abs(a1 - a0))), m = 1e9;
     for (var k = 0; k <= n; k++) { var c = corridor(mask, chateau, a0 + (a1 - a0) * k / n); m = Math.min(m, c[1] - c[0]); }
-    return { ok: m >= 0, marge: m };
+    r = { ok: m >= 0, marge: m };
+    if (BAL.size > 5000) BAL.clear();
+    BAL.set(key, r);
+    return { ok: r.ok, marge: r.marge };
   }
 
   /* ---------------- canon (face C, contrat §2 ; spec mecanismes.canon_C) ---------------- */

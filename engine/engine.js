@@ -124,6 +124,8 @@
   }
 
   var AIM = new Map();
+  /* caches géométriques partagés par toutes les simulations (fonctions pures de leur clé) */
+  var BODY_CACHE = new Map(), HELDR_CACHE = new Map(), PATH_CACHE = new Map();
   function makeSim(P, opts) {
     opts = opts || {};
     P = Object.assign({}, DEF, P || {});
@@ -141,7 +143,8 @@
       return (dx * dir[0] + dy * dir[1]) / m > 0;
     }
     /* pierres posées par l'autre robot (et son Graal au sol) : obstacles (jamais des appuis) */
-    function foreign() { return opts.foreignFeet ? opts.foreignFeet() : []; }
+    var foreignFn = null;
+    function foreign() { return foreignFn ? foreignFn() : opts.foreignFeet ? opts.foreignFeet() : []; }
     function oppOccupies(x, y, t) {
       var o = oppAt(t);
       if (!o || o.x == null) return false;
@@ -176,10 +179,23 @@
       if (c.k === 'held') { var p = pose || poseNow(); return geomHeld(p, c.f, c.l); }
       return c.geo;
     }
-    function geomHeld(p, f, l) {
-      var g = p[f], th0 = g.rot * D2R, fo = heldFoot(p, fk(f), l), zc0 = G.stoneZc(l), sn = Math.sin(th0), cs = Math.cos(th0);
+    /* pierre tenue dans le repère robot (cap 0, centre à l'origine), mise en cache par état de la pince ; geomHeld la place sur la table */
+    var heldRCache = HELDR_CACHE;
+    function geomHeldR(f, l, g) {
+      var key = f + l + ',' + g.hc + ',' + g.rot, r = heldRCache.get(key);
+      if (r) return r;
+      var th0 = g.rot * D2R, q = { x: 0, y: 0, h: 0, A: g, B: g }, fo = heldFoot(q, fk(f), l), zc0 = G.stoneZc(l), sn = Math.sin(th0), cs = Math.cos(th0);
       var zc = g.hc + zc0 * cs, hz = 160 * Math.abs(sn) + 55 * Math.abs(cs);
-      return { foot: rectPoly(fo), fo: fo, top: zc + hz, bottom: zc - hz, zc: zc, vertical: Math.abs(sn) > 0.7, ul: zc0 * sn, th: th0, phi: p.h + 120 * fk(f), O: [p.x, p.y] };
+      r = { foot: rectPoly(fo), fo: fo, top: zc + hz, bottom: zc - hz, zc: zc, vertical: Math.abs(sn) > 0.7, ul: zc0 * sn, th: th0, ang: 120 * fk(f) };
+      if (heldRCache.size > 20000) heldRCache.clear();
+      heldRCache.set(key, r);
+      return r;
+    }
+    function geomHeld(p, f, l) {
+      var r = geomHeldR(f, l, p[f]), c = Math.cos(p.h * D2R), sn = Math.sin(p.h * D2R), x = p.x, y = p.y;
+      var foot = r.foot.map(function (v) { return [x + v[0] * c - v[1] * sn, y + v[0] * sn + v[1] * c]; });
+      var fo = { cx: x + r.fo.cx * c - r.fo.cy * sn, cy: y + r.fo.cx * sn + r.fo.cy * c, hl: r.fo.hl, hn: r.fo.hn, ang: p.h + r.ang };
+      return { foot: foot, fo: fo, top: r.top, bottom: r.bottom, zc: r.zc, vertical: r.vertical, ul: r.ul, th: r.th, phi: p.h + r.ang, O: [x, y] };
     }
     /* centre et rayon d'un obstacle (mis en cache sur l'objet) */
     function prep(o) {
@@ -221,7 +237,7 @@
     function heldGeos(p) { var hs = []; ['A', 'B'].forEach(function (f) { heldStonesOf(f).forEach(function (st) { hs.push(geomHeld(p, f, st.sl)); }); }); return hs; }
 
     /* ---- corps du robot hors châssis (nacelles, canon, ascenseur), repère robot, mis en cache par état des mécanismes ---- */
-    var bodyCache = new Map();
+    var bodyCache = BODY_CACHE;
     function rectC(x0, x1, y0, y1) { return [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]; }
     var bLast = null, bLastV = [NaN, NaN, NaN, NaN, NaN, NaN, NaN];
     function bodiesOf(p) {
@@ -292,9 +308,31 @@
     function collides(p, excl, frGeo, tol) {
       tol = tol == null ? 1 : tol;
       if (!p.C) p.C = s.C;
+      /* accélération (sans adversaire) : loin de tout obstacle d'après le champ de dégagement, aucun contact possible */
+      var F = null;
+      if (!opts.oppPoseAt) {
+        F = frGeo ? FRF.get(frGeo) : null;
+        if (F) {
+          if (!frGeo) frGeo = F.fr;
+          var ci = Math.floor(p.x / CELL), cj = Math.floor(p.y / CELL);
+          if (ci >= 0 && cj >= 0 && ci < GW && cj < GH && F.clr[cj * GW + ci] - 28.3 >= bodyRadius(p) + Math.max(0, -tol) + 0.5) return null;
+        }
+      }
       var r = hits(p, heldGeos(p), frGeo || obstacles(excl), tol, false, oppAt(s.t));
       return r.length ? r[0] : null;
     }
+    /* rayon des corps du robot (mécanismes et pierres tenues) pour l'état des pinces de p */
+    var radCache = new Map();
+    function bodyRadius(p) {
+      var key = p.A.hc + ',' + p.A.rot + ',' + p.B.hc + ',' + p.B.rot + ',' + p.C.can + ',' + p.C.fx + ',' + p.C.fz + ',' + maskOf('A') + ',' + maskOf('B'), r = radCache.get(key);
+      if (r != null) return r;
+      var q = { x: 0, y: 0, h: 0, A: p.A, B: p.B, C: p.C }; r = bodiesOf(q).R;
+      heldGeos(q).forEach(function (g) { g.foot.forEach(function (v) { r = Math.max(r, Math.hypot(v[0], v[1])); }); });
+      if (radCache.size > 5000) radCache.clear();
+      radCache.set(key, r);
+      return r;
+    }
+    var FRF = new WeakMap();
     /* rayon de l'enveloppe du robot (mécanismes et pierres tenues compris), pour l'observation */
     function hullRadius() {
       var p = { x: 0, y: 0, h: s.h, A: cp(s.A), B: cp(s.B), C: cpC(s.C) }, m = bodiesOf(p).R;
@@ -335,10 +373,10 @@
       }
       return true;
     }
-    var pathCache = new Map();
+    var pathCache = PATH_CACHE;
     /* profil (rot, hc) de a0 à a1 en partant de h0 : la hauteur ne bouge que si le couloir l'impose ; points clés simplifiés */
     function rotPath(mask, ch, a0, h0, a1) {
-      var key = mask + ',' + (ch ? 1 : 0) + ',' + a0.toFixed(1) + ',' + h0.toFixed(1) + ',' + a1.toFixed(1), r = pathCache.get(key);
+      var key = mask + ',' + (ch ? 1 : 0) + ',' + a0.toFixed(1) + ',' + h0.toFixed(1) + ',' + a1.toFixed(1) + ',' + VZ + ',' + WROT, r = pathCache.get(key);
       if (r) return r;
       var n = Math.max(1, Math.ceil(Math.abs(a1 - a0))), A = [], H = [], LO = [], HI = [], m = 1e9, h = h0, i, j, kk;
       for (i = 0; i <= n; i++) { var a = a0 + (a1 - a0) * i / n, c = G.corridor(mask, ch, a); m = Math.min(m, c[1] - c[0]); h = Math.max(c[0], Math.min(c[1], h)); A.push(a); H.push(h); LO.push(c[0]); HI.push(c[1]); }
@@ -389,22 +427,35 @@
     var CELL = 40, GW = 75, GH = 50;
     function gridCell(q) { return [Math.max(0, Math.min(GW - 1, Math.floor(q[0] / CELL))), Math.max(0, Math.min(GH - 1, Math.floor(q[1] / CELL)))]; }
     /* cellule libre = robot sans contact ; cellule « serrée » = à moins de la marge d'une pierre (le trajet l'évite si possible) */
-    function freeGrid(h, fr) {
+    /* grilles mises en cache tant que le monde ne change pas (sans adversaire : sinon elles dépendent de l'instant) :
+       clé = cap, état des pinces et de la face C, obstacles ignorés, état des pierres et du Graal */
+    var gridCache = new Map(), curIds = new WeakMap(), curN = 0;
+    function curId(o) { var k = curIds.get(o); if (k == null) { k = ++curN; curIds.set(o, k); } return k; }
+    function worldKey() { var k = graal.cur.k + ':' + foreign().length; for (var i = 0; i < stones.length; i++) k += ',' + curId(stones[i].cur); return k; }
+    function exclKey(excl) { return (excl || []).map(function (x) { return x === 'graal' ? 'graal' : x && x.id; }).join('+'); }
+    function freeGrid(h, fr, excl) {
+      var ck = null;
+      if (!opts.oppPoseAt) {
+        ck = h.toFixed(3) + '|' + [s.A.hc, s.A.rot, s.B.hc, s.B.rot, s.C.can, s.C.fx, s.C.fz].join(',') + '|' + exclKey(excl) + '|' + worldKey();
+        var hit = gridCache.get(ck); if (hit) return hit;
+      }
       var cache = new Int8Array(GW * GH), A0 = cp(s.A), B0 = cp(s.B), C0 = cpC(s.C);
       function st(i, j) {
         var k = j * GW + i; if (cache[k]) return cache[k];
         if (oppOccupies((i + 0.5) * CELL, (j + 0.5) * CELL, s.t)) { cache[k] = -1; return -1; }
         var p = { x: (i + 0.5) * CELL, y: (j + 0.5) * CELL, h: h, A: A0, B: B0, C: C0 };
-        cache[k] = collides(p, null, fr) ? -1 : collides(p, null, fr, MARGE_TRACE) ? 2 : 1; return cache[k];
+        /* marge d'abord : une case dégagée (le cas le plus courant) ne demande qu'un test */
+        cache[k] = !collides(p, null, fr, MARGE_TRACE) ? 1 : collides(p, null, fr) ? -1 : 2; return cache[k];
       }
       var f = function (i, j) { return st(i, j) > 0; };
       f.tight = function (i, j) { return st(i, j) === 2; };
+      if (ck) { if (gridCache.size > 64) gridCache.clear(); gridCache.set(ck, f); }
       return f;
     }
     function plan(goal, hGoal, excl, start0, freeF) {
       var start = start0 || [s.x, s.y], fr = obstacles(excl);
       var cell = gridCell, sc = cell(start), gc = cell(goal), N = GW * GH, gS = new Float64Array(N).fill(Infinity), par = new Int32Array(N).fill(-1), closed = new Uint8Array(N);
-      var si = sc[1] * GW + sc[0], gi = gc[1] * GW + gc[0], fg = freeF || freeGrid(hGoal, fr);
+      var si = sc[1] * GW + sc[0], gi = gc[1] * GW + gc[0], fg = freeF || freeGrid(hGoal, fr, excl);
       function free(i, j) { var k = j * GW + i; return k === si || k === gi || fg(i, j); }
       var heap = [];
       function push(f, i) { heap.push([f, i]); var c = heap.length - 1; while (c > 0) { var pr = (c - 1) >> 1; if (heap[pr][0] <= heap[c][0]) break; var tmp = heap[pr]; heap[pr] = heap[c]; heap[c] = tmp; c = pr; } }
@@ -441,6 +492,8 @@
        passerait à moins de 60 mm de lui, le robot s'arrête sur place et attend par pas de 0,1 s. Au bout de 8 s d'attente
        cumulée il repart (le contact éventuel est alors signalé). rk : points clés { t, x, y, h } du trajet, t depuis le départ. */
     var YIELD_GAP = 60, YIELD_MAX = 8, ABORT = { abort: true };
+    /* étape à blanc en cours (planifierEtape) */
+    var dryStep = false;
     /* pose à l'instant tt ; lin : interpolation linéaire, sinon adoucie (« smoothstep ») comme la lecture des points clés poseAtK */
     function itpRk(rk, tt, lin) {
       if (tt <= rk[0].t) return rk[0];
@@ -495,7 +548,150 @@
       return { rk: out, hold: cum, lin: true };
     }
     /* grip : mouvements de pince faits pendant le trajet (temps masqué), { f, seq: [{ hc } | { rot }] } */
+    /* ---- planificateur « certifié » (partagé avec le masque d'actions via planifier / planifierEtape) ----
+       Grilles de 40 mm. Une case est libre « à cap fixe » (cap h, état de pinces donné) si le robot au centre de la case est à
+       DISQUE_MARGE au moins de tout obstacle et des bords : tout point de la case est alors sans contact à ce cap (la marge couvre
+       la demi-diagonale de la case, 28,3 mm, et l'écart de 5 mm au pas de 10 mm des raccourcis). Une case est libre « au disque »
+       si son centre est à R + DISQUE_MARGE de tout obstacle (R : rayon d'enveloppe du robot pour tous les états de pince du
+       trajet) : le robot y tourne et ses pinces y bougent sans contact. Trajet : départ -> case d'entrée (segment vérifié
+       finement), cases libres au cap de départ jusqu'à la première case libre au disque, cases libres au disque (le cap passe
+       au cap d'arrivée, les pinces bougent, le robot attend la fin de leur mouvement), cases libres au cap d'arrivée, case de
+       sortie -> arrivée (segment vérifié finement). Sans rotation ni mouvement de pince : cases libres au cap de départ seulement.
+       Tout trajet ainsi construit est sans contact par construction ; exec l'essaie avant la recherche d'origine.
+       Paramètres (hypothèses, pas dans la spec) : marge 35 mm, rayon maximal 450 mm, 10 essais d'entrée et de sortie,
+       cases d'entrée et de sortie à 12 cases (480 mm) au plus. */
+    /* distance d'un point au bord d'un polygone */
+    function ptPolyBordD(q, P) { var d = 1e9; for (var i = 0; i < P.length; i++) d = Math.min(d, ptSegD(q, P[i], P[(i + 1) % P.length])); return d; }
+    var GRAAL_GARDE = 160;
+    var ROTATION_ESSAIS = 12;
+    var DISQUE_MARGE = 35, DISQUE_PORTEE = 450, DISQUE_ESSAIS = 10, DISQUE_RAYON_CASES = 12;
+    var clrCache = new Map();
+    /* obstacle rectangulaire (pierres) : axes et demi-côtés, pour une distance exacte rapide ; null sinon */
+    function rectOf(o) {
+      if (o._rect !== undefined) return o._rect;
+      var F = o.foot, r = null;
+      if (F.length === 4) {
+        var ax = F[1][0] - F[0][0], ay = F[1][1] - F[0][1], bx = F[3][0] - F[0][0], by = F[3][1] - F[0][1], la = Math.hypot(ax, ay), lb = Math.hypot(bx, by);
+        var par = [F[2][0] - F[1][0] - bx, F[2][1] - F[1][1] - by];
+        if (la > 0 && lb > 0 && Math.abs(ax * bx + ay * by) < 1e-6 * la * lb && Math.hypot(par[0], par[1]) < 1e-6 * (la + lb))
+          r = { ux: ax / la, uy: ay / la, hu: la / 2, vx: bx / lb, vy: by / lb, hv: lb / 2 };
+      }
+      o._rect = r;
+      return r;
+    }
+    function clearanceField(excl) {
+      var ck = exclKey(excl) + '|' + worldKey();
+      if (!opts.oppPoseAt) { var hit = clrCache.get(ck); if (hit) return hit; }
+      var fr = obstacles(excl), clr = new Float32Array(GW * GH), i, j;
+      /* au-delà de CAP, toutes les valeurs se valent (libre pour tout rayon admis) */
+      var CAP = DISQUE_PORTEE + DISQUE_MARGE + 1;
+      for (j = 0; j < GH; j++) for (i = 0; i < GW; i++) { var x = (i + 0.5) * CELL, y = (j + 0.5) * CELL; clr[j * GW + i] = Math.min(x, y, 3000 - x, 2000 - y, CAP); }
+      fr.forEach(function (o) {
+        prep(o);
+        var rc = rectOf(o), reach = CAP + o.rad + CELL, i0 = Math.max(0, Math.floor((o.cx - reach) / CELL)), i1 = Math.min(GW - 1, Math.floor((o.cx + reach) / CELL));
+        var j0 = Math.max(0, Math.floor((o.cy - reach) / CELL)), j1 = Math.min(GH - 1, Math.floor((o.cy + reach) / CELL));
+        for (var jj = j0; jj <= j1; jj++) for (var ii = i0; ii <= i1; ii++) {
+          var k = jj * GW + ii, px = (ii + 0.5) * CELL, py = (jj + 0.5) * CELL, ex = px - o.cx, ey = py - o.cy;
+          if (clr[k] <= 0 || Math.sqrt(ex * ex + ey * ey) - o.rad >= clr[k]) continue;
+          var d;
+          if (rc) { var u = Math.abs(ex * rc.ux + ey * rc.uy) - rc.hu, v = Math.abs(ex * rc.vx + ey * rc.vy) - rc.hv; d = u > 0 ? (v > 0 ? Math.sqrt(u * u + v * v) : u) : (v > 0 ? v : 0); }
+          else d = ptPolyD([px, py], o.foot);
+          if (d < clr[k]) clr[k] = d;
+        }
+      });
+      /* adversaire (simulation avec adversaire seulement) : mêmes cases interdites que la grille du tracé */
+      if (opts.oppPoseAt) for (j = 0; j < GH; j++) for (i = 0; i < GW; i++) if (oppOccupies((i + 0.5) * CELL, (j + 0.5) * CELL, s.t)) clr[j * GW + i] = -1;
+      /* Graal sur le robot (E.2.b) : il ne doit jamais sortir du château ; cases dont le centre est à moins de GRAAL_GARDE du bord
+         du château (Graal à 76 mm + 31 mm du centre, demi-diagonale de case) interdites */
+      if (graal.cur.k === 'toit' || graal.cur.k === 'ascenseur') for (j = 0; j < GH; j++) for (i = 0; i < GW; i++) {
+        var cc = [(i + 0.5) * CELL, (j + 0.5) * CELL];
+        if (!inPoly(cc[0], cc[1], OWN_CASTLE) || ptPolyBordD(cc, OWN_CASTLE) < GRAAL_GARDE) clr[j * GW + i] = -1;
+      }
+      var out = { clr: clr, fr: fr, grids: new Map(), memo: new Map() };
+      if (!opts.oppPoseAt) { if (clrCache.size > 32) clrCache.clear(); clrCache.set(ck, out); FRF.set(fr, out); }
+      return out;
+    }
+    /* Dijkstra (8 voisins) sur les cases où free(k) est vrai, depuis src ; s'arrête à la première case où stop(k) est vrai */
+    function gridSearch(free, src, stop, target) {
+      var tx2 = target != null ? target % GW : 0, ty2 = target != null ? (target - tx2) / GW : 0;
+      function hz(i) { if (target == null) return 0; var x = i % GW; return Math.hypot(x - tx2, (i - x) / GW - ty2) * CELL; }
+      var gS = new Float64Array(GW * GH).fill(Infinity), par = new Int32Array(GW * GH), heap = [[0, src]], found = -1;
+      par[src] = -1;
+      function push(f, i) { heap.push([f, i]); var c = heap.length - 1; while (c > 0) { var pr = (c - 1) >> 1; if (heap[pr][0] <= heap[c][0]) break; var t = heap[pr]; heap[pr] = heap[c]; heap[c] = t; c = pr; } }
+      function pop() { var top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; var c = 0; for (;;) { var l = 2 * c + 1, r = l + 1, m = c; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === c) break; var t = heap[m]; heap[m] = heap[c]; heap[c] = t; c = m; } } return top; }
+      gS[src] = 0;
+      while (heap.length) {
+        var it = pop(), cur = it[1]; if (it[0] > gS[cur] + hz(cur) + 1e-9) continue;
+        if (stop && stop(cur)) { found = cur; break; }
+        var cx = cur % GW, cy = (cur - cx) / GW;
+        for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) {
+          if (!dx && !dy) continue; var nx = cx + dx, ny = cy + dy; if (nx < 0 || ny < 0 || nx >= GW || ny >= GH) continue;
+          var ni = ny * GW + nx, ng = gS[cur] + (dx && dy ? Math.SQRT2 : 1) * CELL; if (ng >= gS[ni] || !free(ni)) continue;
+          gS[ni] = ng; par[ni] = cur; push(ng + hz(ni), ni);
+        }
+      }
+      return { g: gS, par: par, found: found };
+    }
+    function chainOf(par, src, dst) { var out = [], k = dst; while (k >= 0) { out.push(k); if (k === src) break; k = par[k]; } return out.reverse(); }
+    function gripKey(p) { return [p.A.hc, p.A.rot, p.B.hc, p.B.rot, p.C.can, p.C.fx, p.C.fz].join(','); }
+    /* bords de table avec marge : châssis, corps bas (sous la bordure) et pierres tenues basses */
+    function edgeOkM(p) {
+      if (Math.min(p.x, p.y, 3000 - p.x, 2000 - p.y) >= DISQUE_PORTEE + DISQUE_MARGE) return true;
+      if (!inTable(robotPoly(p), DISQUE_MARGE)) return false;
+      var B = bodiesOf(p);
+      for (var i = 0; i < B.list.length; i++) if (B.list[i].z0 < BORDURE && !inTable(bodyPoly(B.list[i], p), DISQUE_MARGE)) return false;
+      return heldGeos(p).every(function (g) { return g.bottom >= BORDURE || inTable(g.foot, DISQUE_MARGE); });
+    }
+    /* cases libres à cap fixe (avec marge), évaluées à la demande et mises en cache avec le champ de dégagement */
+    function marginGrid(F, h, p, lim) {
+      var key = h.toFixed(3) + '|' + gripKey(p) + '|' + lim, hit = F.grids.get(key); if (hit) return hit;
+      var st = new Int8Array(GW * GH), RIN = GE.rin + DISQUE_MARGE;
+      var f = function (k) {
+        if (st[k]) return st[k] > 0;
+        var c = F.clr[k], ok;
+        if (c >= lim) ok = true;
+        else if (c < RIN) ok = false;
+        else { var q = cellCtr(k), pp = { x: q[0], y: q[1], h: h, A: p.A, B: p.B, C: p.C }; ok = !collides(pp, null, F.fr, -DISQUE_MARGE) && edgeOkM(pp); }
+        st[k] = ok ? 1 : -1; return ok;
+      };
+      F.grids.set(key, f);
+      return f;
+    }
+    /* cases voisines d'un point, par distance croissante (rayon DISQUE_RAYON_CASES) */
+    var OFFS = (function () { var o = []; for (var j = -DISQUE_RAYON_CASES; j <= DISQUE_RAYON_CASES; j++) for (var i = -DISQUE_RAYON_CASES; i <= DISQUE_RAYON_CASES; i++) if (i || j) o.push([i, j, Math.hypot(i, j)]); return o.sort(function (a, b) { return a[2] - b[2] || a[1] - b[1] || a[0] - b[0]; }); })();
+    /* case libre à cap fixe joignable depuis le point P (départ ou arrivée) : sa propre case si elle est libre, sinon la plus
+       proche dont le segment droit vers P est sans contact (contrôle fin) */
+    function connectCell(F, M, P, h, p, lim, tag) {
+      var key = tag + P[0].toFixed(1) + ',' + P[1].toFixed(1) + '|' + h.toFixed(3) + '|' + gripKey(p) + '|' + lim;
+      if (F.memo.has(key)) return F.memo.get(key);
+      var pc = gridCell(P), k0 = pc[1] * GW + pc[0], res = -1;
+      if (M(k0)) res = k0;
+      else for (var i = 0, tries = 0; i < OFFS.length && tries < DISQUE_ESSAIS && res < 0; i++) {
+        var ii = pc[0] + OFFS[i][0], jj = pc[1] + OFFS[i][1]; if (ii < 0 || jj < 0 || ii >= GW || jj >= GH) continue;
+        var k = jj * GW + ii; if (!M(k)) continue;
+        tries++;
+        if (tag === 'e' ? segFree(P, cellCtr(k), h, p, F.fr, F, lim) : segFree(cellCtr(k), P, h, p, F.fr, F, lim)) res = k;
+      }
+      F.memo.set(key, res);
+      return res;
+    }
+    function cellCtr(k) { var i = k % GW; return [(i + 0.5) * CELL, ((k - i) / GW + 0.5) * CELL]; }
+    /* segment droit à cap fixe, pinces dans l'état de p0 : même contrôle fin que le trajet (10 mm, puis 1 mm près d'un obstacle) */
+    function segFree(a, b, h, p0, fr, F, lim) {
+      var L = dist(a, b), n = Math.max(1, Math.ceil(L / 10)), fine = Math.max(1, Math.ceil(L / n));
+      function at(u) { return { x: a[0] + (b[0] - a[0]) * u, y: a[1] + (b[1] - a[1]) * u, h: h, A: p0.A, B: p0.B, C: p0.C }; }
+      for (var k = 0; k <= n; k++) {
+        var q = at(k / n);
+        /* point dans une case libre au disque (marge + 5 mm d'écart au pas) : sans contact à tout cap */
+        var gq = gridCell([q.x, q.y]); if (F && F.clr[gq[1] * GW + gq[0]] >= lim + 5) continue;
+        if (collides(q, null, fr)) return false;
+        if (collides(q, null, fr, MARGE)) for (var z = -fine; z <= fine; z++) { var uz = (k + z / fine) / n; if (uz > 0 && uz < 1 && collides(at(uz), null, fr)) return false; }
+      }
+      return true;
+    }
     function travel(O, h, label, excl, speed, grip) {
+      /* étape à blanc (planifierEtape) : on s'arrête au premier trajet, avec le résultat de la recherche pure */
+      if (dryStep) throw { dry: true, plan: travelPlan(O, h, excl, speed, grip, dryStep.mode), O: O, h: h, label: label };
       if (opts.oppPoseAt) {
         var dir0 = [O[0] - s.x, O[1] - s.y], waits = 0, Vnow = speed || V;
         while (waits < 4) {
@@ -513,6 +709,21 @@
           if (Math.hypot((o1.x || 0) - o0.x, (o1.y || 0) - o0.y) < 40) break;
         }
       }
+      var pl = travelPlan(O, h, excl, speed, grip);
+      /* aucun passage : le robot ne part pas et l'étape échoue (il ne traverse jamais un obstacle) */
+      if (!pl.chosen) { err('Trajet vers ' + Math.round(O[0]) + ', ' + Math.round(O[1]) + ' : aucun passage sans contact trouvé (' + label + ').'); throw ABORT; }
+      travelExec(pl, O, label, grip);
+    }
+    /* recherche du trajet sans effet : état des pinces et rotations en attente rétablis (planifier, masque d'actions) */
+    function travelPlan(O, h, excl, speed, grip, mode) {
+      var sv = { A: cp(s.A), B: cp(s.B) }, pv = { A: pend.A, B: pend.B };
+      try { return travelSearch(O, h, excl, speed, grip, mode); }
+      finally { ['A', 'B'].forEach(function (f) { s[f].hc = sv[f].hc; s[f].rot = sv[f].rot; pend[f] = pv[f]; }); }
+    }
+    /* rapide : seulement le début de la recherche (tracé direct, modes de rotation, tracé au cap de départ), sans les replis coûteux ;
+       un trajet trouvé ainsi est celui que la recherche complète choisirait (elle s'arrête au premier trajet valable) */
+    function travelSearch(O, h, excl, speed, grip, mode) {
+      var rapide = mode === 'rapide', discMode = mode === 'disque' ? 'seul' : mode === 'ancien' ? 'non' : 'oui';
       var Gl = [], pendTxt = [], pendBackup = { A: pend.A, B: pend.B }, after = {};
       var pEnd = { x: O[0], y: O[1], h: h, A: s.A, B: s.B };
       ['A', 'B'].forEach(function (f) {
@@ -527,26 +738,26 @@
         var q0 = { x: s.x, y: s.y, h: s.h, A: s.A, B: s.B }; q0[f] = from;
         var ch = heldInCastle(q0, f, rots) && heldInCastle(pEnd, f, rots), ex = expand(f, from, seq, ch);
         /* impossible pendant le trajet (pierres hors du château par exemple) : fait sur place à l'arrivée */
-        if (ex.err) { after[f] = seq; s[f].hc = from.hc; s[f].rot = from.rot; return; }
+        if (ex.err) { after[f] = { seq: seq, from: from }; s[f].hc = from.hc; s[f].rot = from.rot; return; }
         Gl.push({ f: f, from: from, seq: seq, gk: ex.keys, end: ex.keys[ex.keys.length - 1] });
       });
       Gl.forEach(function (g) { s[g.f].hc = g.from.hc; s[g.f].rot = g.from.rot; });
       var Gtot = 0; Gl.forEach(function (g) { Gtot = Math.max(Gtot, g.end.t); });
-      function itp(arr, t) {
-        if (t >= arr[arr.length - 1].t) return arr[arr.length - 1];
-        for (var j = 1; j < arr.length; j++) if (t <= arr[j].t) { var a = arr[j - 1], b = arr[j], u = b.t > a.t ? (t - a.t) / (b.t - a.t) : 1; return { t: t, hc: a.hc + (b.hc - a.hc) * u, rot: a.rot + (b.rot - a.rot) * u, x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u, h: a.h + (b.h - a.h) * u }; }
-        return arr[arr.length - 1];
-      }
+      var itp = itpK;
       function withG(fn) { var o = {}; Gl.forEach(function (g) { o[g.f] = cp(s[g.f]); s[g.f].hc = g.end.hc; s[g.f].rot = g.end.rot; }); var r = fn(); Gl.forEach(function (g) { s[g.f].hc = o[g.f].hc; s[g.f].rot = o[g.f].rot; }); return r; }
       /* tracé avec la pince dans son état final ; s'il est bloqué près du départ, avec son état de départ (elle bougera en fin de trajet) */
-      var pts = (dist([s.x, s.y], O) < 60) ? null : withG(function () { return plan(O, h, excl); });
-      if (!pts && Gl.length && dist([s.x, s.y], O) >= 60) pts = plan(O, h, excl);
-      if (!pts) pts = [[s.x, s.y], O];
-      var L = 0; for (var i = 1; i < pts.length; i++) L += dist(pts[i - 1], pts[i]);
+      /* recherche d'origine (grille au cap d'arrivée, modes de rotation, replis) : préparée seulement si le plan « disque » échoue */
+      var pts = null, L = 0, modes = null;
+      function initSearch() {
+        pts = (dist([s.x, s.y], O) < 60) ? null : withG(function () { return plan(O, h, excl); });
+        if (!pts && Gl.length && dist([s.x, s.y], O) >= 60) pts = plan(O, h, excl);
+        if (!pts) pts = [[s.x, s.y], O];
+        L = 0; for (var i = 1; i < pts.length; i++) L += dist(pts[i - 1], pts[i]);
+        modes = L > 50 ? [[Math.min(200, L * 0.25), Math.max(Math.min(200, L * 0.25) + 1, L - Math.min(200, L * 0.25))], [0, Math.min(L, 450)], [Math.max(0, L - 450), L], ['avant'], ['apres']] : [[0, Math.max(L, 1)], ['avant'], ['apres']];
+      }
       var dh = angd(s.h, h), h0 = s.h, st0 = [s.x, s.y];
       function splitAt(pp, d0) { var acc2 = 0, o2 = [pp[0]]; for (var q = 1; q < pp.length; q++) { var dd = dist(pp[q - 1], pp[q]); if (acc2 < d0 - 0.5 && acc2 + dd > d0 + 0.5) { var u = (d0 - acc2) / dd; o2.push([pp[q - 1][0] + (pp[q][0] - pp[q - 1][0]) * u, pp[q - 1][1] + (pp[q][1] - pp[q - 1][1]) * u]); } acc2 += dd; o2.push(pp[q]); } return o2; }
       /* modes : rotation au milieu, au début, à la fin, sur place avant, sur place après */
-      var modes = L > 50 ? [[Math.min(200, L * 0.25), Math.max(Math.min(200, L * 0.25) + 1, L - Math.min(200, L * 0.25))], [0, Math.min(L, 450)], [Math.max(0, L - 450), L], ['avant'], ['apres']] : [[0, Math.max(L, 1)], ['avant'], ['apres']];
       var fr = obstacles(excl);
       function nodesFor(m) {
         var nodes = [];
@@ -566,7 +777,7 @@
       /* contrôle fin du trajet : position du robot et état des pinces au même instant.
          gMode : 'tot' la pince bouge dès le départ, 'fin' elle finit à l'arrivée, 'avant' le robot attend la pince avant de partir */
       var gMode = 'tot', delay = 0, gOff = 0;
-      function setTiming(T) { delay = gMode === 'avant' ? Gtot : 0; gOff = gMode === 'fin' ? Math.max(0, T.D - Gtot) : 0; }
+      function setTiming(T) { delay = gMode === 'avant' ? Gtot : 0; gOff = gMode === 'fin' ? Math.max(0, T.D - Gtot) : gMode === 'disque' ? T.gOff : 0; }
       function hitsFor(nodes) {
         var T = timesOf(nodes), prev = { p: st0, h: h0, t: 0 }; setTiming(T);
         function grips(q, t) { Gl.forEach(function (g) { var e = itp(g.gk, t - gOff); q[g.f] = { hc: e.hc, rot: e.rot, vac: s[g.f].vac }; }); return q; }
@@ -597,18 +808,176 @@
           if (!ch) pts = pts0;
         }
         /* dernier recours : aller au cap de départ jusqu'à un endroit dégagé, y pivoter sur place, puis finir au cap d'arrivée */
-        if (!ch && Math.abs(dh) > 1) ch = withG(function () { return viaRotation(); });
+        if (!ch && !rapide && Math.abs(dh) > 1) ch = withG(function () { return viaRotation(); });
         return ch;
       }
-      var chosen = search();
+      /* rayon d'enveloppe du robot pour tous les états de pince du trajet (départ, points clés, arrivée) */
+      function envRadius() {
+        var states = { A: [cp(s.A)], B: [cp(s.B)] };
+        Gl.forEach(function (g) {
+          var L2 = [g.from].concat(g.gk);
+          for (var q = 1; q < L2.length; q++) { var a = L2[q - 1], b = L2[q], n = Math.max(1, Math.ceil(Math.abs(b.rot - a.rot) / 15)); for (var u = 1; u <= n; u++) states[g.f].push({ hc: a.hc + (b.hc - a.hc) * u / n, rot: a.rot + (b.rot - a.rot) * u / n, vac: s[g.f].vac }); }
+        });
+        var R = 0;
+        states.A.forEach(function (ga) { states.B.forEach(function (gb) {
+          var p = { x: 0, y: 0, h: 0, A: ga, B: gb, C: cpC(s.C) }; R = Math.max(R, bodiesOf(p).R);
+          heldGeos(p).forEach(function (hg) { hg.foot.forEach(function (v) { R = Math.max(R, Math.hypot(v[0], v[1])); }); });
+        }); });
+        return R;
+      }
+      var discT = null;
+      /* pinces : gm = 'trajet' (elles bougent dans la région libre au disque ; rayon = enveloppe de tous leurs états),
+         'fin' (elles bougent sur place à l'arrivée ; trajet avec leur état de départ) ou 'debut' (sur place avant de partir ;
+         trajet avec leur état final). Le mouvement sur place est vérifié comme dans le trajet (pas de 0,05 s). */
+      function gripsAt(t) { var o = { A: cp(s.A), B: cp(s.B), C: cpC(s.C) }; Gl.forEach(function (g) { var e = itp(g.gk, t); o[g.f] = { hc: e.hc, rot: e.rot, vac: s[g.f].vac }; }); return o; }
+      function sweepAt(P, hh, F) {
+        for (var tw = 0; tw < Gtot + 0.05; tw += 0.05) { var g = gripsAt(Math.min(tw, Gtot)); if (collides({ x: P[0], y: P[1], h: hh, A: g.A, B: g.B, C: g.C }, null, F.fr)) return false; }
+        return true;
+      }
+      function discPlan(gm) {
+        var pS = { A: cp(s.A), B: cp(s.B), C: cpC(s.C) }, pE = withG(function () { return { A: cp(s.A), B: cp(s.B), C: cpC(s.C) }; });
+        var p0 = gm === 'debut' ? pE : pS, p1 = gm === 'fin' ? pS : pE;
+        var R = gm === 'trajet' ? envRadius() : bodyRadius(p0); if (R > DISQUE_PORTEE) return null;
+        var F = clearanceField(excl), lim = Math.ceil(R) + DISQUE_MARGE, clr = F.clr, h1 = h0 + dh;
+        if (gm === 'debut' && !sweepAt(st0, h0, F)) return null;
+        if (gm === 'fin' && !sweepAt(O, h1, F)) return null;
+        var k0 = gripKey(p0), k1 = gripKey(p1), same = Math.abs(dh) < 1e-6 && k0 === k1 && (gm !== 'trajet' || !Gl.length);
+        var M0 = marginGrid(F, h0, p0, lim), M1 = same ? M0 : marginGrid(F, h1, p1, lim);
+        var e0 = connectCell(F, M0, st0, h0, p0, lim, 'e'); if (e0 < 0) return null;
+        var parts = null, x0 = -1, verif = !!(dryStep && dryStep.verifier);
+        var discF = function (k) { return clr[k] >= lim; };
+        /* première case libre au disque atteinte au cap de départ, et région libre au disque (mises en cache : les mêmes pour
+           toutes les actions d'un état) */
+        function getE() {
+          var kE = 'E|' + h0.toFixed(3) + '|' + k0 + '|' + lim + '|' + e0, E = F.memo.get(kE);
+          if (E === undefined) { var A0 = gridSearch(M0, e0, discF); E = A0.found < 0 ? null : { k: A0.found, chain: chainOf(A0.par, e0, A0.found) }; F.memo.set(kE, E); }
+          if (!E) return null;
+          var kD = 'D|' + lim + '|' + E.k; E.DD = F.memo.get(kD);
+          if (!E.DD) { E.DD = gridSearch(discF, E.k, null); F.memo.set(kD, E.DD); }
+          return E;
+        }
+        /* sortie directe : case de la région libre au disque, sur un rayon issu de l'arrivée (vers le départ d'abord, puis 16
+           directions), d'où le segment droit vers l'arrivée au cap d'arrivée est sans contact (contrôle fin) */
+        function straightExit(E) {
+          var dirs = [Math.atan2(st0[1] - O[1], st0[0] - O[0])], tried = 0, seen = {};
+          for (var a = 0; a < 16; a++) dirs.push(a * Math.PI / 8);
+          for (var di = 0; di < dirs.length && tried < 4; di++) {
+            for (var r = 0; r <= 600; r += 20) {
+              var c = gridCell([O[0] + r * Math.cos(dirs[di]), O[1] + r * Math.sin(dirs[di])]), k = c[1] * GW + c[0];
+              if (!(E.DD.g[k] < Infinity)) continue;
+              if (seen[k]) break; seen[k] = 1; tried++;
+              if (segFree(cellCtr(k), O, h1, p1, F.fr, F, lim)) return k;
+              break;
+            }
+          }
+          return -1;
+        }
+        function viaStraight() {
+          var E = getE(); if (!E) return null;
+          var xs = straightExit(E); if (xs < 0) return null;
+          return [{ c: E.chain, M: M0 }, { c: chainOf(E.DD.par, E.k, xs), M: discF, disc: true }];
+        }
+        function viaGrids() {
+          x0 = connectCell(F, M1, O, h1, p1, lim, 'x'); if (x0 < 0) return null;
+          if (same) {
+            /* toutes les cases atteintes au cap de départ (mises en cache : les mêmes pour toutes les destinations d'un état) */
+            var kF = 'F|' + h0.toFixed(3) + '|' + k0 + '|' + lim + '|' + e0, A = F.memo.get(kF);
+            if (!A) { A = gridSearch(M0, e0, null); F.memo.set(kF, A); }
+            if (!(A.g[x0] < Infinity)) return null;
+            return [{ c: chainOf(A.par, e0, x0), M: M0 }];
+          }
+          var E = getE(); if (!E) return null;
+          var X = gridSearch(M1, x0, function (k) { return E.DD.g[k] < Infinity; }); if (X.found < 0) return null;
+          return [{ c: E.chain, M: M0 }, { c: chainOf(E.DD.par, E.k, X.found), M: discF, disc: true }, { c: chainOf(X.par, x0, X.found).reverse(), M: M1 }];
+        }
+        /* exec essaie les deux constructions (sans rotation : d'abord les cases au cap de départ, chemin plus court) ;
+           le masque se contente de la moins coûteuse qui réussit : un trajet accepté par le masque est trouvé par exec */
+        /* rotation sur place au départ ou à l'arrivée (pinces immobiles pendant le trajet) : balayage du cap vérifié avec une
+           marge de 10 mm, pas de 2° (déplacement d'au plus 14 mm entre deux vérifications à 400 mm du centre) */
+        function rotSweep(P, ha, hb, pg) {
+          var n = Math.max(1, Math.ceil(Math.abs(hb - ha) / 2));
+          for (var k = 0; k <= n; k++) if (collides({ x: P[0], y: P[1], h: ha + (hb - ha) * k / n, A: pg.A, B: pg.B, C: pg.C }, null, F.fr, -10)) return false;
+          return true;
+        }
+        function viaRotEnds() {
+          if (gm === 'trajet' && Gl.length) return null;
+          var pg = p0, out = null;
+          [['debut', h1], ['fin', h0]].some(function (v) {
+            var hh = v[1], Mh = marginGrid(F, hh, pg, lim), ea, xa;
+            if (v[0] === 'debut' && !rotSweep(st0, h0, h1, pg)) return false;
+            ea = connectCell(F, Mh, st0, hh, pg, lim, 'e'); if (ea < 0) return false;
+            xa = connectCell(F, Mh, O, hh, pg, lim, 'x'); if (xa < 0) return false;
+            if (v[0] === 'fin' && !rotSweep(O, h0, h1, pg)) return false;
+            var kF = 'F|' + hh.toFixed(3) + '|' + gripKey(pg) + '|' + lim + '|' + ea, A = F.memo.get(kF);
+            if (!A) { A = gridSearch(Mh, ea, null); F.memo.set(kF, A); }
+            if (!(A.g[xa] < Infinity)) return false;
+            out = [{ c: chainOf(A.par, ea, xa), M: Mh, rot: v[0] }];
+            return true;
+          });
+          return out;
+        }
+        /* rotation sur place en une case atteinte au cap de départ, la plus proche de l'arrivée en cases libres au cap d'arrivée
+           (balayage vérifié comme rotSweep, ROTATION_ESSAIS cases au plus) ; pinces immobiles pendant le trajet */
+        function viaRotCells() {
+          if (gm === 'trajet' && Gl.length) return null;
+          var pg = p0, Mh0 = marginGrid(F, h0, pg, lim), Mh1 = marginGrid(F, h1, pg, lim);
+          var ea = connectCell(F, Mh0, st0, h0, pg, lim, 'e'); if (ea < 0) return null;
+          var xa = connectCell(F, Mh1, O, h1, pg, lim, 'x'); if (xa < 0) return null;
+          var kF = 'F|' + h0.toFixed(3) + '|' + gripKey(pg) + '|' + lim + '|' + ea, A0 = F.memo.get(kF);
+          if (!A0) { A0 = gridSearch(Mh0, ea, null); F.memo.set(kF, A0); }
+          var tries = 0;
+          var X = gridSearch(Mh1, xa, function (k) {
+            if (!(A0.g[k] < Infinity)) return false;
+            if (clr[k] >= lim) return true;
+            if (tries >= ROTATION_ESSAIS) return false;
+            tries++; return rotSweep(cellCtr(k), h0, h1, pg);
+          });
+          if (X.found < 0) return null;
+          return [{ c: chainOf(A0.par, ea, X.found), M: Mh0 }, { c: [X.found], M: discF, disc: true }, { c: chainOf(X.par, xa, X.found).reverse(), M: Mh1 }];
+        }
+        parts = same && !verif ? viaGrids() || viaStraight() : viaStraight() || viaGrids() || (same ? null : viaRotEnds() || viaRotCells());
+        if (!parts) return null;
+        /* vérification seule (masque d'actions) : le trajet existe, inutile de le construire */
+        if (dryStep && dryStep.verifier) { discT = { D: 0.2, L: 0, ts: [0.2], gOff: 0 }; return [{ p: O, h: h1, d: 0 }]; }
+        /* raccourcis en ligne droite : chaque point (pas de 10 mm) dans une case libre de la même grille */
+        function los(a, b, M) { var n = Math.ceil(dist(a, b) / 10); for (var q = 1; q < n; q++) { var c3 = gridCell([a[0] + (b[0] - a[0]) * q / n, a[1] + (b[1] - a[1]) * q / n]); if (!M(c3[1] * GW + c3[0])) return false; } return true; }
+        function smooth(cells, M) { var P = cells.map(cellCtr), out = [P[0]], ia = 0; while (ia < P.length - 1) { var jb = P.length - 1; while (jb > ia + 1 && !los(P[ia], P[jb], M)) jb--; out.push(P[jb]); ia = jb; } return out; }
+        /* nœuds et instants */
+        var Vv = speed || V, nodes = [], ts = [], t = 0, d = 0, prev = st0, hc = h0, tE = 0;
+        function add(pt, hh, dt) { d += dist(prev, pt); t += dt; nodes.push({ p: pt, h: hh, d: d }); ts.push(t); prev = pt; hc = hh; }
+        function go(pt, hh) { var L2 = dist(prev, pt); if (L2 > 0.5 || Math.abs(hh - hc) > 1e-9) add(pt, hh, Math.max(L2 / Vv, Math.abs(hh - hc) / WR)); }
+        if (gm === 'debut' && Gl.length) add(st0, h0, Gtot);
+        if (parts[0].rot === 'debut') add(st0, h1, Math.abs(dh) / WR);
+        parts.forEach(function (pa) {
+          var pts2 = smooth(pa.c, pa.M);
+          if (!pa.disc) { pts2.forEach(function (pt) { go(pt, hc); }); return; }
+          go(pts2[0], hc); tE = t;
+          var Lm = 0; for (var q5 = 1; q5 < pts2.length; q5++) Lm += dist(pts2[q5 - 1], pts2[q5]);
+          var Tm = Math.max(Lm / Vv, Math.abs(dh) / WR), acc = 0;
+          if (Lm < 0.5) { if (Math.abs(dh) > 1e-9) add(pts2[0], h1, Tm); }
+          else for (var q6 = 1; q6 < pts2.length; q6++) { var dd = dist(pts2[q6 - 1], pts2[q6]); acc += dd; add(pts2[q6], h0 + dh * acc / Lm, Tm * dd / Lm); }
+          hc = h1;
+          if (gm === 'trajet' && Gl.length && tE + Gtot > t + 1e-9) add(prev, h1, tE + Gtot - t);
+        });
+        go(O, parts[0].rot === 'fin' ? h0 : h1);
+        if (parts[0].rot === 'fin') add(O, h1, Math.abs(dh) / WR);
+        if (gm === 'debut') tE = 0;
+        if (gm === 'fin' && Gl.length) { tE = t; add(O, h1, Gtot); }
+        if (!nodes.length) add(O, h1, 0.2);
+        discT = { D: Math.max(t, 0.2), L: d, ts: ts, gOff: tE };
+        return nodes;
+      }
+      var chosen = null;
+      if (discMode !== 'non') { chosen = discPlan('trajet'); if (!chosen && Gl.length) chosen = discPlan('fin') || discPlan('debut'); }
+      if (chosen) gMode = 'disque';
+      else if (discMode === 'seul') return { chosen: null };
+      else { initSearch(); chosen = search(); }
       /* sinon : la pince bouge en fin de trajet (une fois le robot éloigné), ou avant que le robot parte */
-      if (!chosen && Gl.length && Gtot > 0) { gMode = 'fin'; chosen = search(); }
-      if (!chosen && Gl.length && Gtot > 0) { gMode = 'avant'; chosen = search(); }
+      if (!chosen && !rapide && Gl.length && Gtot > 0) { gMode = 'fin'; chosen = search(); }
+      if (!chosen && !rapide && Gl.length && Gtot > 0) { gMode = 'avant'; chosen = search(); }
       if (!chosen) gMode = 'tot';
-      /* aucun passage : le robot ne part pas et l'étape échoue (il ne traverse jamais un obstacle) */
-      if (!chosen) { restorePend(pendBackup); err('Trajet vers ' + Math.round(O[0]) + ', ' + Math.round(O[1]) + ' : aucun passage sans contact trouvé (' + label + ').'); throw ABORT; }
       function viaRotation() {
-        var h1 = h0 + dh, f0 = freeGrid(h0, fr), f1 = freeGrid(h1, fr), sc = gridCell(st0), si = sc[1] * GW + sc[0];
+        var h1 = h0 + dh, f0 = freeGrid(h0, fr, excl), f1 = freeGrid(h1, fr, excl), sc = gridCell(st0), si = sc[1] * GW + sc[0];
         function ctr(k) { var i = k % GW; return k === si ? st0 : [(i + 0.5) * CELL, ((k - i) / GW + 0.5) * CELL]; }
         /* d'abord par les cases dégagées (marge du tracé), puis en acceptant les cases serrées */
         for (var pass = 0; pass < 2; pass++) {
@@ -633,7 +1002,17 @@
         }
         return null;
       }
-      var T = timesOf(chosen), D = T.D, t0 = s.t; setTiming(T);
+      if (!chosen) return { chosen: null };
+      var T0 = gMode === 'disque' ? discT : timesOf(chosen); setTiming(T0);
+      return { chosen: chosen, Gl: Gl, T: T0, delay: delay, gOff: gOff, Gtot: Gtot, gMode: gMode, pendTxt: pendTxt, pendBackup: pendBackup, after: after, h0: h0, dh: dh };
+    }
+    /* exécution d'un trajet trouvé par travelPlan */
+    function travelExec(pl, O, label, grip) {
+      var Gl = pl.Gl, chosen = pl.chosen, T = pl.T, delay = pl.delay, gOff = pl.gOff, Gtot = pl.Gtot, gMode = pl.gMode, pendTxt = pl.pendTxt, pendBackup = pl.pendBackup, after = pl.after, h0 = pl.h0, dh = pl.dh, itp = itpK;
+      var D = T.D, t0 = s.t;
+      pendTxt.forEach(function (f) { pend[f] = null; });
+      Gl.forEach(function (g) { s[g.f].hc = g.from.hc; s[g.f].rot = g.from.rot; });
+      Object.keys(after).forEach(function (f) { s[f].hc = after[f].from.hc; s[f].rot = after[f].from.rot; });
       Gl.forEach(function (g) { g.gk = g.gk.map(function (k) { return { t: k.t + gOff, hc: k.hc, rot: k.rot }; }); if (gOff > 0) g.gk.unshift({ t: 0, hc: g.from.hc, rot: g.from.rot }); });
       var rk = [{ t: 0, x: s.x, y: s.y, h: s.h }];
       if (delay > 0) rk.push({ t: delay, x: s.x, y: s.y, h: s.h });
@@ -665,7 +1044,12 @@
         applyOpp(s.t);
         Gl.forEach(function (g) { s[g.f].hc = g.end.hc; s[g.f].rot = g.end.rot; });
       }
-      ['A', 'B'].forEach(function (f) { if (after[f]) runSeq(f, after[f]); });
+      ['A', 'B'].forEach(function (f) { if (after[f]) runSeq(f, after[f].seq); });
+    }
+    function itpK(arr, t) {
+      if (t >= arr[arr.length - 1].t) return arr[arr.length - 1];
+      for (var j = 1; j < arr.length; j++) if (t <= arr[j].t) { var a = arr[j - 1], b = arr[j], u = b.t > a.t ? (t - a.t) / (b.t - a.t) : 1; return { t: t, hc: a.hc + (b.hc - a.hc) * u, rot: a.rot + (b.rot - a.rot) * u, x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u, h: a.h + (b.h - a.h) * u }; }
+      return arr[arr.length - 1];
     }
     /* étape abandonnée pendant un trajet : les rotations demandées en temps masqué restent à faire (état logique rétabli) */
     function restorePend(bk) {
@@ -1281,7 +1665,9 @@
           if (!tc.length) { s[f].hc = g0.hc; s[f].rot = g0.rot; return err('Tour ' + z.id + ' : aucune position ne chevauche la zone de ' + OVL + ' mm.'); }
           best = choose(tc, null, 80, true);
         }
-        for (var off = 0; off <= 140 && !(best && !best.col) && st.pm !== 'manuel' && st.pm !== 'proche'; off += 10) {
+        /* à blanc : un décalage du centre est de toute façon une erreur (« pierre décalée ») sans st.pm, inutile de le chercher */
+        var offMax = dryStep && (!st.pm || st.pm === 'parfait') ? 0 : 140;
+        for (var off = 0; off <= offMax && !(best && !best.col) && st.pm !== 'manuel' && st.pm !== 'proche'; off += 10) {
           var cands = [];
           for (var phi = 0; phi < 360; phi += 10) for (var da = 0; da < 360; da += (off ? 30 : 360)) {
             var d = nv2(da), Pt = [z.c[0] + off * d[0], z.c[1] + off * d[1]], o2 = towerPose(Pt, phi);
@@ -1473,8 +1859,43 @@
       });
     }
     /* contrôles de départ (t = 0) : périmètre, hauteur, robot et Graal dans la salle du trône, Graal hors de l'emprise du robot */
+    /* ---- monde reconstruit depuis un état (opts.etat, au format de la croyance, docs/CONTRATS.md §4 et §10) :
+       sert au masque d'actions, qui planifie avec ce moteur (planifier, planifierEtape) ---- */
+    function geoFromFoot(o) {
+      var F = o.foot, c = [0, 0]; F.forEach(function (v) { c[0] += v[0] / F.length; c[1] += v[1] / F.length; });
+      /* rectangle rectPoly : sommets 0 -> 1 selon la latérale (hl), 0 -> 3 selon la normale (hn) */
+      var hl = dist(F[0], F[1]) / 2, hn = F.length > 3 ? dist(F[0], F[3]) / 2 : hl, ang = F.length > 3 ? Math.atan2(F[3][1] - F[0][1], F[3][0] - F[0][0]) / D2R : 0;
+      var top = +o.top, bottom = +o.bottom;
+      return prep({ foot: F.map(function (v) { return [v[0], v[1]]; }), fo: { cx: c[0], cy: c[1], hl: hl, hn: hn, ang: ang }, top: top, bottom: bottom, zc: (top + bottom) / 2, vertical: !!o.vertical });
+    }
+    function applyEtat(E) {
+      s.t = E.t || 0; s.x = E.pose.x; s.y = E.pose.y; s.h = E.pose.h;
+      ['A', 'B'].forEach(function (f) { var g = E.pinces[f], sl = g.slots || [null, null, null]; s[f] = { hc: g.hc, rot: g.rot, vac: [0, 1, 2].map(function (l) { return sl[l] ? 1 : 0; }) }; });
+      if (E.meca) s.C = { can: E.meca.can, fx: E.meca.fx, fz: E.meca.fz };
+      var byId = {}, used = {}; stones.forEach(function (st) { byId[st.id] = st; });
+      ['A', 'B'].forEach(function (f) {
+        var stack = [null, null, null], any = false;
+        (E.pinces[f].slots || []).forEach(function (id, l) { var st = id && byId[id]; if (!st || used[id]) return; used[id] = 1; st.cur = { k: 'held', f: f, l: l }; st.sl = l; st.tag = null; stack[l] = st; any = true; });
+        held[f] = any ? { stack: stack } : null;
+      });
+      (E.pierres || []).forEach(function (o) { var st = byId[o.id]; if (!st || used[o.id]) return; used[o.id] = 1; st.cur = { k: 'free', geo: geoFromFoot(o) }; st.tag = o.grp || 'etat'; });
+      stones.forEach(function (st) {
+        if (used[st.id]) return;
+        var q = E.paquets && E.paquets[PK[st.pk].id], n = q && q.n != null ? q.n : 3;
+        if (st.l < n) { st.cur = { k: 'home' }; st.tag = 'home'; } else { st.cur = { k: 'gone' }; st.tag = 'gone'; }
+      });
+      graal.cur = { k: E.graal || 'home' };
+      ['A', 'B'].forEach(function (f) { var g = E.pinces[f]; if (g.rotReelle != null && Math.abs(g.rotReelle - g.rot) > 0.5) pend[f] = { from: { hc: g.hc, rot: g.rotReelle, vac: s[f].vac.slice() }, seq: [{ rot: g.rot, label: 'Pince ' + f + ' tournée à ' + g.rot + '°' }] }; });
+      (E.portes || []).forEach(function (id) { var z = zoneById(id); if (z) doors[inPoly(z.c[0], z.c[1], CASTLE) ? 'jaune' : 'bleu'] = id; });
+      if (E.tir) balls.shots = [];
+      var etr = (E.etrangeres || []).map(function (o, i) { return prep({ id: o.id || 'etrangere' + i, foot: o.foot, bottom: o.bottom || 0, top: o.top != null ? o.top : 330 }); });
+      foreignFn = function () { return etr; };
+      stock = stockCount();
+    }
     (function () {
+      if (opts.etat) applyEtat(opts.etat);
       var k0 = snap(); K.push(k0); ctlPrev = k0;
+      if (opts.etat) return;
       var per = G.perimetre(k0), top = G.actTop(k0), TRn = throneOf(P.team), gp = graalPoly([P.gx, P.gy], P.ga);
       if (per > GE.perDepart + 0.5) err('Périmètre de départ : ' + Math.round(per) + ' mm (' + GE.perDepart + ' mm au plus).');
       if (top > H_MAX + 0.5) err('Hauteur de départ des actionneurs : ' + Math.round(top) + ' mm (350 mm au plus).');
@@ -1482,6 +1903,75 @@
       if (!gp.every(function (v) { return inPolyB(v[0], v[1], TRn); })) err('Graal : sa position de départ (' + P.gx + ', ' + P.gy + ') n\'est pas entièrement dans la salle du trône.');
       if (overlap(gp, G.robotFootprint(k0), 0)) err('Graal : sa position de départ touche l\'emprise du robot au départ.');
     })();
+    /* ---- planification à blanc (sans effet sur la simulation) ---- */
+    function lightSave() {
+      return {
+        s: { t: s.t, x: s.x, y: s.y, h: s.h, A: cp(s.A), B: cp(s.B), C: cpC(s.C) }, pend: { A: pend.A, B: pend.B }, flushing: flushing,
+        held: { A: held.A ? { stack: held.A.stack.slice() } : null, B: held.B ? { stack: held.B.stack.slice() } : null },
+        st: stones.map(function (x) { return [x.cur, x.sl, x.tag, x.tl.length]; }), graal: Object.assign({}, graal), gtl: graal.tl.length,
+        balls: Object.assign({}, balls), doors: Object.assign({}, doors), stock: stock, nK: K.length, nSegs: segs.length, nErr: errors.length,
+        nInfo: stepInfo.length, stepNo: stepNo, nProg: program.length, ctlPrev: ctlPrev, ctlSeen: Object.assign({}, ctlSeen), oppApplied: Object.assign({}, oppApplied), lastExcl: lastExcl
+      };
+    }
+    function lightRestore(v) {
+      s.t = v.s.t; s.x = v.s.x; s.y = v.s.y; s.h = v.s.h; s.A = v.s.A; s.B = v.s.B; s.C = v.s.C; pend.A = v.pend.A; pend.B = v.pend.B; flushing = v.flushing;
+      held = v.held; stones.forEach(function (x, i) { var q = v.st[i]; x.cur = q[0]; x.sl = q[1]; x.tag = q[2]; x.tl.length = q[3]; });
+      var gtl = graal.tl; graal = v.graal; graal.tl = gtl; gtl.length = v.gtl;
+      balls = v.balls; doors = v.doors; stock = v.stock; K.length = v.nK; segs.length = v.nSegs; errors.length = v.nErr; stepInfo.length = v.nInfo;
+      stepNo = v.stepNo; program.length = v.nProg; ctlPrev = v.ctlPrev; ctlSeen = v.ctlSeen; oppApplied = v.oppApplied; lastExcl = v.lastExcl;
+    }
+    /* planifier(depart, arrivee, o) : recherche de trajet du moteur (celle de travel : grille, contrôle fin, temps masqué de la pince),
+       sans effet. depart {x, y, h} (pose actuelle si null), arrivee {x, y, h} ; o = { excl: [ids ignorés], pince: { f, seq: [{ rot?, hc? }] } }.
+       Renvoie null (aucun passage sans contact) ou { points: [{ x, y, h, t }], duree, mode }. */
+    function planifier(depart, arrivee, o) {
+      o = o || {};
+      var sv = { x: s.x, y: s.y, h: s.h };
+      if (depart) { s.x = depart.x; s.y = depart.y; if (depart.h != null) s.h = depart.h; }
+      try {
+        var excl = (o.excl || []).map(function (id) { return id === 'graal' ? 'graal' : stoneById(id); }).filter(Boolean);
+        var pl = travelPlan([arrivee.x, arrivee.y], arrivee.h != null ? arrivee.h : s.h, excl.length ? excl : null, o.vitesse, o.pince || null, o.mode || null);
+        return planSummary(pl);
+      } finally { s.x = sv.x; s.y = sv.y; s.h = sv.h; }
+    }
+    function planSummary(pl) {
+      if (!pl || !pl.chosen) return null;
+      return { points: pl.chosen.map(function (nd, i) { return { x: nd.p[0], y: nd.p[1], h: nd.h, t: pl.delay + pl.T.ts[i] }; }), duree: Math.max(pl.delay + pl.T.D, pl.gOff + pl.Gtot), mode: pl.gMode };
+    }
+    /* planifierEtape(st) : l'étape est jouée à blanc jusqu'à son premier trajet (choix de la pose comme exec), dont la recherche est
+       faite par planifier ; rien n'est modifié. Renvoie { ok, raison, trajet } : ok faux si l'étape échouerait avant ou pendant ce trajet
+       (raison = message d'erreur du moteur) ; trajet null si l'étape n'a pas de trajet (elle est alors jouée entièrement, à blanc). */
+    function planifierEtape(st, o) {
+      var sv = lightSave(), n0 = errors.length, res;
+      dryStep = { mode: (o && o.mode) || null, verifier: !!(o && o.verifier) };
+      try {
+        program.push(st); stepNo = stepInfo.length + 1; stepInfo.push({ t0: s.t, held: { A: heldStonesOf('A').length, B: heldStonesOf('B').length } });
+        (steps[st.a] || function () { err('Action inconnue.'); })(st);
+        /* contrôles de fin d'étape d'exec : Graal confiné, stockage */
+        graalConfine(sv.s.t, s.t);
+        if (stockCount() > STOCK_MAX && stockCount() > sv.stock) err('Stockage : ' + stockCount() + ' pierres posées dans la cour hors des zones de construction (' + STOCK_MAX + ' au plus, E.1.b).');
+        res = { ok: errors.length === n0, raison: errors.length > n0 ? errors[n0].msg : null, trajet: null };
+      } catch (e) {
+        if (e && e.dry) {
+          var tr = planSummary(e.plan);
+          if (tr && (graal.cur.k === 'toit' || graal.cur.k === 'ascenseur')) {
+            /* trajet prévu : le Graal reste dans le château (comme graalConfine après exec) */
+            var gk = graal.cur.k, prv = { x: s.x, y: s.y, h: s.h };
+            tr.points.forEach(function (q) {
+              var n = Math.max(1, Math.ceil(Math.max(dist([prv.x, prv.y], [q.x, q.y]) / 20, Math.abs(q.h - prv.h) / 5)));
+              for (var u = 1; u <= n; u++) {
+                var pp = { x: prv.x + (q.x - prv.x) * u / n, y: prv.y + (q.y - prv.y) * u / n, h: prv.h + (q.h - prv.h) * u / n, C: s.C }, gq = graalOnRobot(pp, gk);
+                if (!graalPoly(gq.c, gq.ang).every(function (v) { return inPolyB(v[0], v[1], OWN_CASTLE); })) { if (errors.length === n0) err('Graal sorti du château pendant le trajet prévu (E.2.b).'); break; }
+              }
+              prv = q;
+            });
+          }
+          res = errors.length > n0 ? { ok: false, raison: errors[n0].msg, trajet: tr } : tr ? { ok: true, raison: null, trajet: tr } :
+            { ok: false, raison: 'Trajet vers ' + Math.round(e.O[0]) + ', ' + Math.round(e.O[1]) + ' : aucun passage sans contact trouvé (' + e.label + ').', trajet: null };
+        } else if (e === ABORT) res = { ok: false, raison: errors.length > n0 ? errors[n0].msg : 'Étape abandonnée.', trajet: null };
+        else res = { ok: false, raison: 'Erreur interne : ' + (e && e.message), trajet: null };
+      } finally { dryStep = false; lightRestore(sv); }
+      return res;
+    }
     function exec(st) {
       program.push(st);
       var i = stepInfo.length;
@@ -1578,7 +2068,7 @@
       return into;
     }
     function claimed(id) { return stones.some(function (x) { return x.id === id && isClaimed(x); }); }
-    return { exec: exec, finish: finish, result: result, preconditions: preconditions, poseAtT: poseAtT, claimed: claimed, covered: function (st, excl) { return covered(st, excl); }, foreign: foreign, freeFeet: freeFeet, leftHome: leftHome, snapshot: snapshot, restore: restore, pose: pose, held: getHeld, stones: getStones, graal: getGraal, balls: getBalls, errors: function () { return errors; }, time: time, params: params, hullRadius: hullRadius, stockage: stockCount, portes: function () { return Object.assign({}, doors); }, program: function () { return program.slice(); } };
+    return { exec: exec, finish: finish, result: result, preconditions: preconditions, planifier: planifier, planifierEtape: planifierEtape, poseAtT: poseAtT, claimed: claimed, covered: function (st, excl) { return covered(st, excl); }, foreign: foreign, freeFeet: freeFeet, leftHome: leftHome, snapshot: snapshot, restore: restore, pose: pose, held: getHeld, stones: getStones, graal: getGraal, balls: getBalls, errors: function () { return errors; }, time: time, params: params, hullRadius: hullRadius, stockage: stockCount, portes: function () { return Object.assign({}, doors); }, program: function () { return program.slice(); } };
   }
   function simulate(prog, P, opts) {
     var sim = makeSim(P, opts);
