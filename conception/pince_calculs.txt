@@ -12,8 +12,8 @@ retournement 180 -> 0° avec 1 pierre (ventouse 3), hors château    IMPOSSIBLE 
 retournement 180 -> 0° avec 1 pierre (ventouse 3), dans le château IMPOSSIBLE marge mini   -53.4 mm
 retournement 180 -> 360° (autre sens), dans le château             IMPOSSIBLE marge mini   -53.4 mm
 1 pierre (ventouse 1) 0 -> 90° (tour), hors château                FAISABLE   marge mini     4.1 mm
-1 pierre (ventouse 3) 0 -> 90° (tour), hors château                FAISABLE   marge mini     2.0 mm
-pile de 3 pierres 0 -> 90° (piliers de porte), hors château        FAISABLE   marge mini     2.8 mm
+1 pierre (ventouse 3) 0 -> 90° (tour), hors château                IMPOSSIBLE marge mini   -53.4 mm
+pile de 3 pierres 0 -> 90° (piliers de porte), hors château        IMPOSSIBLE marge mini  -114.7 mm
 pile de 3 pierres 0 -> 90° (piliers de porte), dans le château     FAISABLE   marge mini     4.1 mm
 1 pierre (ventouse 1) 0 -> 90° (tour), dans le château             FAISABLE   marge mini     4.1 mm
 1 pierre (ventouse 2) 0 -> 180°, dans le château                   FAISABLE   marge mini    17.1 mm

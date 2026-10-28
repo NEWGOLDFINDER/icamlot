@@ -131,6 +131,8 @@ def balayage(pierres0, deb, fin, chateau, pas=1.0):
         if r is None:
             lo = GARDE_SOL - min(z for _, z in tourne(act0 + pierres0, a))
             hi = H_MAX - max(z for _, z in tourne(act0, a))
+            if pierres0 and not chateau:
+                hi = min(hi, H_MAX - max(z for _, z in tourne(pierres0, a)))
             out.append((a, lo, hi))
             pire = min(pire, hi - lo)
         else:

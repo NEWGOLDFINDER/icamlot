@@ -40,9 +40,9 @@ Hypothèses à vérifier par essai : frottement ventouse/carton 0,5 ; accéléra
 |---|---|---|
 | Nacelle vide 0 → 180° | faisable | 65,4 mm |
 | Pile de 3 pierres 0 → 90° (piliers de porte), dans le château | faisable | 4,1 mm |
-| Pile de 3 pierres 0 → 90°, hors du château (pierres ≤ 350 mm) | faisable | 2,8 mm |
+| Pile de 3 pierres 0 → 90°, hors du château (pierres ≤ 350 mm) | **impossible** (à faire dans le château) | −114,7 mm |
 | 1 pierre tenue par la rangée 1, 0 → 90° (tour) | faisable | 4,1 mm |
-| 1 pierre tenue par la rangée 3, 0 → 90° (tour), hors du château | faisable | 2,0 mm |
+| 1 pierre tenue par la rangée 3, 0 → 90° (tour), hors du château | **impossible** (à faire dans le château) | −53,4 mm |
 | Retournement à 180° d'une pierre tenue par la rangée 3 | **impossible** | −53,4 mm |
 | Linteau posé (dessous à 325 mm) | haut des ventouses à 347 mm | 3 mm |
 
@@ -55,3 +55,5 @@ Conséquence validée : chaque porte utilise une pile complète (2 piliers + le 
 | 30 mm | 1178,6 | 1214,8 |
 | **35 mm (recommandé)** | **1184,4** | 1232,5 |
 | 40 mm | 1191,9 | 1250,6 |
+
+> **Correction du 2026-10-28.** Le calcul de faisabilité oubliait la limite de 350 mm des pierres hors château dans un cas. Le chantier moteur l'a relevé. Les rotations de pile ou de pierre en rangée 3 doivent donc se faire dans le château, ce que le moteur impose.
