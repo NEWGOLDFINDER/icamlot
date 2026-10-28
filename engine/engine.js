@@ -601,7 +601,8 @@
       if (!chosen && Gl.length && Gtot > 0) { gMode = 'fin'; chosen = search(); }
       if (!chosen && Gl.length && Gtot > 0) { gMode = 'avant'; chosen = search(); }
       if (!chosen) gMode = 'tot';
-      if (!chosen) { chosen = nodesFor(modes[0]); err('Trajet vers ' + Math.round(O[0]) + ', ' + Math.round(O[1]) + ' : aucun passage sans contact trouvé (' + label + ').'); }
+      /* aucun passage : le robot ne part pas et l'étape échoue (il ne traverse jamais un obstacle) */
+      if (!chosen) { restorePend(pendBackup); err('Trajet vers ' + Math.round(O[0]) + ', ' + Math.round(O[1]) + ' : aucun passage sans contact trouvé (' + label + ').'); throw ABORT; }
       function viaRotation() {
         var h1 = h0 + dh, f0 = freeGrid(h0, fr), f1 = freeGrid(h1, fr), sc = gridCell(st0), si = sc[1] * GW + sc[0];
         function ctr(k) { var i = k % GW; return k === si ? st0 : [(i + 0.5) * CELL, ((k - i) / GW + 0.5) * CELL]; }
@@ -636,7 +637,7 @@
       var linFlag = Gl.length ? true : chosen.length > 1, yl = yieldRk(rk, t0, linFlag);
       if (yl.abort) {
         /* passage bloqué par l'adversaire : le robot reste où il est, attend, et l'étape échoue (jamais de superposition) */
-        ['A', 'B'].forEach(function (f) { pend[f] = pendBackup[f]; });
+        restorePend(pendBackup);
         adv(YIELD_MAX, 'Attente ' + YIELD_MAX + ' s : passage bloqué par l\'adversaire');
         err('Trajet vers ' + Math.round(O[0]) + ', ' + Math.round(O[1]) + ' abandonné : passage bloqué par le robot adverse (' + label + ').');
         throw ABORT;
@@ -661,6 +662,13 @@
         Gl.forEach(function (g) { s[g.f].hc = g.end.hc; s[g.f].rot = g.end.rot; });
       }
       ['A', 'B'].forEach(function (f) { if (after[f]) runSeq(f, after[f]); });
+    }
+    /* étape abandonnée pendant un trajet : les rotations demandées en temps masqué restent à faire (état logique rétabli) */
+    function restorePend(bk) {
+      ['A', 'B'].forEach(function (f) {
+        pend[f] = bk[f];
+        if (bk[f]) bk[f].seq.forEach(function (q) { if (q.rot != null) s[f].rot = q.rot; if (q.hc != null) s[f].hc = q.hc; });
+      });
     }
     function runSeq(f, seq) { seq.forEach(function (q) { if (q.rot != null) rr(f, q.rot, q.label); if (q.hc != null) zz(f, q.hc, q.label); }); }
     /* trajet + mouvements de pince : pendant le trajet si tm, sinon avant (before) ou après */
@@ -924,7 +932,7 @@
       var sc = stackCenter([x]), cands = [];
       [sc.tan + 90, sc.tan - 90].forEach(function (phi) { var n = nv2(phi); cands.push({ O: [sc.c[0] - D_P * n[0], sc.c[1] - D_P * n[1]], h: phi - 120 * fk(f), phi: phi }); });
       var b = choose(cands, picked, 80, true); if (!b) return err('Aucune position de prise.');
-      if (b.col) err('Prise de ' + what + ' : contact possible avec ' + b.col + '.');
+      if (b.col) { err('Prise de ' + what + ' : aucune position sans contact (' + b.col + ').'); throw ABORT; }
       var seq = [{ rot: 0, label: 'Pince ' + f + ' à plat' }, { hc: best.hc, label: 'Ventouse ' + (best.l + 1) + ' à la hauteur de ' + picked[0].id }];
       takeAt(f, b, 'Face ' + f + ' vers ' + (two ? 'les pierres ' : 'la pierre ') + what, picked, seq, st.tm, best.hc, what, function () {
         held[f] = { stack: [null, null, null] }; var v = [0, 0, 0];
@@ -1131,7 +1139,7 @@
         var sc = stackCenter(sts), cands = [];
         [sc.tan + 90, sc.tan - 90].forEach(function (phi) { var n = nv2(phi); cands.push({ O: [sc.c[0] - D_P * n[0], sc.c[1] - D_P * n[1]], h: phi - 120 * fk(f), phi: phi }); });
         var b = choose(cands, sts, 80, true); if (!b) return err('Aucune position de prise.');
-        if (b.col) err('Prise de ' + st.p + ' : contact possible avec ' + b.col + '.');
+        if (b.col) { err('Prise de ' + st.p + ' : aucune position sans contact (' + b.col + ').'); throw ABORT; }
         var seq = [{ rot: 0, label: 'Pince ' + f + ' à plat' }, { hc: hc, label: 'Pince ' + f + ' à la hauteur de la pile' }];
         takeAt(f, b, 'Face ' + f + ' vers le paquet ' + st.p, sts, seq, st.tm, hc, st.p, function () {
           sts.forEach(function (x) { x.sl = x.l; x.cur = { k: 'held', f: f, l: x.sl }; x.tl.push({ t: s.t, k: 'held', f: f, l: x.sl }); x.tag = null; });
@@ -1180,7 +1188,7 @@
         var pT = { x: c.O[0], y: c.O[1], h: c.h, A: cp(s.A), B: cp(s.B) }; pT[f].hc = c.hc; pT[f].rot = c.rot;
         info.ghost = { feet: ghostFeet(pT, f, dep, T, ang) };
         if (c.gHit) err('Dépôt : contact avec le Graal.');
-        if (b.col) err('Dépôt en ' + Math.round(T[0]) + ', ' + Math.round(T[1]) + ' : contact possible avec ' + b.col + '.');
+        if (b.col) { err('Dépôt en ' + Math.round(T[0]) + ', ' + Math.round(T[1]) + ' : aucune position sans contact (' + b.col + ').'); throw ABORT; }
         var n = nv2(c.phi), Ob = c.Ob || [c.O[0] - 85 * n[0], c.O[1] - 85 * n[1]], hA = Math.min(c.hcR + 15, HC_MAX), seq = [];
         if (Math.abs(s[f].rot - c.rot) > 0.5) seq.push({ rot: c.rot, label: 'Pince ' + f + ' tournée à ' + c.rot + '°' });
         seq.push({ hc: hA, label: 'Pince ' + f + ' au-dessus du point de dépôt' });
@@ -1214,7 +1222,7 @@
         }
         if (!cands.length) return err('Mur ' + z.id + ' : aucune position ne chevauche la zone de ' + OVL + ' mm.');
         cands.forEach(function (c) { if (f === 'A') c.setA = c.setF; else c.setB = c.setF; });
-        var b = choose(cands, null, 85); if (b.col) err('Pose sur ' + z.id + ' : contact possible avec ' + b.col + '.');
+        var b = choose(cands, null, 85); if (b.col) { err('Pose sur ' + z.id + ' : aucune position sans contact (' + b.col + ').'); throw ABORT; }
         consCheck(st, z, 'mur', b.c.C, b.c.phi, 'Mur');
         stepInfo[stepNo - 1].ghost = { T: b.c.C, ang: b.c.phi + 90, feet: [55, 165, 275].map(function (zc) { return { u: 0, v: 0, zc: zc, vertical: false }; }) };
         var n = nv2(b.c.phi), Ob = b.c.Ob || [b.c.O[0] - 85 * n[0], b.c.O[1] - 85 * n[1]];
@@ -1264,7 +1272,7 @@
         }
         consCheck(st, z, 'tour', best.c.Pt, best.c.phi, 'Tour');
         stepInfo[stepNo - 1].ghost = { T: best.c.Pt, ang: best.c.phi + 90, feet: [{ u: 0, v: 0, zc: 160, vertical: true }] };
-        if (best.col) err('Tour ' + z.id + ' : contact possible avec ' + best.col + '.');
+        if (best.col) { s[f].hc = g0.hc; s[f].rot = g0.rot; err('Tour ' + z.id + ' : aucune position sans contact (' + best.col + ').'); throw ABORT; }
         else if (!st.pm || st.pm === 'parfait') if (dist(best.c.Pt, z.c) > 1) err('Tour ' + z.id + ' : pierre décalée de ' + Math.round(dist(best.c.Pt, z.c)) + ' mm du centre du cercle (place insuffisante).');
         var n = nv2(best.c.phi), Ob = [best.c.O[0] - 80 * n[0], best.c.O[1] - 80 * n[1]];
         s[f].hc = g0.hc; s[f].rot = g0.rot;
@@ -1299,7 +1307,7 @@
           }
           if (!c.Ob) c.pen += 1e6;
         });
-        var b = choose(cands); if (b.col) err('Porte ' + z.id + ' : contact possible avec ' + b.col + '.');
+        var b = choose(cands); if (b.col) { err('Porte ' + z.id + ' : aucune position sans contact (' + b.col + ').'); throw ABORT; }
         if (!b.c.Ob) return err('Porte ' + z.id + ' : pas de place dans le château pour tourner la pile.');
         consCheck(st, z, 'porte', b.c.C, b.c.phi, 'Porte');
         stepInfo[stepNo - 1].ghost = { T: b.c.C, ang: b.c.phi + 90, feet: [{ u: -55, v: 0, zc: 160, vertical: true }, { u: 55, v: 0, zc: 160, vertical: true }, { u: 0, v: 0, zc: 380, vertical: false }] };
