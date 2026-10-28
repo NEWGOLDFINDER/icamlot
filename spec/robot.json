@@ -110,7 +110,7 @@
   },
   "mecanismes": {
     "pince_A_et_B": {
-      "statut": "declare",
+      "statut": "propose",
       "cao": "absente : seuls les actionneurs seront ajoutés à la CAO",
       "ventouses_par_face": 6,
       "hauteur_chariot_min": 140,
@@ -128,34 +128,62 @@
         "statut": "declare",
         "valeur": "petite, non déployée",
         "recommandation": 35,
-        "perimetre_depart_a_35mm": 1187.2,
-        "perimetre_depart_a_40mm": 1196.3
+        "perimetre_depart_a_35mm": 1184.4
       },
       "ventouses_par_pierre": 2,
       "pierres_par_face": 3,
       "pas_vertical_pierres": 110,
       "ventouses_pierres_1_et_2": "au centre vertical de chaque pierre, en façade, même écartement horizontal pour les 3 pierres",
-      "ventouse_pierre_3": {
-        "diametre": 20,
-        "position": "près du bord bas de la pierre 3, pour pouvoir lever le linteau au-dessus de 2 pierres debout (porte) sans dépasser 350 mm",
-        "contrainte_calculee": "centre de la ventouse <= 15 mm au-dessus du bord bas de la pierre 3 (linteau levé à 320 + 5 mm, ventouse Ø20 sous 350 mm) ; 12 mm recommandé pour garder 3 mm de marge",
-        "modele_simulateur": "barre à +70 mm du chariot (score.js BARS), soit 15 mm au-dessus du bord bas : cohérent avec la contrainte, sans marge",
-        "position_retenue": 12
-      },
       "durees": "paramètres programmables ; valeurs par défaut = valeurs actuelles du simulateur",
       "rotation_180": {
         "statut": "propose",
         "conclusion": "faisable nacelle vide ; impossible avec une pierre tenue (−61,9 mm sous 350 mm), voir conception/pince.md"
       },
-      "ventouses_rangee_3_demi_ecartement_max": {
-        "statut": "propose",
-        "valeur": 70,
-        "raison": "rotation 90° de la pile de 3 sous 350 mm (marge 7,8 mm)"
-      },
       "nacelle_au_dessus_ventouse_3_max": {
         "statut": "propose",
         "valeur": 13,
         "raison": "linteau posé à 325 mm, actionneurs <= 350 mm"
+      },
+      "ventouses": {
+        "statut": "propose",
+        "source": "conception/pince.md",
+        "rangee_1": {
+          "z_axe": -110,
+          "nombre": 2,
+          "type": "Ø40 à soufflet",
+          "x": [
+            -100,
+            100
+          ]
+        },
+        "rangee_2": {
+          "z_axe": 0,
+          "nombre": 2,
+          "type": "Ø40 à soufflet",
+          "x": [
+            -100,
+            100
+          ]
+        },
+        "rangee_3": {
+          "z_axe": 67,
+          "nombre": 2,
+          "type": "ovale 40 x 20 (grand axe horizontal)",
+          "x": [
+            -66,
+            66
+          ],
+          "centre_au_dessus_bord_bas_pierre": 12
+        },
+        "depression_minimale_kPa": 20
+      },
+      "enveloppe_rangee_3_max": {
+        "valeur": 86,
+        "raison": "rotation 90° de la pile sous 350 mm (marge 4,1 mm)"
+      },
+      "regle_porte": {
+        "statut": "declare",
+        "valeur": "linteau = pierre du haut d'une pile de 3 ; pas de retournement de pierre à 180°"
       }
     },
     "canon_C": {

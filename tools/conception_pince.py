@@ -25,12 +25,41 @@ ROOT = Path(__file__).resolve().parent.parent
 PIERRE_L, PIERRE_E = 320.0, 110.0
 H_MAX, GARDE_SOL = 350.0, 5.0
 BORD_V3 = 12.0  # centre de la ventouse Ø20 de la pierre 3 au-dessus du bord bas de la pierre
-# rangées de ventouses : (z relatif à l'axe, demi-longueur, rayon) ; rangées 1 et 2 héritées de score.js (BARS)
+# rangées de ventouses : (z relatif à l'axe, demi-écartement des 2 ventouses, rayon)
+# rangées 1 et 2 : Ø40 à ±100 mm (hors du tag ArUco central, à 40 mm des bouts de la pierre)
+# rangée 3 : 2 ventouses ovales 40 x 20 mm (grand axe horizontal) centrées à ±66 mm :
+#   20 mm de haut pour poser le linteau sous 350 mm, hors du tag, enveloppe ±86 mm compatible avec la rotation de la pile
+V3_CENTRE, V3_LONG, V3_HAUT = 66.0, 40.0, 20.0
 RANGEES = {
-    1: (-110.0, 105.0, 25.0),
-    2: (0.0, 105.0, 25.0),
-    3: (PIERRE_E / 2 + BORD_V3, 90.0, 10.0),  # 55 + 12 = +67 au-dessus de l'axe
+    1: (-110.0, 100.0, 20.0),
+    2: (0.0, 100.0, 20.0),
+    3: (PIERRE_E / 2 + BORD_V3, V3_CENTRE + (V3_LONG - V3_HAUT) / 2, V3_HAUT / 2),  # +67 au-dessus de l'axe
 }
+TAG_DEMI = 45.0  # tag ArUco ~90 mm (estimé sur les photos du règlement, taille non cotée) centré sur la face
+
+# --- tenue des ventouses (hypothèses explicites, à confirmer par essai) ---
+MU = 0.5        # frottement ventouse / carton
+ACC = 2.0       # m/s², accélération du robot (0,5 m/s atteints en 0,25 s)
+PORTE_A_FAUX = 0.055  # m, centre de gravité de la pierre devant la face de contact (demi-épaisseur)
+
+
+def tenue(masse, dp_kpa):
+    """Coefficients de sécurité (pelage, glissement) pour les 3 cas de prise ; dp = dépression sous la ventouse."""
+    g, dp = 9.81, dp_kpa * 1000
+    out = {}
+    # rangée 3 : 2 ventouses Ø20 près du bord bas, pierre à plat (linteau)
+    r3 = V3_HAUT / 2000; A3 = ((V3_LONG - V3_HAUT) * V3_HAUT + math.pi * (V3_HAUT / 2) ** 2) / 1e6; h_cg = (PIERRE_E / 2 - BORD_V3) / 1000 + r3
+    m_charge = masse * (g * PORTE_A_FAUX + ACC * h_cg)
+    out["rangée 3 (2 ovales), linteau à plat"] = min(2 * dp * A3 * r3 / m_charge, MU * 2 * dp * A3 / (masse * math.hypot(g, ACC)))
+    # rangée 1 : 2 ventouses Ø40 au centre de la pierre 1, qui porte au pire les 3 pierres de la pile en glissement
+    _, x1, r1 = RANGEES[1]; r1 /= 1000; A1 = math.pi * r1 ** 2
+    m_charge = masse * (g * PORTE_A_FAUX + ACC * r1)
+    out["rangée 1, pile de 3 (pire cas)"] = min(2 * dp * A1 * r1 / m_charge, MU * 2 * dp * A1 / (3 * masse * math.hypot(g, ACC)))
+    # rangée 1, pierre debout (nacelle à 90°) : 2 ventouses l'une au-dessus de l'autre, à 2*x1 d'écart
+    x1m = x1 / 1000
+    m_charge = masse * (g * PORTE_A_FAUX + ACC * (x1m + r1))
+    out["rangée 1, pierre debout (90°)"] = min(dp * A1 * (r1 + 2 * x1m + r1) / m_charge, MU * 2 * dp * A1 / (masse * math.hypot(g, ACC)))
+    return out
 
 
 def rect(u0, z0, u1, z1, n=24):
@@ -120,7 +149,7 @@ def main():
     p3 = pierre_tenue(3)
     p1 = pierre_tenue(1)
     pile = pierre_tenue(1) + pierre_tenue(2) + rect(-PIERRE_L / 2, 55, PIERRE_L / 2, 165)
-    print("Rangée 3 à +%.0f mm de l'axe (ventouse Ø20 à %.0f mm du bord bas de la pierre 3)\n" % (RANGEES[3][0], BORD_V3))
+    print("Rangée 3 à +%.0f mm de l'axe (ventouses de 20 mm de haut, centrées à %.0f mm du bord bas de la pierre 3)\n" % (RANGEES[3][0], BORD_V3))
 
     print("— Hauteurs à 0° —")
     act_top = max(z for _, z in actionneur())
@@ -156,6 +185,16 @@ def main():
         RANGEES[3] = (z3, hl, r3)
         print(f"  ventouses 3 à ±{hl:3d} mm : pile 0->90° (château) marge {balayage(pile, 0, 90, True)[1]:6.1f} | 1 pierre ventouse 1 0->90° (château) {balayage(p1, 0, 90, True)[1]:6.1f} | retournement avec pierre {balayage(p3, 180, 0, True)[1]:6.1f}")
     RANGEES[3] = (z3, hl3, r3)
+
+    print("\n— Tenue des ventouses : coefficient de sécurité (>= 3 visé) —")
+    print(f"hypothèses : frottement {MU}, accélération {ACC} m/s², centre de gravité à {PORTE_A_FAUX*1000:.0f} mm devant la face")
+    for masse in (0.090, 0.180):
+        for dp in (10, 20, 30, 40):
+            t = tenue(masse, dp)
+            print(f"  pierre {masse*1000:3.0f} g, dépression {dp:2d} kPa : " + " | ".join(f"{k} {v:4.1f}" for k, v in t.items()))
+    print(f"\nencombrement : rangées 1-2 de ±{RANGEES[1][1] + RANGEES[1][2]:.0f} mm, rangée 3 de ±{RANGEES[3][1] + RANGEES[3][2]:.0f} mm ; "
+          f"tag supposé de ±{TAG_DEMI:.0f} mm : jeu {V3_CENTRE - V3_LONG / 2 - TAG_DEMI:.0f} mm (rangée 3), {RANGEES[1][1] - RANGEES[1][2] - TAG_DEMI:.0f} mm (rangées 1-2) ; "
+          f"bout de pierre à {PIERRE_L/2 - RANGEES[1][1] - RANGEES[1][2]:.0f} mm des ventouses Ø40")
 
     dessin(p3, prof_c)
 

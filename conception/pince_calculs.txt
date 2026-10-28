@@ -1,4 +1,4 @@
-Rangée 3 à +67 mm de l'axe (ventouse Ø20 à 12 mm du bord bas de la pierre 3)
+Rangée 3 à +67 mm de l'axe (ventouses de 20 mm de haut, centrées à 12 mm du bord bas de la pierre 3)
 
 — Hauteurs à 0° —
 prise d'une pile au sol : axe à 165 mm -> ventouses de 30 à 242 mm
@@ -7,36 +7,49 @@ linteau (porte) : bas de la pierre 3 à 325 mm -> axe à 270 mm -> haut des vent
 linteau tenu par la ventouse 1 (pierre prise en bas, sans retournement) : axe à 490 mm -> ventouses à 567 mm : IMPOSSIBLE
 
 — Rotations (mouvement coordonné du chariot) —
-nacelle vide 0 -> 180°                                             FAISABLE   marge mini    46.7 mm
-retournement 180 -> 0° avec 1 pierre (ventouse 3), hors château    IMPOSSIBLE marge mini   -61.9 mm
-retournement 180 -> 0° avec 1 pierre (ventouse 3), dans le château IMPOSSIBLE marge mini   -61.9 mm
-retournement 180 -> 360° (autre sens), dans le château             IMPOSSIBLE marge mini   -61.9 mm
-1 pierre (ventouse 1) 0 -> 90° (tour), hors château                IMPOSSIBLE marge mini    -6.1 mm
-1 pierre (ventouse 3) 0 -> 90° (tour), hors château                FAISABLE   marge mini     3.2 mm
-pile de 3 pierres 0 -> 90° (piliers de porte), hors château        IMPOSSIBLE marge mini    -6.1 mm
-pile de 3 pierres 0 -> 90° (piliers de porte), dans le château     IMPOSSIBLE marge mini    -6.1 mm
-1 pierre (ventouse 1) 0 -> 90° (tour), dans le château             IMPOSSIBLE marge mini    -6.1 mm
-1 pierre (ventouse 2) 0 -> 180°, dans le château                   FAISABLE   marge mini     7.8 mm
+nacelle vide 0 -> 180°                                             FAISABLE   marge mini    65.4 mm
+retournement 180 -> 0° avec 1 pierre (ventouse 3), hors château    IMPOSSIBLE marge mini   -53.4 mm
+retournement 180 -> 0° avec 1 pierre (ventouse 3), dans le château IMPOSSIBLE marge mini   -53.4 mm
+retournement 180 -> 360° (autre sens), dans le château             IMPOSSIBLE marge mini   -53.4 mm
+1 pierre (ventouse 1) 0 -> 90° (tour), hors château                FAISABLE   marge mini     4.1 mm
+1 pierre (ventouse 3) 0 -> 90° (tour), hors château                FAISABLE   marge mini     2.0 mm
+pile de 3 pierres 0 -> 90° (piliers de porte), hors château        FAISABLE   marge mini     2.8 mm
+pile de 3 pierres 0 -> 90° (piliers de porte), dans le château     FAISABLE   marge mini     4.1 mm
+1 pierre (ventouse 1) 0 -> 90° (tour), dans le château             FAISABLE   marge mini     4.1 mm
+1 pierre (ventouse 2) 0 -> 180°, dans le château                   FAISABLE   marge mini    17.1 mm
 
 — Sensibilité : demi-largeur des rangées 1 et 2 (axe des ventouses extrêmes + rayon) —
-  demi-longueur 105 + rayon 25 : pile 0->90° (château) marge   -6.1 | retournement avec pierre marge  -61.9
-  demi-longueur  90 + rayon 25 : pile 0->90° (château) marge   -6.1 | retournement avec pierre marge  -51.6
-  demi-longueur  80 + rayon 25 : pile 0->90° (château) marge   -6.1 | retournement avec pierre marge  -45.0
-  demi-longueur  70 + rayon 25 : pile 0->90° (château) marge   -6.1 | retournement avec pierre marge  -38.5
-  demi-longueur  60 + rayon 25 : pile 0->90° (château) marge   -6.1 | retournement avec pierre marge  -32.2
+  demi-longueur 105 + rayon 20 : pile 0->90° (château) marge    4.1 | retournement avec pierre marge  -56.9
+  demi-longueur  90 + rayon 20 : pile 0->90° (château) marge    4.1 | retournement avec pierre marge  -46.6
+  demi-longueur  80 + rayon 20 : pile 0->90° (château) marge    4.1 | retournement avec pierre marge  -40.0
+  demi-longueur  70 + rayon 20 : pile 0->90° (château) marge    4.1 | retournement avec pierre marge  -33.5
+  demi-longueur  60 + rayon 20 : pile 0->90° (château) marge    4.1 | retournement avec pierre marge  -27.2
 
 — Sensibilité : demi-écartement des 2 ventouses Ø20 de la rangée 3 —
-  ventouses 3 à ± 90 mm : pile 0->90° (château) marge   -6.1 | 1 pierre ventouse 1 0->90° (château)   -6.1 | retournement avec pierre  -61.9
-  ventouses 3 à ± 80 mm : pile 0->90° (château) marge    1.2 | 1 pierre ventouse 1 0->90° (château)    1.2 | retournement avec pierre  -61.9
-  ventouses 3 à ± 70 mm : pile 0->90° (château) marge    7.8 | 1 pierre ventouse 1 0->90° (château)    7.8 | retournement avec pierre  -61.9
-  ventouses 3 à ± 60 mm : pile 0->90° (château) marge    7.8 | 1 pierre ventouse 1 0->90° (château)    7.8 | retournement avec pierre  -61.9
-  ventouses 3 à ± 50 mm : pile 0->90° (château) marge    7.8 | 1 pierre ventouse 1 0->90° (château)    7.8 | retournement avec pierre  -61.9
+  ventouses 3 à ± 90 mm : pile 0->90° (château) marge   -6.1 | 1 pierre ventouse 1 0->90° (château)   -6.1 | retournement avec pierre  -53.4
+  ventouses 3 à ± 80 mm : pile 0->90° (château) marge    1.2 | 1 pierre ventouse 1 0->90° (château)    1.2 | retournement avec pierre  -53.4
+  ventouses 3 à ± 70 mm : pile 0->90° (château) marge    8.3 | 1 pierre ventouse 1 0->90° (château)    8.3 | retournement avec pierre  -53.4
+  ventouses 3 à ± 60 mm : pile 0->90° (château) marge   15.3 | 1 pierre ventouse 1 0->90° (château)   15.3 | retournement avec pierre  -53.4
+  ventouses 3 à ± 50 mm : pile 0->90° (château) marge   17.1 | 1 pierre ventouse 1 0->90° (château)   17.1 | retournement avec pierre  -53.4
+
+— Tenue des ventouses : coefficient de sécurité (>= 3 visé) —
+hypothèses : frottement 0.5, accélération 2.0 m/s², centre de gravité à 55 mm devant la face
+  pierre  90 g, dépression 10 kPa : rangée 3 (2 ovales), linteau à plat  2.5 | rangée 1, pile de 3 (pire cas)  4.6 | rangée 1, pierre debout (90°) 13.9
+  pierre  90 g, dépression 20 kPa : rangée 3 (2 ovales), linteau à plat  4.9 | rangée 1, pile de 3 (pire cas)  9.3 | rangée 1, pierre debout (90°) 27.9
+  pierre  90 g, dépression 30 kPa : rangée 3 (2 ovales), linteau à plat  7.4 | rangée 1, pile de 3 (pire cas) 13.9 | rangée 1, pierre debout (90°) 41.8
+  pierre  90 g, dépression 40 kPa : rangée 3 (2 ovales), linteau à plat  9.8 | rangée 1, pile de 3 (pire cas) 18.6 | rangée 1, pierre debout (90°) 55.8
+  pierre 180 g, dépression 10 kPa : rangée 3 (2 ovales), linteau à plat  1.2 | rangée 1, pile de 3 (pire cas)  2.3 | rangée 1, pierre debout (90°)  7.0
+  pierre 180 g, dépression 20 kPa : rangée 3 (2 ovales), linteau à plat  2.5 | rangée 1, pile de 3 (pire cas)  4.6 | rangée 1, pierre debout (90°) 13.9
+  pierre 180 g, dépression 30 kPa : rangée 3 (2 ovales), linteau à plat  3.7 | rangée 1, pile de 3 (pire cas)  7.0 | rangée 1, pierre debout (90°) 20.9
+  pierre 180 g, dépression 40 kPa : rangée 3 (2 ovales), linteau à plat  4.9 | rangée 1, pile de 3 (pire cas)  9.3 | rangée 1, pierre debout (90°) 27.9
+
+encombrement : rangées 1-2 de ±120 mm, rangée 3 de ±86 mm ; tag supposé de ±45 mm : jeu 1 mm (rangée 3), 35 mm (rangées 1-2) ; bout de pierre à 40 mm des ventouses Ø40
 
 — Périmètre (châssis seul : 1173.1 mm) —
-largeur de la nacelle à 0° : ±130 mm ; au pire pendant une rotation : ±177 mm
-  saillie 10 mm : départ (nacelles à 0°)  1173.1 mm | match, 2 nacelles au pire angle  1174.7 mm
-  saillie 20 mm : départ (nacelles à 0°)  1173.2 mm | match, 2 nacelles au pire angle  1197.7 mm
-  saillie 25 mm : départ (nacelles à 0°)  1175.3 mm | match, 2 nacelles au pire angle  1215.8 mm
-  saillie 30 mm : départ (nacelles à 0°)  1180.1 mm | match, 2 nacelles au pire angle  1233.9 mm
-  saillie 35 mm : départ (nacelles à 0°)  1187.2 mm | match, 2 nacelles au pire angle  1252.1 mm
-  saillie 40 mm : départ (nacelles à 0°)  1196.3 mm | match, 2 nacelles au pire angle  1270.3 mm
+largeur de la nacelle à 0° : ±120 mm ; au pire pendant une rotation : ±169 mm
+  saillie 10 mm : départ (nacelles à 0°)  1173.1 mm | match, 2 nacelles au pire angle  1173.1 mm
+  saillie 20 mm : départ (nacelles à 0°)  1173.2 mm | match, 2 nacelles au pire angle  1179.7 mm
+  saillie 25 mm : départ (nacelles à 0°)  1174.8 mm | match, 2 nacelles au pire angle  1197.1 mm
+  saillie 30 mm : départ (nacelles à 0°)  1178.6 mm | match, 2 nacelles au pire angle  1214.8 mm
+  saillie 35 mm : départ (nacelles à 0°)  1184.4 mm | match, 2 nacelles au pire angle  1232.5 mm
+  saillie 40 mm : départ (nacelles à 0°)  1191.9 mm | match, 2 nacelles au pire angle  1250.6 mm
