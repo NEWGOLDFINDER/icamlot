@@ -70,7 +70,8 @@ console.log('\n2. Matchs joués par le modèle');
 var envP = ENV.create({ skipContacts: true }), choose = ENV.chooserFromRecurrent(model), legal = true;
 var st = envP.play(function (o, m) { var i = choose(o, m); if (!m[i]) legal = false; return i; }, { seed: 5, intensite: 'realiste' });
 var R = envP.result();
-check('joueur : match terminé à 100 s, actions toujours dans le masque', st.done && legal && Math.abs(envP.sim.time() - ENV.MATCH) < 1e-6, SCORE.scoreAt(R, R.params, ENV.MATCH).total + ' pts, ' + envP.program().length + ' briques, adversaire ' + SCORE.scoreAt(R.opponent, R.opponent.params, ENV.MATCH).total + ' pts');
+/* une action lancée avant 100 s peut finir après : le robot est arrêté à 100 s (embarqué : STOP) et le score est lu à 100 s */
+check('joueur : match terminé (score lu à 100 s), actions toujours dans le masque', st.done && legal && envP.sim.time() >= ENV.MATCH - 1e-6, SCORE.scoreAt(R, R.params, ENV.MATCH).total + ' pts, ' + envP.program().length + ' briques, adversaire ' + SCORE.scoreAt(R.opponent, R.opponent.params, ENV.MATCH).total + ' pts');
 var envS = ENV.create({ skipContacts: true }), sp = envS.reset({ seed: 6, intensite: 'realiste', opponent: { brain: model } }), n = 0;
 while (!sp.done && n < 200) { sp = envS.step(choose(sp.obs, sp.mask)); n++; }
 if (!sp.done) sp = envS.step(envS.catalogue.map(function (a) { return a.a; }).indexOf('finir'));
