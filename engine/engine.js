@@ -72,6 +72,10 @@
     if (o.p) o.p = mirrorId(o.p);
     if (o.z) o.z = mirrorId(o.z);
     if (o.s && o.s.indexOf('.') >= 0) o.s = mirrorId(o.s.split('.')[0]) + '.' + o.s.split('.')[1];
+    /* coordonnées en repère table réel (deposer, traj) : x -> 3000 - x, angle -> 180 - angle.
+       seDeplacer et trone restent en repère d'équipe (mis en miroir à l'exécution). */
+    if (o.a === 'deposer') { if (o.x != null) o.x = 3000 - o.x; if (o.ang != null) o.ang = 180 - o.ang; }
+    if (o.a === 'traj' && o.pts) o.pts = o.pts.map(function (q) { var r = Object.assign({}, q); if (q.x != null) r.x = 3000 - q.x; if (q.a != null && q.a !== '') r.a = 180 - q.a; return r; });
     return o;
   }
   function blueParams(base) {
@@ -809,6 +813,15 @@
       var ch = surPlace ? heldInCastle(poseNow(), f, [s[f].rot, a1]) : true, b = G.balayage(maskOf(f), ch, s[f].rot, a1);
       return b.ok ? null : rotMsg(f, s[f].rot, a1, ch, b.marge);
     }
+    /* empreintes des pierres déposées en T : même pose que l'étape deposer (face de normale ang - 90, pince à rot),
+       grand axe d'une pierre à plat selon ang */
+    function depositFeet(f, dep, T, ang, rot) {
+      var phi = ang - 90, p = { x: 0, y: 0, h: phi - 120 * fk(f), A: cp(s.A), B: cp(s.B) }, cx = 0, cy = 0;
+      p[f].rot = rot; p[f].hc = 165;
+      dep.forEach(function (x) { var fo = heldFoot(p, fk(f), x.sl); cx += fo.cx / dep.length; cy += fo.cy / dep.length; });
+      p.x = T[0] - cx; p.y = T[1] - cy;
+      return dep.map(function (x) { return geomHeld(p, f, x.sl).foot; });
+    }
     function holdsPile(f) { var hs = heldStonesOf(f); return hs.length === 3 && hs.every(function (x, i) { return x.sl === i; }); }
     var PRE = {
       prendre: function (st) {
@@ -838,8 +851,7 @@
           if (st.q !== 'pile' && low.apply(null, dsl) !== low.apply(null, all)) return 'À plat, seule la pierre du bas de la pince peut être posée seule : ' + st.q + ' a une pierre tenue sous elle.';
         }
         var wr = rotPre(f, rot, !st.tm); if (wr) return wr;
-        var T = [+st.x || 0, +st.y || 0], foot = rectPoly({ cx: T[0], cy: T[1], hl: 160, hn: 55, ang: (+st.ang || 0) });
-        return stockPre(dep.map(function () { return foot; }));
+        return stockPre(depositFeet(f, dep, [+st.x || 0, +st.y || 0], +st.ang || 0, rot));
       },
       mur: function (st) {
         var f = st.f, z = zoneById(st.z);

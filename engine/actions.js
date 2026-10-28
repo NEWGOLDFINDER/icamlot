@@ -32,9 +32,8 @@
       { id: 'W7', x: 1950, y: 1650, label: 'couloir sud adverse' },
       { id: 'W8', x: 1900, y: 1000, label: 'devant la façade adverse' }
     ],
-    /* points de stockage dans la cour (hors zones de construction et hors salle du trône), pierres à plat. Le moteur pose la
-       pierre grand axe selon ang, mais PRE.deposer teste le stockage avec le grand axe perpendiculaire : les points sont choisis
-       pour que les deux orientations soient hors des zones (sinon le compte de stockage diffère avant et après la pose). */
+    /* points de stockage dans la cour (hors zones de construction et hors salle du trône), pierres à plat, grand axe selon
+       ang (PRE.deposer teste le stockage avec les empreintes de la pose réelle depuis le chantier moteur-2). */
     stocks: [
       { id: 'S1', x: 300, y: 680, ang: 0, label: 'cour nord' },
       { id: 'S2', x: 300, y: 1320, ang: 0, label: 'cour sud' }
@@ -234,10 +233,10 @@
         /* hauteur d'axe qui pose la pierre la plus basse au sol (comme le moteur) : dans la course de la pince ? */
         var cs = Math.cos(rot * D2R), sls = hs.map(function (x) { return x.sl; }), lLow = cs > 0 ? Math.min.apply(null, sls) : Math.max.apply(null, sls);
         if (rot !== 90 && !zOk(55 - G().stoneZc(lLow) * cs)) return 'Dépôt au sol : pince hors de sa course pour la rangée ' + (lLow + 1) + '.';
-        var foot = G().rectPoly({ cx: +st.x, cy: +st.y, hl: 160, hn: 55, ang: +st.ang || 0 });
-        why = stockPreB(b, hs.map(function () { return foot; })); if (why) return why;
+        var feet = depositFeetB(b, f, hs, [+st.x, +st.y], +st.ang || 0, rot);
+        why = stockPreB(b, feet); if (why) return why;
         /* place libre : une pierre déjà au point de dépôt mettrait la pince hors de sa course */
-        if (groundStones(b).some(function (o) { return G().overlap(foot, o.foot, 1); })) return 'Point de dépôt occupé.';
+        if (groundStones(b).some(function (o) { return feet.some(function (ft) { return G().overlap(ft, o.foot, 1); }); })) return 'Point de dépôt occupé.';
         return null;
       case 'lacher': case 'deposerZone':
         hs = heldList(b, f);
@@ -256,6 +255,13 @@
       default:
         return 'Action inconnue.';
     }
+  }
+  /* empreintes des pierres déposées en T (comme depositFeet du moteur : face de normale ang - 90, grand axe selon ang) */
+  function depositFeetB(b, f, hs, T, ang, rot) {
+    var q = poseOf(b, 0, 0, ang - 90 - 120 * fk(f)), cx = 0, cy = 0; q[f] = { hc: 165, rot: rot, vac: [0, 0, 0] };
+    var fos = hs.map(function (x) { return G().heldFoot(q, fk(f), x.sl); });
+    fos.forEach(function (fo) { cx += fo.cx / fos.length; cy += fo.cy / fos.length; });
+    return fos.map(function (fo) { return G().rectPoly({ cx: fo.cx + T[0] - cx, cy: fo.cy + T[1] - cy, hl: fo.hl, hn: fo.hn, ang: fo.ang }); });
   }
   function contiguous(hs) { var sl = hs.map(function (x) { return x.sl; }); return Math.max.apply(null, sl) - Math.min.apply(null, sl) + 1 === hs.length; }
   /* pierres tenues par f dans un château (n'importe lequel, comme heldInCastle du moteur) */
@@ -355,10 +361,8 @@
      seDeplacer est déjà mis en miroir par le moteur (repère de l'équipe). */
   function realStep(st, team) {
     if (!st || team !== 'blue') return st;
-    var o = E().mirrorStep(st);
-    if (o.a === 'deposer') { if (o.x != null) o.x = 3000 - o.x; if (o.ang != null) o.ang = 180 - o.ang; }
-    if (o.a === 'traj' && o.pts) o.pts = o.pts.map(function (q) { var r = Object.assign({}, q); r.x = 3000 - q.x; if (q.a != null && q.a !== '') r.a = 180 - q.a; return r; });
-    return o;
+    /* ENGINE.mirrorStep met aussi en miroir deposer.x/ang et les points de traj (chantier moteur-2) */
+    return E().mirrorStep(st);
   }
 
   /* même brique, au temps masqué près (tm est ajouté automatiquement par le catalogue) */

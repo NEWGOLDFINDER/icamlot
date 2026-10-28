@@ -204,5 +204,25 @@ var d = E.makeDuel({ blue: { params: E.blueParams({}) } }), excD = null;
 try { d.run({ yellow: E.programAgent(ref.slice(0, 4)), blue: E.programAgent(ref.slice(0, 4).map(E.mirrorStep)) }); d.finish(); } catch (e) { excD = e; }
 ok(!excD, 'makeDuel + run sans exception', excD && excD.message);
 
+/* ------------------------------------------------------------------ */
+titre('Chantier moteur-2');
+/* mirrorStep : dépôt et trajectoire en repère réel mis en miroir (comme ACTIONS.realStep) */
+var mD = E.mirrorStep({ a: 'deposer', f: 'A', q: 'pile', x: 300, y: 620, ang: 30, r: 0 }), mT = E.mirrorStep({ a: 'traj', pts: [{ x: 500, y: 400, a: 10 }, { x: 600, y: 700 }] });
+ok(mD.x === 2700 && mD.ang === 150 && mD.y === 620 && mT.pts[0].x === 2500 && mT.pts[0].a === 170 && mT.pts[1].x === 2400 && mT.pts[1].a === undefined, 'mirrorStep : deposer.x/ang et points de traj en miroir');
+/* PRE.deposer : le stockage est évalué avec les empreintes de la pose réelle (grand axe selon ang) */
+(function () {
+  var base = run([{ a: 'prendre', f: 'A', p: 'P1' }, { a: 'prendre', f: 'B', p: 'P2' }, { a: 'deposer', f: 'A', q: 'pile', x: 300, y: 1320, ang: 0, r: 0 }]);
+  var sn = base.sim.snapshot(), n = 0, incoh = [];
+  ok(base.sim.stockage() === 3 && !base.sim.errors().length, 'trois pierres stockées dans la cour', base.sim.stockage() + ' ; ' + base.sim.errors().map(function (e) { return e.msg; }).join(' | '));
+  /* points près des zones de construction (le grand axe décide si la pile est dans une zone ou stockée) */
+  [[250, 650, 0], [250, 650, 90], [480, 760, 45], [480, 760, 135], [560, 1000, 0], [560, 1000, 90], [200, 560, 0], [200, 560, 90], [430, 1180, 135], [430, 1180, 45]].forEach(function (q) {
+    base.sim.restore(sn);
+    var st = { a: 'deposer', f: 'B', q: 'pile', x: q[0], y: q[1], ang: q[2], r: 0 }, pre = base.sim.preconditions(st), e = base.sim.exec(st), stk = base.sim.errors().some(function (x) { return /Stockage/.test(x.msg); });
+    n++;
+    if (!!(pre && /Stockage/.test(pre)) !== stk && !(e.err && !/Stockage/.test(e.err))) incoh.push(q.join(',') + ' pre=' + pre + ' exec=' + e.err);
+  });
+  ok(!incoh.length, 'PRE.deposer : stockage prédit = stockage après la pose réelle', n + ' dépôts' + (incoh.length ? ' ; ' + incoh.join(' ; ') : ''));
+})();
+
 console.log('\n' + nOk + ' réussis, ' + nKo + ' échoués.');
 process.exit(nKo ? 1 : 0);
