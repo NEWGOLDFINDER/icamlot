@@ -752,7 +752,8 @@
         /* mouvement de pince valable partout (pierres sous 350 mm) de préférence ; sinon permis seulement dans le château
            (départ et arrivée dans le château) : le plan certifié le fait alors sur place à l'arrivée */
         var ch = heldInCastle(q0, f, rots) && heldInCastle(pEnd, f, rots), ex = expand(f, from, seq, false), inCh = false;
-        if (ex.err && ch) { ex = expand(f, from, seq, true); inCh = true; }
+        /* faisable seulement dans le château (pierres au-dessus de 350 mm) : sur place à l'arrivée, dans le château, jamais en route */
+        if (ex.err && ch && !expand(f, from, seq, true).err) { after[f] = { seq: seq, from: from }; s[f].hc = from.hc; s[f].rot = from.rot; return; }
         /* impossible pendant le trajet (pierres hors du château par exemple) : fait sur place à l'arrivée */
         if (ex.err) { after[f] = { seq: seq, from: from }; s[f].hc = from.hc; s[f].rot = from.rot; return; }
         Gl.push({ f: f, from: from, seq: seq, gk: ex.keys, end: ex.keys[ex.keys.length - 1], chateau: inCh });
@@ -1336,6 +1337,11 @@
       tourner: function (st) {
         var f = st.f, r = +st.r;
         if ([0, 90, 180].indexOf(r) < 0) return 'Angle de pince : 0, 90 ou 180°.';
+        /* hauteur d'axe cible (optionnelle) : dans la course et dans la plage admissible à l'angle demandé */
+        if (st.hc != null) {
+          var hcq = +st.hc; if (!zOk(hcq)) return 'Préparer la pince : ' + zMsg(hcq) + '.';
+          var cq = G.corridor(maskOf(f), !!st.tm || heldInCastle(poseNow(), f, [r]), r); if (hcq < cq[0] - 0.5 || hcq > cq[1] + 0.5) return 'Préparer la pince : axe à ' + Math.round(hcq) + ' mm impossible à ' + r + '° (' + Math.round(cq[0]) + ' à ' + Math.round(cq[1]) + ' mm).';
+        }
         return rotPre(f, r, !st.tm);
       },
       attendre: function () { return null; },
@@ -1501,7 +1507,10 @@
       var h = P.team === 'blue' ? 300 : 120;  /* face C (h + 240) vers le camp adverse */
       if (P.tirDepuisTrone !== false) travel([mir(P.tx != null ? P.tx : 250), P.ty != null ? P.ty : 1000], h, 'Vers la position de tir : face C vers le camp adverse');
       else travel([s.x, s.y], h, 'Rotation sur place : face C vers le camp adverse');
-      /* sortie du canon (90 mm en 1 s) et mise en route des volants, puis attente de la phase d'attaque */
+      /* sortie du canon (90 mm en 1 s) et mise en route des volants, au plus tard pour la phase d'attaque : le robot attend
+         canon rentré, puis le sort juste à temps (la spec ne fixe pas l'instant de sortie ; le robot reste compact plus longtemps) */
+      var tPrep = (P.bdep > 0 ? P.bdep : 0.1) + (P.bspin > 0 ? P.bspin : 0);
+      if (s.t + tPrep < T_ATTAQUE) adv(T_ATTAQUE - tPrep - s.t, 'Attente, canon rentré, jusqu\'à ' + String(Math.round((T_ATTAQUE - tPrep) * 10) / 10).replace('.', ',') + ' s');
       balls.tDeploy = s.t;
       moveC({ can: GE.canon.course }, P.bdep > 0 ? P.bdep : 0.1, 'Sortie du canon (' + GE.canon.course + ' mm)');
       if (P.bspin > 0) adv(P.bspin, 'Mise en route du canon');
@@ -1864,12 +1873,14 @@
       },
       tourner: function (st) {
         var why = PRE.tourner(st); if (why) return err(why);
-        var f = st.f, r = +st.r;
-        if (Math.abs(s[f].rot - r) < 0.5) return;
-        var seq = [{ rot: r, label: 'Pince ' + f + ' tournée à ' + r + '°' }];
+        var f = st.f, r = +st.r, hcq = st.hc != null ? +st.hc : null;
+        if (Math.abs(s[f].rot - r) < 0.5 && (hcq == null || Math.abs(s[f].hc - hcq) < 0.5)) return;
+        var seq = [];
+        if (Math.abs(s[f].rot - r) >= 0.5) seq.push({ rot: r, label: 'Pince ' + f + ' tournée à ' + r + '°' });
+        if (hcq != null && Math.abs(s[f].hc - hcq) >= 0.5) seq.push({ hc: hcq, label: 'Pince ' + f + ' à ' + Math.round(hcq) + ' mm' });
         if (!st.tm) return runSeq(f, seq);
         var pd = pend[f]; pend[f] = { from: pd ? pd.from : cp(s[f]), seq: (pd ? pd.seq : []).concat(seq) };
-        s[f].rot = r;
+        s[f].rot = r; if (hcq != null) s[f].hc = hcq;
       },
       /* attendre : rien ne bouge ; une rotation de pince préparée reste en attente du prochain trajet */
       attendre: function (st) { adv(Math.max(0, +st.sec || 0), 'Attente de ' + (+st.sec || 0) + ' s'); },
