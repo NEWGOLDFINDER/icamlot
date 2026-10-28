@@ -15,6 +15,9 @@ réussie pose un cookie de session signé, valable 30 jours.
   POST   /api/trainings/<id>/pause|resume|stop
   GET    /api/trainer
 
+Les entrées et familles d'actions valides, et leurs tailles, sont lues dans le moteur JS de référence
+(engine/env.js, engine/actions.js) par un appel unique à Node : rien n'est recopié en dur ici.
+
 En local : python3 api/server.py --static .  (sert le site, protège /plateau/ et /cerveau/)
 """
 import argparse
@@ -60,49 +63,40 @@ MAX_EPOCHS = 500
 MAX_DURATION = 1800
 ACTIVATIONS = {"relu", "tanh", "sigmoid"}
 METHODES = {"evolution", "imitation", "ppo"}
-FAMILLES = [
-    "prendre",
-    "mur",
-    "tour",
-    "porte",
-    "boulets",
-    "prendreGraal",
-    "poserGraal",
-    "trone",
-    "staging",
-    "repickup",
-    "traj",
-    "tournerPince",
-    "deposerZone",
-]
-ENTREES = ["temps", "robot", "paquets", "faces", "constructions", "graal", "boulets", "adversaire", "proprioception", "spatial"]
-ENTREE_N = {
-    "temps": 1,
-    "robot": 4,
-    "paquets": 10,
-    "faces": 6,
-    "constructions": 9,
-    "graal": 4,
-    "boulets": 1,
-    "adversaire": 2,
-    "proprioception": 11,
-    "spatial": 8,
-}
-FAMILLE_N = {
-    "prendre": 20,
-    "mur": 20,
-    "tour": 24,
-    "porte": 20,
-    "boulets": 1,
-    "prendreGraal": 2,
-    "poserGraal": 18,
-    "trone": 1,
-    "staging": 6,
-    "repickup": 6,
-    "traj": 8,
-    "tournerPince": 2,
-    "deposerZone": 2,
-}
+# Réseau récurrent (imitation, PPO) : mêmes valeurs par défaut que trainer/models.py (RecurrentActorCritic)
+REC_HIDDEN = 128
+REC_ENCODEUR = 128
+REC_CRITIQUE = 128
+MAX_HIDDEN = 512
+MAX_EVAL = 2000
+MAX_PROCS = 64
+
+_ENV_INFO = None
+_ENV_LOCK = threading.Lock()
+_ENV_JS = r"""
+var root = process.argv[1];
+var c = require(require('path').join(root, 'engine', 'load.js')).loadIcamlot(root);
+var g = {}; c.ENV.GROUPS.forEach(function (x) { g[x.id] = x.vars.reduce(function (a, v) { return a + v.n; }, 0); });
+var f = {}; c.ACTIONS.FAMILLES.forEach(function (x) { f[x.id] = c.ACTIONS.filterByFamilles([x.id]).length; });
+process.stdout.write(JSON.stringify({ entrees: g, entrees_defaut: c.ENV.DEFAULT_GROUPS, familles: f,
+  familles_ordre: c.ACTIONS.FAMILLES.map(function (x) { return x.id; }), moteur: c.ENGINE.VERSION, bareme: c.BAREME_VERSION }));
+"""
+
+
+def env_info():
+    """Entrées, familles d'actions (avec leurs tailles), versions du moteur et du barème, lues dans le moteur JS."""
+    global _ENV_INFO
+    with _ENV_LOCK:
+        if _ENV_INFO is None:
+            try:
+                res = subprocess.run(["node", "-e", _ENV_JS, REPO], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                     text=True, timeout=60)
+            except (OSError, subprocess.TimeoutExpired) as e:
+                raise RuntimeError(f"Moteur JS indisponible (Node) : {e}")
+            if res.returncode != 0:
+                raise RuntimeError("Moteur JS indisponible : " + res.stderr.strip()[-300:])
+            _ENV_INFO = json.loads(res.stdout)
+        return _ENV_INFO
 
 _job_lock = threading.Lock()
 _job_proc = None
@@ -178,15 +172,30 @@ def n_params(n_in, couches, n_out):
     return total
 
 
+def n_params_recurrent(n_in, n_out, hidden=REC_HIDDEN, enc=REC_ENCODEUR, crit=REC_CRITIQUE):
+    """Paramètres de RecurrentActorCritic (trainer/models.py) avec ses couches par défaut :
+    encodeur Linear + LayerNorm, GRUCell, acteur Linear, critique Linear + Linear."""
+    encoder = n_in * enc + enc + 2 * enc
+    gru = 3 * hidden * (enc + hidden) + 6 * hidden
+    actor = hidden * n_out + n_out
+    critic = hidden * crit + crit + crit + 1
+    return encoder + gru + actor + critic
+
+
 def validate_cerveau(j, slug):
     name = str(j.get("name", "")).strip()[:80]
     if not name or slugify(name) != slug:
         return None, "Nom invalide."
-    entrees = j.get("entrees") or list(ENTREES)
+    try:
+        info = env_info()
+    except RuntimeError as e:
+        return None, str(e)
+    ENTREE_N, FAMILLE_N = info["entrees"], info["familles"]
+    entrees = j.get("entrees") or list(info["entrees_defaut"])
     if not isinstance(entrees, list) or any(e not in ENTREE_N for e in entrees):
         return None, "Entrées inconnues."
     actions = j.get("actions") or {}
-    familles = actions.get("familles") or list(FAMILLES)
+    familles = actions.get("familles") or list(info["familles_ordre"])
     if not isinstance(familles, list) or any(f not in FAMILLE_N for f in familles):
         return None, "Familles d'actions inconnues."
     if "trone" not in familles:
@@ -204,16 +213,20 @@ def validate_cerveau(j, slug):
         clean.append({"neurones": n, "activation": act})
     n_in = sum(ENTREE_N[e] for e in entrees)
     n_out = sum(FAMILLE_N[f] for f in familles)
-    params = n_params(n_in, clean, n_out)
-    if params > MAX_PARAMS:
-        return None, f"Le réseau a {params} paramètres, le plafond est {MAX_PARAMS}."
     methode = j.get("methode") or "evolution"
     if methode not in METHODES:
         return None, "Méthode inconnue (evolution, imitation ou ppo)."
-    architecture = str((j.get("reseau") or {}).get("architecture") or j.get("architecture") or "mlp")
-    if architecture not in ("mlp", "transformer", "recurrent", "gru"):
-        architecture = "mlp"
+    # l'évolution entraîne un MLP ; l'imitation et le PPO entraînent le réseau récurrent (trainer/models.py)
+    architecture = "mlp" if methode == "evolution" else "recurrent"
     regl = j.get("reglages") or {}
+    try:
+        hidden = int(regl.get("hidden") or REC_HIDDEN)
+    except (TypeError, ValueError):
+        hidden = REC_HIDDEN
+    hidden = max(8, min(MAX_HIDDEN, hidden))
+    params = n_params(n_in, clean, n_out) if architecture == "mlp" else n_params_recurrent(n_in, n_out, hidden)
+    if params > MAX_PARAMS:
+        return None, f"Le réseau a {params} paramètres, le plafond est {MAX_PARAMS}."
     if not isinstance(regl, dict):
         return None, "Réglages invalides."
     def clamp(key, lo, hi, default):
@@ -237,10 +250,14 @@ def validate_cerveau(j, slug):
         "ppo_batch_size": int(clamp("ppo_batch_size", 16, 1024, 256)),
         "ppo_rollout_len": int(clamp("ppo_rollout_len", 8, 128, 32)),
         "ppo_lr": clamp("ppo_lr", 1e-5, 0.01, 0.0003),
-        "curriculum_sokoban": bool(regl.get("curriculum_sokoban", True)),
-        "world_model": bool(regl.get("world_model", True)),
-        "mcts_eval": bool(regl.get("mcts_eval", False)),
+        "ppo_penalite_erreur": clamp("ppo_penalite_erreur", 0, 100, 0),
         "pretrain_imitation": bool(regl.get("pretrain_imitation", True)),
+        "imitation_exemple": bool(regl.get("imitation_exemple", True)),
+        "imitation_lr": clamp("imitation_lr", 1e-5, 0.01, 0.001),
+        "imitation_scenarios": int(clamp("imitation_scenarios", 1, 64, 4)),
+        "hidden": hidden,
+        "processus": int(clamp("processus", 0, MAX_PROCS, 0)),
+        "eval_matchs": int(clamp("eval_matchs", 0, MAX_EVAL, 200)),
     }
     rec = j.get("recompense") or {}
     recompense = {
@@ -271,8 +288,8 @@ def validate_cerveau(j, slug):
         "n_sorties": n_out,
         "n_parametres": params,
         "metadonnees": {
-            "moteur": (j.get("metadonnees") or {}).get("moteur") or "1.1.0",
-            "bareme": (j.get("metadonnees") or {}).get("bareme") or "2027-1.0",
+            "moteur": (j.get("metadonnees") or {}).get("moteur") or info["moteur"],
+            "bareme": (j.get("metadonnees") or {}).get("bareme") or info["bareme"],
         },
     }
     return doc, None
@@ -606,10 +623,14 @@ class Handler(SimpleHTTPRequestHandler):
             j["entraine"] = os.path.exists(weights_path(slug))
             stale = []
             meta = j.get("metadonnees") or {}
-            if meta.get("moteur") and meta.get("moteur") != "1.1.0":
-                stale.append("moteur")
-            if meta.get("bareme") and meta.get("bareme") != "2027-1.0":
-                stale.append("bareme")
+            try:
+                info = env_info()
+                if meta.get("moteur") and meta.get("moteur") != info["moteur"]:
+                    stale.append("moteur")
+                if meta.get("bareme") and meta.get("bareme") != info["bareme"]:
+                    stale.append("bareme")
+            except RuntimeError:
+                pass
             j["obsolète"] = stale
             return self.send_json(200, j)
         if kind == "poids":
@@ -698,7 +719,11 @@ class Handler(SimpleHTTPRequestHandler):
                     return self.send_json(400, {"error": err})
             wpath = weights_path(brain_slug)
             if os.path.exists(wpath) and j.get("reprendre"):
-                cfg["poids"] = (load_json(wpath) or {}).get("layers")
+                prev = load_json(wpath) or {}
+                if prev.get("layers"):
+                    cfg["poids"] = prev["layers"]
+                if (prev.get("fichiers") or {}).get("pt"):
+                    cfg["reprendre_pt"] = prev["fichiers"]["pt"]
             jid = time.strftime("%Y%m%d-%H%M%S") + "-" + secrets.token_hex(3)
             job = {
                 "id": jid, "slug": brain_slug, "name": cfg["name"], "status": "queued",
@@ -776,7 +801,8 @@ class Handler(SimpleHTTPRequestHandler):
             os.remove(brain_path(slug))
         except FileNotFoundError:
             return self.send_json(404, {"error": "Cerveau introuvable."})
-        for extra in (weights_path(slug),):
+        base = os.path.join(weights_dir(), slug + ".modele")
+        for extra in (weights_path(slug),) + tuple(base + ext for ext in (".pt", ".dernier.pt", ".onnx", ".meta.json", ".json", ".eval.json")):
             try:
                 os.remove(extra)
             except FileNotFoundError:

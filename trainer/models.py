@@ -1,469 +1,226 @@
-"""Architectures de réseaux de neurones V2 haute performance pour ICAM LOT Eurobot 2027.
+"""Réseau du cerveau ICAM LOT : acteur-critique récurrent simple et paramétrique (contrat §5).
 
-Comprend :
-- EntityTokenizer : Tokeniseur d'entités objet-centré (22 entités Eurobot).
-- TransformerEncoder : Encodeur self-attention à 2 couches (d_model=64, nhead=4, GELU).
-- FactorizedEncoder : Encodeur multi-branches spécialisé séparant géométrie, table et mécanique.
-- WorldModelHead : Tête auxiliaire de dynamique physique (8 prédictions : pose, dt, enveloppe, contact).
-- RecurrentActorCritic : Réseau récurrent (GRU 128) avec têtes Acteur, Critique et World Model auxiliaire.
-- Pi5ActorWrapper : Wrapper d'inférence pure exportable en ONNX (~600 Ko, opset 18).
+  obs (B, n_in) ─► normalisation ─► encodeur MLP (Linear → LayerNorm → activation)×k ─► GRUCell(H)
+                                                                                         ├─► tête acteur  ─► logits (B, n_out)
+                                                                                         └─► tête critique ─► valeur (B,)
+
+- Normalisation des observations intégrée au modèle : obs_n = clip((obs − mean) / std, −clip, +clip).
+  mean et std sont des tampons (buffers) mis à jour par l'entraîneur avec des statistiques glissantes ;
+  ils sont sauvegardés avec le modèle et intégrés au graphe ONNX.
+- Une seule tête de politique (plus de têtes « approche »/« pliage »), pas d'encodeur Transformer.
+- Le masque d'actions vient de l'environnement ; il n'est pas une entrée du graphe exporté.
+- Aucune dimension codée en dur : n_in et n_out sont lus dans l'environnement.
 """
 from __future__ import annotations
 
+from typing import Dict, List, Optional, Sequence, Tuple
+
+import numpy as np
 import torch
 import torch.nn as nn
-from typing import Optional, Tuple, Union
+
+# Valeur donnée aux logits des actions masquées (probabilité nulle après softmax en float32).
+MASK_LOGIT = -1e9
+
+ACTIVATIONS = {"silu": nn.SiLU, "relu": nn.ReLU, "tanh": nn.Tanh}
 
 
-class EntityTokenizer(nn.Module):
-    """Tokeniseur d'entités objet-centré (22 entités pour Eurobot 2027).
+class RunningMeanStd:
+    """Moyenne et variance glissantes (algorithme parallèle de Chan), en float64."""
 
-    Convertit le vecteur d'observation standard (B, 37) en 22 jetons d'entités de dimension d_model=64.
-    Entités :
-    - 0 : Robot allié (pose, dt, pinces A/B, boulets -> 10 features)
-    - 1 : Robot adverse (lidar x, y -> 2 features)
-    - 2..11 : 10 Paquets P1..P10 (1 feature chacun)
-    - 12..16 : 5 Murs M1..M5 (1 feature chacun)
-    - 17..20 : 4 Tours T1..T4 (1 feature chacun)
-    - 21 : Graal (4 features)
-    """
+    def __init__(self, shape=(), epsilon: float = 1e-4):
+        self.mean = np.zeros(shape, dtype=np.float64)
+        self.var = np.ones(shape, dtype=np.float64)
+        self.count = float(epsilon)
 
-    def __init__(self, d_model: int = 64):
-        super().__init__()
-        self.d_model = d_model
-        self.num_entities = 22
+    def update(self, x: np.ndarray) -> None:
+        x = np.asarray(x, dtype=np.float64)
+        if x.size == 0:
+            return
+        x = x.reshape((-1,) + self.mean.shape)
+        b_mean, b_var, b_count = x.mean(axis=0), x.var(axis=0), x.shape[0]
+        delta = b_mean - self.mean
+        tot = self.count + b_count
+        self.mean = self.mean + delta * b_count / tot
+        m2 = self.var * self.count + b_var * b_count + delta ** 2 * self.count * b_count / tot
+        self.var = m2 / tot
+        self.count = tot
 
-        self.proj_robot = nn.Linear(10, d_model)
-        self.proj_opp = nn.Linear(2, d_model)
-        self.proj_pack = nn.Linear(1, d_model)
-        self.proj_wall = nn.Linear(1, d_model)
-        self.proj_tower = nn.Linear(1, d_model)
-        self.proj_graal = nn.Linear(4, d_model)
+    def state_dict(self) -> dict:
+        return {"mean": self.mean.tolist(), "var": self.var.tolist(), "count": self.count}
 
-        self.type_embed = nn.Embedding(self.num_entities, d_model)
-        self.norm = nn.LayerNorm(d_model)
-
-    def forward(self, obs: torch.Tensor) -> torch.Tensor:
-        B = obs.shape[0]
-        device = obs.device
-
-        # 0. Robot : [rx, ry, rcos, rsin, t_rem, hA_n, hA_flat, hB_n, hB_flat, balls]
-        rob_feat = torch.cat([
-            obs[:, 1:5],   # rx, ry, rcos, rsin (4)
-            obs[:, 0:1],   # t_rem (1)
-            obs[:, 15:17], # hA_n, hA_flat (2)
-            obs[:, 18:20], # hB_n, hB_flat (2)
-            obs[:, 34:35], # balls (1)
-        ], dim=-1)
-        tok_rob = self.proj_robot(rob_feat).unsqueeze(1)  # (B, 1, d_model)
-
-        # 1. Adversaire : [opp_x, opp_y]
-        opp_feat = obs[:, 35:37]
-        tok_opp = self.proj_opp(opp_feat).unsqueeze(1)    # (B, 1, d_model)
-
-        # 2..11. 10 Paquets
-        pack_feat = obs[:, 5:15].unsqueeze(-1)           # (B, 10, 1)
-        tok_pack = self.proj_pack(pack_feat)             # (B, 10, d_model)
-
-        # 12..16. 5 Murs
-        wall_feat = obs[:, 21:26].unsqueeze(-1)          # (B, 5, 1)
-        tok_wall = self.proj_wall(wall_feat)             # (B, 5, d_model)
-
-        # 17..20. 4 Tours
-        tower_feat = obs[:, 26:30].unsqueeze(-1)         # (B, 4, 1)
-        tok_tower = self.proj_tower(tower_feat)          # (B, 4, d_model)
-
-        # 21. Graal : [g_home, g_held, g_posed, g_lvl]
-        graal_feat = obs[:, 30:34]
-        tok_graal = self.proj_graal(graal_feat).unsqueeze(1) # (B, 1, d_model)
-
-        tokens = torch.cat([tok_rob, tok_opp, tok_pack, tok_wall, tok_tower, tok_graal], dim=1)  # (B, 22, d_model)
-        type_ids = torch.arange(self.num_entities, device=device).unsqueeze(0).expand(B, -1)
-        tokens = tokens + self.type_embed(type_ids)
-        return self.norm(tokens)
+    def load_state_dict(self, d: dict) -> None:
+        self.mean = np.asarray(d["mean"], dtype=np.float64)
+        self.var = np.asarray(d["var"], dtype=np.float64)
+        self.count = float(d["count"])
 
 
-class TransformerEncoder(nn.Module):
-    """Encodeur Transformer auto-attention à 2 couches (d_model=64, nhead=4, GELU)."""
-
-    def __init__(self, d_model: int = 64, nhead: int = 4, num_layers: int = 2, dim_feedforward: int = 128):
-        super().__init__()
-        self.d_model = d_model
-        self.nhead = nhead
-        self.num_layers = num_layers
-        encoder_layer = nn.TransformerEncoderLayer(
-            d_model=d_model,
-            nhead=nhead,
-            dim_feedforward=dim_feedforward,
-            activation="gelu",
-            batch_first=True,
-            norm_first=True,
-        )
-        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers, enable_nested_tensor=False)
-        self.norm = nn.LayerNorm(d_model)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.norm(self.transformer(x))
+def _mlp(n_in: int, widths: Sequence[int], activation: str, layernorm: bool) -> Tuple[nn.Sequential, int]:
+    layers: List[nn.Module] = []
+    d = n_in
+    for w in widths:
+        layers.append(nn.Linear(d, int(w)))
+        if layernorm:
+            layers.append(nn.LayerNorm(int(w)))
+        layers.append(ACTIVATIONS[activation]())
+        d = int(w)
+    return nn.Sequential(*layers), d
 
 
-class WorldModelHead(nn.Module):
-    """Tête auxiliaire de World Model prédisant les dynamiques physiques futures (8 variables).
-
-    Variables prédites :
-    - 0..1 : [x, y] coordonnées futures
-    - 2..3 : [cos, sin] orientation future
-    - 4 : delta_t durée mécanique (>= 0)
-    - 5..6 : [env_L, env_W] dimensions de l'enveloppe robot (>= 0)
-    - 7 : p_contact probabilité de collision / scellement dans [0, 1]
-    """
-
-    def __init__(self, hidden_dim: int = 128, action_dim: int = 32, n_actions: int = 106):
-        super().__init__()
-        self.hidden_dim = hidden_dim
-        self.action_dim = action_dim
-        self.action_embed = nn.Embedding(n_actions, action_dim)
-        self.net = nn.Sequential(
-            nn.Linear(hidden_dim + action_dim, hidden_dim),
-            nn.SiLU(),
-            nn.Linear(hidden_dim, 8),
-        )
-
-    def forward(self, hidden: torch.Tensor, actions: torch.Tensor) -> torch.Tensor:
-        if actions.dim() == 2:
-            actions = actions.squeeze(1)
-        safe_actions = torch.clamp(actions, 0, self.action_embed.num_embeddings - 1)
-        act_emb = self.action_embed(safe_actions)
-        h_act = torch.cat([hidden, act_emb], dim=-1)
-        raw = self.net(h_act)
-
-        xy = raw[:, 0:2]
-        cos_sin = torch.tanh(raw[:, 2:4])
-        dt = nn.functional.softplus(raw[:, 4:5])
-        env = nn.functional.softplus(raw[:, 5:7])
-        p_contact = torch.sigmoid(raw[:, 7:8])
-
-        return torch.cat([xy, cos_sin, dt, env, p_contact], dim=-1)
-
-
-class FactorizedEncoder(nn.Module):
-    """Encodeur multi-branches séparant la géométrie, la table et les actionneurs."""
-
-    @property
-    def geo_mlp(self):
-        return getattr(self, "geo_mlp_56", None) or self._modules.get("geo_mlp")
-
-    @property
-    def table_mlp(self):
-        return getattr(self, "table_mlp_56", None) or self._modules.get("table_mlp")
-
-    @property
-    def mech_mlp(self):
-        return getattr(self, "mech_mlp_56", None) or self._modules.get("mech_mlp")
-
-    @property
-    def fusion(self):
-        return getattr(self, "fusion_56", None) or self._modules.get("fusion")
-
-    def __init__(self, n_in: int = 37, hidden_dim: int = 128):
-        super().__init__()
-        self.n_in = n_in
-        self.hidden_dim = hidden_dim
-
-        # Blocs objet-centré & transformer
-        self.tokenizer = EntityTokenizer(d_model=64)
-        self.transformer = TransformerEncoder(d_model=64, nhead=4, num_layers=2)
-        self.self_attn = self.transformer
-
-        if n_in == 37:
-            # 1. Branche géométrie continue : pose robot (4) + Lidar adverse (2)
-            self.geo_mlp = nn.Sequential(
-                nn.Linear(6, 32),
-                nn.SiLU(),
-            )
-            # 2. Branche terrain & châteaux : 10 paquets (10) + 5 murs + 4 tours + 4 graal (13) = 23
-            self.table_mlp = nn.Sequential(
-                nn.Linear(23, 64),
-                nn.SiLU(),
-            )
-            # 3. Branche mécanique & horloge : temps restant (1) + pinces A/B (6) + boulets (1) = 8
-            self.mech_mlp = nn.Sequential(
-                nn.Linear(8, 32),
-                nn.SiLU(),
-            )
-            # 4. Fusion avec projection et normalisation
-            self.fusion = nn.Sequential(
-                nn.Linear(32 + 64 + 32, hidden_dim),
-                nn.LayerNorm(hidden_dim),
-                nn.SiLU(),
-            )
-        elif n_in == 56:
-            # 1. Géométrie continue : pose (4) + adversaire (2) + radar (8) = 14
-            self.geo_mlp_56 = nn.Sequential(
-                nn.Linear(14, 32),
-                nn.SiLU(),
-            )
-            # 2. Table / châteaux : 10 paquets (10) + 5 murs + 4 tours + 4 graal (13) = 23
-            self.table_mlp_56 = nn.Sequential(
-                nn.Linear(23, 64),
-                nn.SiLU(),
-            )
-            # 3. Mécanique & proprioception : temps restant (1) + pinces A/B (6) + boulets (1) + 11 proprio = 19
-            self.mech_mlp_56 = nn.Sequential(
-                nn.Linear(19, 32),
-                nn.SiLU(),
-            )
-            # 4. Fusion
-            self.fusion_56 = nn.Sequential(
-                nn.Linear(32 + 64 + 32, hidden_dim),
-                nn.LayerNorm(hidden_dim),
-                nn.SiLU(),
-            )
-        else:
-            # Fallback générique si dimension différente
-            self.generic = nn.Sequential(
-                nn.Linear(n_in, hidden_dim),
-                nn.LayerNorm(hidden_dim),
-                nn.SiLU(),
-            )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if self.n_in == 37:
-            # x shape: (B, 37)
-            # Géométrie: robot (1..5) + adversaire (35..37)
-            geo = torch.cat([x[:, 1:5], x[:, 35:37]], dim=1)
-            # Table: 10 paquets (5..15) + murs (21..26) + tours (26..30) + graal (30..34)
-            table = torch.cat([x[:, 5:15], x[:, 21:34]], dim=1)
-            # Mécanique: temps restant (0) + pinces A/B (15..21) + boulets (34)
-            mech = torch.cat([x[:, 0:1], x[:, 15:21], x[:, 34:35]], dim=1)
-
-            g_feat = self.geo_mlp(geo)
-            t_feat = self.table_mlp(table)
-            m_feat = self.mech_mlp(mech)
-
-            concat_feat = torch.cat([g_feat, t_feat, m_feat], dim=1)
-            return self.fusion(concat_feat)
-        elif self.n_in == 56:
-            # Geo: pose(1:5) + opp(35:37) + radar(48:56) = 4 + 2 + 8 = 14
-            geo = torch.cat([x[:, 1:5], x[:, 35:37], x[:, 48:56]], dim=1)
-            # Table: packs(5:15) + walls/towers/graal(21:34) = 10 + 13 = 23
-            table = torch.cat([x[:, 5:15], x[:, 21:34]], dim=1)
-            # Mech: time(0:1) + legacy(15:21) + balls(34:35) + proprio(37:48) = 1 + 6 + 1 + 11 = 19
-            mech = torch.cat([x[:, 0:1], x[:, 15:21], x[:, 34:35], x[:, 37:48]], dim=1)
-
-            g_feat = self.geo_mlp_56(geo)
-            t_feat = self.table_mlp_56(table)
-            m_feat = self.mech_mlp_56(mech)
-
-            concat_feat = torch.cat([g_feat, t_feat, m_feat], dim=1)
-            return self.fusion_56(concat_feat)
-
-        return self.generic(x)
+def masked_logits(logits: torch.Tensor, mask: Optional[torch.Tensor]) -> torch.Tensor:
+    if mask is None:
+        return logits
+    return torch.where(mask.bool(), logits, torch.full_like(logits, MASK_LOGIT))
 
 
 class RecurrentActorCritic(nn.Module):
-    """Réseau Acteur-Critique récurrent (GRU 128) multi-têtes avec connexions résiduelles."""
+    """Acteur-critique récurrent.
 
-    @property
-    def actor_approach(self) -> Optional[nn.Module]:
-        return self._modules.get("actor_approach")
+    Paramètres (valeurs par défaut = hypothèses de départ, à régler par l'équipe) :
+      hidden      : taille H de l'état caché du GRU (128) ;
+      encodeur    : largeurs des couches de l'encodeur (128,) ;
+      acteur      : couches cachées de la tête acteur avant la sortie (aucune) ;
+      critique    : couches cachées de la tête critique (128,) ;
+      activation  : silu | relu | tanh (silu) ;
+      layernorm   : LayerNorm après chaque couche de l'encodeur (oui) ;
+      clip_obs    : borne de l'observation normalisée (5,0).
+    """
 
-    @actor_approach.setter
-    def actor_approach(self, module: nn.Module) -> None:
-        self.register_module("actor_approach", module)
-
-    @property
-    def approach_head(self) -> Optional[nn.Module]:
-        return self._modules.get("actor_approach")
-
-    @approach_head.setter
-    def approach_head(self, module: nn.Module) -> None:
-        self.register_module("actor_approach", module)
-
-    @property
-    def head_approach(self) -> Optional[nn.Module]:
-        return self._modules.get("actor_approach")
-
-    @head_approach.setter
-    def head_approach(self, module: nn.Module) -> None:
-        self.register_module("actor_approach", module)
-
-    @property
-    def actor_folding(self) -> Optional[nn.Module]:
-        return self._modules.get("actor_folding")
-
-    @actor_folding.setter
-    def actor_folding(self, module: nn.Module) -> None:
-        self.register_module("actor_folding", module)
-
-    @property
-    def folding_head(self) -> Optional[nn.Module]:
-        return self._modules.get("actor_folding")
-
-    @folding_head.setter
-    def folding_head(self, module: nn.Module) -> None:
-        self.register_module("actor_folding", module)
-
-    @property
-    def head_folding(self) -> Optional[nn.Module]:
-        return self._modules.get("actor_folding")
-
-    @head_folding.setter
-    def head_folding(self, module: nn.Module) -> None:
-        self.register_module("actor_folding", module)
-
-    def __init__(self, n_in: int = 56, n_out: int = 130, hidden_dim: int = 128):
+    def __init__(
+        self,
+        n_in: int,
+        n_out: int,
+        hidden: int = 128,
+        encodeur: Sequence[int] = (128,),
+        acteur: Sequence[int] = (),
+        critique: Sequence[int] = (128,),
+        activation: str = "silu",
+        layernorm: bool = True,
+        clip_obs: float = 5.0,
+    ):
         super().__init__()
-        self.n_in = n_in
-        self.n_out = n_out
-        self.hidden_dim = hidden_dim
+        if activation not in ACTIVATIONS:
+            raise ValueError(f"Activation inconnue : {activation}")
+        self.n_in, self.n_out, self.hidden_dim = int(n_in), int(n_out), int(hidden)
+        self.arch = {
+            "n_in": self.n_in, "n_out": self.n_out, "hidden": self.hidden_dim,
+            "encodeur": [int(x) for x in encodeur], "acteur": [int(x) for x in acteur],
+            "critique": [int(x) for x in critique], "activation": activation,
+            "layernorm": bool(layernorm), "clip_obs": float(clip_obs),
+        }
+        self.register_buffer("obs_mean", torch.zeros(self.n_in))
+        self.register_buffer("obs_std", torch.ones(self.n_in))
+        self.clip_obs = float(clip_obs)
+        self.encoder, d = _mlp(self.n_in, encodeur, activation, layernorm)
+        self.gru = nn.GRUCell(d, self.hidden_dim)
+        actor_body, da = _mlp(self.hidden_dim, acteur, activation, False)
+        self.actor = nn.Sequential(*actor_body, nn.Linear(da, self.n_out))
+        critic_body, dc = _mlp(self.hidden_dim, critique, activation, False)
+        self.critic = nn.Sequential(*critic_body, nn.Linear(dc, 1))
+        self._init_weights()
 
-        # 1. Encodeur factorisé
-        self.encoder = FactorizedEncoder(n_in=n_in, hidden_dim=hidden_dim)
+    def _init_weights(self) -> None:
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.orthogonal_(m.weight, gain=np.sqrt(2))
+                nn.init.zeros_(m.bias)
+        # sortie de l'acteur presque uniforme, sortie critique à petite échelle (pratique PPO usuelle)
+        nn.init.orthogonal_(self.actor[-1].weight, gain=0.01)
+        nn.init.orthogonal_(self.critic[-1].weight, gain=1.0)
 
-        # 2. Mémoire récurrente temporelle (GRU 128)
-        self.gru = nn.GRUCell(hidden_dim, hidden_dim)
+    # ───────── normalisation ─────────
+    def set_obs_stats(self, mean: np.ndarray, var: np.ndarray, eps: float = 1e-8) -> None:
+        with torch.no_grad():
+            self.obs_mean.copy_(torch.as_tensor(np.asarray(mean), dtype=torch.float32))
+            self.obs_std.copy_(torch.as_tensor(np.sqrt(np.asarray(var) + eps), dtype=torch.float32))
 
-        # 3. Tête Acteur multi-têtes avec connexion résiduelle
-        self.actor_dense = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.SiLU(),
-        )
-        self.actor_out = nn.Linear(hidden_dim, n_out)
-        self.actor_approach = nn.Linear(hidden_dim, 5)
-        self.actor_folding = nn.Linear(hidden_dim, 2)
+    def normalise(self, obs: torch.Tensor) -> torch.Tensor:
+        return torch.clamp((obs - self.obs_mean) / self.obs_std, -self.clip_obs, self.clip_obs)
 
-        # 4. Tête Critique (valeur V(s)) avec connexion résiduelle
-        self.critic_dense = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.SiLU(),
-        )
-        self.critic_out = nn.Linear(hidden_dim, 1)
-
-        # 5. Tête World Model Auxiliaire (R3)
-        self.aux_head = WorldModelHead(hidden_dim=hidden_dim, action_dim=32, n_actions=max(n_out, 130))
-
+    # ───────── passes avant ─────────
     def init_hidden(self, batch_size: int, device: Optional[torch.device] = None) -> torch.Tensor:
-        """Initialise l'état caché récurrent (mémoire vide au début du match)."""
+        """État caché initial (mémoire vide au début du match) : des zéros."""
         if device is None:
-            device = next(self.parameters()).device
+            device = self.obs_mean.device
         return torch.zeros((batch_size, self.hidden_dim), dtype=torch.float32, device=device)
 
-    def forward(
+    def core(self, obs: torch.Tensor, hidden: torch.Tensor) -> torch.Tensor:
+        return self.gru(self.encoder(self.normalise(obs)), hidden)
+
+    def forward(self, obs: torch.Tensor, hidden: torch.Tensor, mask: Optional[torch.Tensor] = None):
+        """Renvoie (logits masqués (B, n_out), valeur (B,), next_hidden (B, H))."""
+        h = self.core(obs, hidden)
+        logits = masked_logits(self.actor(h), mask)
+        value = self.critic(h).squeeze(-1)
+        return logits, value, h
+
+    def forward_sequence(
         self,
-        obs: torch.Tensor,
-        hidden: torch.Tensor,
-        mask: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Passe avant : calcule les logits d'action primaire, la valeur d'état et le nouvel état caché."""
-        feat = self.encoder(obs)
-        next_hidden = self.gru(feat, hidden)
+        obs: torch.Tensor,        # (T, B, n_in)
+        h0: torch.Tensor,         # (B, H) état caché avant le premier pas
+        starts: torch.Tensor,     # (T, B) 1 si le pas t est le premier d'un épisode : l'état caché repart de zéro
+        mask: Optional[torch.Tensor] = None,  # (T, B, n_out)
+    ):
+        """Déroule le GRU sur une séquence en remettant l'état caché à zéro au début de chaque épisode.
+        Renvoie (logits (T, B, n_out), valeurs (T, B), h_final (B, H))."""
+        T = obs.shape[0]
+        feats = self.encoder(self.normalise(obs))
+        h = h0
+        hs = []
+        for t in range(T):
+            h = h * (1.0 - starts[t].float()).unsqueeze(-1)
+            h = self.gru(feats[t], h)
+            hs.append(h)
+        H = torch.stack(hs, 0)
+        logits = masked_logits(self.actor(H), mask)
+        values = self.critic(H).squeeze(-1)
+        return logits, values, h
 
-        # Tête Acteur résiduelle (action primaire)
-        h_act = next_hidden + self.actor_dense(next_hidden)
-        logits = self.actor_out(h_act)
+    def config(self) -> dict:
+        return dict(self.arch)
 
-        if mask is not None:
-            logits = torch.where(mask, logits, torch.full_like(logits, -1e8))
-
-        # Tête Critique résiduelle
-        h_crit = next_hidden + self.critic_dense(next_hidden)
-        value = self.critic_out(h_crit).squeeze(-1)
-
-        return logits, value, next_hidden
-
-    def forward_actor(
-        self, obs: torch.Tensor, hidden: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Renvoie (primary_logits, approach_logits, folding_logits, next_hidden)."""
-        feat = self.encoder(obs)
-        next_hidden = self.gru(feat, hidden)
-        h_act = next_hidden + self.actor_dense(next_hidden)
-        p_logits = self.actor_out(h_act)
-        app_logits = self.actor_approach(h_act)
-        fold_logits = self.actor_folding(h_act)
-        return p_logits, app_logits, fold_logits, next_hidden
-
-    forward_actor_multihead = forward_actor
-
-    def forward_critic(self, obs: torch.Tensor, hidden: torch.Tensor) -> torch.Tensor:
-        """Renvoie scalaire state value V(s) de dimension (B,)."""
-        feat = self.encoder(obs)
-        next_hidden = self.gru(feat, hidden)
-        h_crit = next_hidden + self.critic_dense(next_hidden)
-        return self.critic_out(h_crit).squeeze(-1)
-
-    def forward_aux(self, hidden: torch.Tensor, actions: torch.Tensor) -> torch.Tensor:
-        """Renvoie les 8 prédictions physiques futures [x, y, cos, sin, dt, env_L, env_W, p_contact]."""
-        return self.aux_head(hidden, actions)
-
-    def get_action_and_value(
-        self,
-        obs: torch.Tensor,
-        hidden: torch.Tensor,
-        mask: Optional[torch.Tensor] = None,
-        action: Optional[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]] = None,
-        deterministic: bool = False,
-    ) -> Tuple[Tuple[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Échantillonne une action conjointe multi-têtes et évalue sa log-probabilité et son entropie."""
-        p_logits, app_logits, fold_logits, next_hidden = self.forward_actor(obs, hidden)
-        value = self.forward_critic(obs, hidden)
-
-        if mask is not None:
-            p_logits = torch.where(mask, p_logits, torch.full_like(p_logits, -1e8))
-
-        dist_p = torch.distributions.Categorical(logits=p_logits)
-        dist_app = torch.distributions.Categorical(logits=app_logits)
-        dist_fold = torch.distributions.Categorical(logits=fold_logits)
-
-        if action is None:
-            if deterministic:
-                a_p = torch.argmax(p_logits, dim=-1)
-                a_app = torch.argmax(app_logits, dim=-1)
-                a_fold = torch.argmax(fold_logits, dim=-1)
-            else:
-                a_p = dist_p.sample()
-                a_app = dist_app.sample()
-                a_fold = dist_fold.sample()
-            chosen = (a_p, a_app, a_fold)
-        elif isinstance(action, (tuple, list)):
-            a_p, a_app, a_fold = action[0], action[1], action[2]
-            chosen = (a_p, a_app, a_fold)
-        else:
-            a_p = action
-            a_app = torch.argmax(app_logits, dim=-1) if deterministic else dist_app.sample()
-            a_fold = torch.argmax(fold_logits, dim=-1) if deterministic else dist_fold.sample()
-            chosen = (a_p, a_app, a_fold)
-
-        joint_lp = dist_p.log_prob(a_p) + dist_app.log_prob(a_app) + dist_fold.log_prob(a_fold)
-        joint_ent = dist_p.entropy() + dist_app.entropy() + dist_fold.entropy()
-
-        return chosen, joint_lp, joint_ent, value, next_hidden
+    @classmethod
+    def from_config(cls, arch: dict) -> "RecurrentActorCritic":
+        return cls(
+            n_in=arch["n_in"], n_out=arch["n_out"], hidden=arch.get("hidden", 128),
+            encodeur=arch.get("encodeur", (128,)), acteur=arch.get("acteur", ()),
+            critique=arch.get("critique", (128,)), activation=arch.get("activation", "silu"),
+            layernorm=arch.get("layernorm", True), clip_obs=arch.get("clip_obs", 5.0),
+        )
 
 
-class Pi5ActorWrapper(nn.Module):
-    """Wrapper d'inférence pure pour l'export ONNX vers Raspberry Pi 5.
-
-    Ne conserve que l'encodeur factorisé, le GRU 128 et l'Acteur multi-têtes.
-    Inférence ultra-légère (~42 µs sur processeur Cortex-A76).
-    """
+class PolicyExport(nn.Module):
+    """Partie acteur seule, pour l'export (contrat §5) : (obs, hidden) -> (logits, next_hidden).
+    La normalisation est dans le graphe ; les logits ne sont PAS masqués."""
 
     def __init__(self, model: RecurrentActorCritic):
         super().__init__()
-        self.encoder = model.encoder
-        self.gru = model.gru
-        self.actor_dense = model.actor_dense
-        self.actor_out = model.actor_out
-        self.actor_approach = model.actor_approach
-        self.actor_folding = model.actor_folding
+        self.model = model
 
-    def forward(
-        self, obs: torch.Tensor, hidden: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Renvoie (primary_logits, approach_logits, folding_logits, next_hidden)."""
-        feat = self.encoder(obs)
-        next_hidden = self.gru(feat, hidden)
-        h_act = next_hidden + self.actor_dense(next_hidden)
-        p_logits = self.actor_out(h_act)
-        app_logits = self.actor_approach(h_act)
-        fold_logits = self.actor_folding(h_act)
-        return p_logits, app_logits, fold_logits, next_hidden
+    def forward(self, obs: torch.Tensor, hidden: torch.Tensor):
+        h = self.model.core(obs, hidden)
+        return self.model.actor(h), h
+
+
+def save_checkpoint(path, model: RecurrentActorCritic, extra: Optional[Dict] = None) -> None:
+    """Point de sauvegarde autonome : architecture + poids (dont statistiques de normalisation) + extra."""
+    from pathlib import Path
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    data = {"format": "icamlot-checkpoint", "version": 1, "arch": model.config(),
+            "model_state": {k: v.detach().cpu() for k, v in model.state_dict().items()}}
+    data.update(extra or {})
+    tmp = p.with_suffix(p.suffix + ".tmp")
+    torch.save(data, tmp)
+    tmp.replace(p)
+
+
+def load_checkpoint(path, device: Optional[torch.device] = None) -> Tuple[RecurrentActorCritic, dict]:
+    data = torch.load(path, map_location=device or "cpu", weights_only=False)
+    if data.get("format") != "icamlot-checkpoint":
+        raise ValueError(f"{path} n'est pas un point de sauvegarde icamlot (ancien format ? voir .data/legacy/README.md).")
+    model = RecurrentActorCritic.from_config(data["arch"])
+    model.load_state_dict(data["model_state"])
+    if device is not None:
+        model.to(device)
+    return model, data

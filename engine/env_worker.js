@@ -41,7 +41,8 @@
        jusqu'à la décision suivante) et l'instant de décision. -> { pairs: [{ obs, action, mask, reward, t }],
        score0, score, T, n, errors, detail }
 
-   Scénario : { seed?, intensite?, params?, opponent?: { program, params } | { brain }, opponentRef?: <id> }.
+   Scénario : { seed?, intensite?, params?, opponent?: { program, params } | { brain }, opponentRef?: <id> }
+   (opponentRef est accepté par toutes les commandes qui prennent un scénario : reset, imitate, play, *_batch).
 
    État (reset, step) : { obs: number[], mask: (0|1)[], t, score, reward, done, err } (contrat §4 de docs/CONTRATS.md).
    Résultat de step_batch : état + { dt, crash?, truncated?, reset?, final? } où
@@ -216,7 +217,7 @@ function handle(msg) {
   if (cmd === 'create') return make(msg.config || {});
   if (cmd === 'reset') {
     if (!env) make(msg.config || {});
-    return env.reset(msg.scenario || {});
+    return env.reset(resolveScenario(msg.scenario || {}));
   }
   if (cmd === 'step') {
     if (!env) return { error: 'Appelle reset d\'abord.' };
@@ -231,14 +232,14 @@ function handle(msg) {
   if (cmd === 'program') return { program: env ? env.program() : [] };
   if (cmd === 'imitate') {
     if (!env || msg.config) make(msg.config || {});
-    return env.imitate(msg.program || [], msg.scenario || {});
+    return env.imitate(msg.program || [], resolveScenario(msg.scenario || {}));
   }
   if (cmd === 'qualify') return ctx.ENV.qualify(msg.strategy || { program: msg.program }, msg.params);
   if (cmd === 'example') return { program: ctx.ENV.EXAMPLE };
   if (cmd === 'play') {
     if (!env) make(msg.config || {});
     var choose = ctx.ENV.chooserFromLayers(msg.layers, msg.acts || []);
-    var st = env.play(choose, msg.scenario || {});
+    var st = env.play(choose, resolveScenario(msg.scenario || {}));
     var R = env.result();
     var sc = finalScore(R);
     var out = { score: sc.total, detail: sc.detail, T: R.T, errors: R.errors.length, program: env.program(), done: st.done };
