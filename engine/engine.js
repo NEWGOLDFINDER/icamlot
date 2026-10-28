@@ -16,8 +16,12 @@
     vz: NAC.vitesse_chariot_mm_s, trot: NAC.rotation_duree_s_pour_90deg, tvac: NAC.prise_vide_s, trel: NAC.relache_s,
     /* hypothèse héritée : départ au centre de la salle du trône, face A vers +x */
     x0: 250, y0: 1000, h0: 0,
-    /* Graal au départ (repère jaune) : centre (gx, gy), ga = angle de la normale aux anses. Choix calculé (voir graalDefaut ci-dessous). */
-    gx: 154, gy: 1170, ga: 90,
+    /* Graal au départ (repère jaune) : centre (gx, gy), ga = angle (repère table) de l'axe perpendiculaire aux anses.
+       Valeur calculée, pas supposée : parmi les positions d'une grille de 10 mm et 15° où le Graal (base et anses) est entièrement
+       dans la salle du trône et hors de la projection du robot au départ (mécanismes compris), monterGraal depuis le départ dure 10,0 s
+       au minimum (sortie et descente de la fourche, 4,3 s, masquent le trajet) ; on retient celle qui laisse le plus d'écart
+       (61 mm) avec l'emprise du robot au départ. Le test « Graal par défaut » de tests/test_moteur.js revérifie ces contraintes. */
+    gx: 90, gy: 810, ga: 30,
     gs: GR.base,   /* côté du Graal (affichage), = spec */
     /* hypothèses héritées : jeu de 5 mm au-dessus des piliers avant de poser le linteau (325 mm), chevauchement minimal de 8 mm d'une construction avec sa zone */
     pgap: 5, ovl: 8,
@@ -113,10 +117,8 @@
     var bottom = k === 'toit' ? GE.toit : C.fz + FO.cao.dentEp - GR.anse.dessous;
     return { c: [p.x + gx * n[0] + GR.y * t[0], p.y + gx * n[1] + GR.y * t[1]], ang: phi, bottom: bottom, top: bottom + GR.h };
   }
-  /* Le Graal par défaut : calcul (voir rapport du chantier moteur, tests/test_moteur.js « graal par défaut »).
-     Contraintes : entièrement dans la salle du trône ; hors de la projection du robot au départ (mécanismes compris) ;
-     prise par la face C possible sans sortir du château. Critère : durée de monterGraal depuis le départ la plus courte. */
 
+  var AIM = new Map();
   function makeSim(P, opts) {
     opts = opts || {};
     P = Object.assign({}, DEF, P || {});
@@ -1031,8 +1033,17 @@
          Point visé = point d'arrêt (bmode 'arret') ou premier impact au sol ('impact'). */
       var tgt = P.btx != null ? P.btx : 2625, imp = P.bmode === 'impact', lo = 0.5, hi = 25, f0 = null, mzo = [mir(mz[0]), mz[1], mz[2]];  /* visée dans le repère de l'équipe */
       function reach(fl) { return imp ? fl.imp[0] : fl.rest[0]; }
-      for (var it = 0; it < 40; it++) { var mid = (lo + hi) / 2, fm = flight(mzo, 0, el, mid); if ((fm.out && !imp) || reach(fm) > tgt) hi = mid; else lo = mid; }
-      var v0 = (lo + hi) / 2; f0 = flight(mzo, 0, el, v0);
+      /* visée mise en cache (même position de tir et mêmes paramètres d'un match à l'autre) */
+      var aimKey = [mzo.map(function (x) { return x.toFixed(1); }).join(','), el, tgt, imp, P.bm, P.bcd, P.be, P.bmu, P.bcr].join('|'), v0 = AIM.get(aimKey);
+      if (v0 == null) {
+        for (var it = 0; it < 40; it++) { var mid = (lo + hi) / 2, fm = flight(mzo, 0, el, mid); if ((fm.out && !imp) || reach(fm) > tgt) hi = mid; else lo = mid; }
+        v0 = (lo + hi) / 2; f0 = flight(mzo, 0, el, v0);
+        /* portée non monotone (passage rebond / roulement) : balayage fin des vitesses autour de la solution */
+        if ((f0.out && !imp) || Math.abs(reach(f0) - tgt) > 50) for (var vs = Math.max(0.5, v0 - 1.5); vs <= v0 + 1.5; vs += 0.01) { var fs = flight(mzo, 0, el, vs); if (!(fs.out && !imp) && Math.abs(reach(fs) - tgt) < Math.abs(reach(f0) - tgt)) { f0 = fs; v0 = vs; } }
+        if (AIM.size > 200) AIM.clear();
+        AIM.set(aimKey, v0);
+      }
+      f0 = flight(mzo, 0, el, v0);
       if ((f0.out && !imp) || Math.abs(reach(f0) - tgt) > 50) err('Canon : le point visé x = ' + Math.round(tgt) + ' mm n\'est pas atteignable avec une élévation de ' + el + '° (' + (imp ? 'impact' : 'arrêt') + ' le plus proche à x = ' + Math.round(reach(f0)) + ' mm).');
       balls.shots = []; balls.t0 = s.t; balls.v0 = v0; balls.n = N; balls.muzzle = mz;
       for (var i = 0; i < N; i++) {
@@ -1065,7 +1076,10 @@
       s.C = { can: C0.can, fx: low.fx, fz: low.fz };
       if (s.t < t0 + tS + tD) { K[K.length - 1].C = fAt(K[K.length - 1].t); adv(t0 + tS + tD - s.t, 'Descente de la fourche'); }
       if (graal.cur.k !== 'home') return err('Le Graal n\'est plus à son départ.');
+      /* approche finale : le Graal entre entre les roues, dans l'enveloppe convexe du châssis (sans la toucher) ; il n'est pas un obstacle */
+      var tA = s.t;
       lin(c.O, c.h, VA, 'Dents de la fourche sous les anses du Graal', exG);
+      graal.approche = [tA, s.t];
       graal.cur = { k: 'ascenseur' }; graal.tl.push({ t: s.t, k: 'ascenseur' });
       moveC({ fz: FO.fzHaut }, P.tMonteeGraal, 'Montée du Graal (' + String(P.tMonteeGraal).replace('.', ',') + ' s)');
       moveC({ fx: FO.fxRentree }, P.tTransfertGraal, 'Transfert du Graal au-dessus du toit (' + Math.round(FO.fxSortie - FO.fxRentree) + ' mm)');
@@ -1196,13 +1210,26 @@
         var f = st.f, z = zoneById(st.z), hs = heldStonesOf(f);
         var target = hs.filter(function (x) { return x.id === st.s; })[0];
         var pre = Math.abs(s[f].rot - 90) > 1 ? [{ rot: 90, label: 'Rotation de 90° : pierres debout' }, { hc: 175, label: 'Pierres à 15 mm du sol' }] : [];
-        if (!st.tm) { runSeq(f, pre); pre = []; }
+        /* rotation sur place si elle est possible ici ; sinon (pierres hors du château) pendant le trajet ou à l'arrivée près de la zone */
+        if (!st.tm && pre.length && G.balayage(maskOf(f), heldInCastle(poseNow(), f, [s[f].rot, 90]), s[f].rot, 90).ok) { runSeq(f, pre); pre = []; }
         /* en temps masqué, la position est choisie avec la pince déjà tournée */
         var g0 = cp(s[f]); if (pre.length) { s[f].hc = 175; s[f].rot = 90; }
         var best = null, zl = G.stoneZc(target.sl);
+        /* rotation encore à faire : elle aura lieu au point de recul, qui doit garder les pierres dans le château et laisser tourner la pile */
+        function towerCheck(c) {
+          return function (p) {
+            var col = collides(p); if (col || !pre.length) return col;
+            var n0 = nv2(c.phi), pb = { x: c.O[0] - 80 * n0[0], y: c.O[1] - 80 * n0[1], h: c.h, A: cp(s.A), B: cp(s.B) }; pb[f] = { hc: g0.hc, rot: g0.rot, vac: g0.vac };
+            if (G.balayage(maskOf(f), false, g0.rot, 90).ok) return null;
+            if (!heldInCastle(pb, f, [g0.rot, 90])) return 'pierres hors du château pour la rotation';
+            var sv = { hc: s[f].hc, rot: s[f].rot }; s[f].hc = g0.hc; s[f].rot = g0.rot;
+            var ok = sweepFree(pb, f, g0.rot, g0.hc, 90); s[f].hc = sv.hc; s[f].rot = sv.rot;
+            return ok ? null : 'pas de place pour tourner la pile';
+          };
+        }
         function towerPose(Pt, phi) { var n = nv2(phi), t = lv(phi); return { O: [Pt[0] - D_P * n[0] - zl * t[0], Pt[1] - D_P * n[1] - zl * t[1]], h: phi - 120 * fk(f) }; }
         if (st.pm === 'manuel' || st.pm === 'proche') {
-          var tc = placeCands(st, z, 'tour', towerPose).map(function (pc) { var o = towerPose(pc.C, pc.phi), q = { O: o.O, h: o.h, phi: pc.phi, pen: pc.pen, Pt: pc.C }; q.setA = f === 'A' ? { hc: 160 } : undefined; q.setB = f === 'B' ? { hc: 160 } : undefined; return q; });
+          var tc = placeCands(st, z, 'tour', towerPose).map(function (pc) { var o = towerPose(pc.C, pc.phi), q = { O: o.O, h: o.h, phi: pc.phi, pen: pc.pen, Pt: pc.C }; q.check = towerCheck(q); q.setA = f === 'A' ? { hc: 160 } : undefined; q.setB = f === 'B' ? { hc: 160 } : undefined; return q; });
           if (!tc.length) { s[f].hc = g0.hc; s[f].rot = g0.rot; return err('Tour ' + z.id + ' : aucune position ne chevauche la zone de ' + OVL + ' mm.'); }
           best = choose(tc, null, 80, true);
         }
@@ -1212,7 +1239,7 @@
             var d = nv2(da), Pt = [z.c[0] + off * d[0], z.c[1] + off * d[1]], o2 = towerPose(Pt, phi);
             cands.push({ O: o2.O, h: o2.h, phi: phi, pen: off * 10, Pt: Pt });
           }
-          cands.forEach(function (c) { var o = {}; o[f] = { hc: 160 }; if (f === 'A') c.setA = o.A; else c.setB = o.B; });
+          cands.forEach(function (c) { var o = {}; o[f] = { hc: 160 }; if (f === 'A') c.setA = o.A; else c.setB = o.B; c.check = towerCheck(c); });
           var b = choose(cands, null, 80, true); if (b && (!best || (best.col && !b.col))) best = b;
         }
         consCheck(st, z, 'tour', best.c.Pt, best.c.phi, 'Tour');
@@ -1443,7 +1470,7 @@
           else if (e.k === 'home') free.push(homeGeo(st));
           else if (e.k !== 'gone') { var g2 = geomHeld(e.pose, e.f, e.l); free.push({ id: st.id, foot: g2.foot, top: g2.top, bottom: g2.bottom }); }
         });
-        if (SCORE_graalAt(res, tt).k === 'home') free.push(gHome);
+        if (SCORE_graalAt(res, tt).k === 'home' && !(graal.approche && tt >= graal.approche[0] - 1e-9 && tt <= graal.approche[1] + 1e-9)) free.push(gHome);
         var hit = hits(p, hs, free, 1.5, true, oppAt(tt));
         var key = hit.join(', ');
         if (key && key !== last) collisions.push({ t: tt, with: key });
@@ -1599,7 +1626,16 @@
     return duel.finish();
   }
   /* Programme de référence (golden test, tests/test_moteur.js) : piles, murs, porte, tours, tir, Graal monté sur le toit, retour au trône. */
-  var PROGRAMME_REFERENCE = [];
+  var PROGRAMME_REFERENCE = [
+    { a: 'prendre', f: 'A', p: 'P1' }, { a: 'prendre', f: 'B', p: 'P9' },
+    { a: 'mur', f: 'B', z: 'M2', side: 'ext' }, { a: 'mur', f: 'A', z: 'M1', side: 'int' },
+    { a: 'prendre', f: 'A', p: 'P5' }, { a: 'prendre', f: 'B', p: 'P10' },
+    { a: 'mur', f: 'B', z: 'M4', side: 'ext' }, { a: 'mur', f: 'A', z: 'M5', side: 'int' },
+    { a: 'prendre', f: 'B', mode: 'pierre', s: 'P6.3' }, { a: 'prendre', f: 'A', p: 'P2' },
+    { a: 'tour', f: 'B', z: 'T2', s: 'P6.3' },
+    { a: 'porte', f: 'A', z: 'M3', side: 'int' },
+    { a: 'monterGraal' }, { a: 'tir' }, { a: 'trone' }
+  ];
   var api = {
     VERSION: VERSION, MATCH: MATCH, T_ATTAQUE: T_ATTAQUE, DEF: DEF, simulate: simulate, simulateMatch: simulateMatch, makeSim: makeSim, makeDuel: makeDuel, programAgent: programAgent,
     poseAtK: poseAtK, mirrorId: mirrorId, mirrorStep: mirrorStep, blueParams: blueParams,
