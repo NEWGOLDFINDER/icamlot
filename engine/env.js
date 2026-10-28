@@ -8,7 +8,8 @@
      team: 'yellow' | 'blue',
      t: secondes depuis le départ,
      pose: { x, y, h },                         lidar (triangulation) ; h = normale de la face A ; B à h + 120, C à h + 240
-     pinces: { A: { rot, hc, slots: [id|null, id|null, id|null] }, B: {...} }   codeurs + vide : angle (0/90/180), hauteur d'axe,
+     pinces: { A: { rot, hc, slots: [id|null, id|null, id|null], rotReelle }, B: {...} }   codeurs + vide : angle (0/90/180, angle
+                                                 demandé), hauteur d'axe, rotReelle = angle réel si une rotation préparée attend (sinon null),
                                                  pierre tenue par rangée (1, 2, 3) ; id = 'P6.3' (paquet d'origine . niveau 1..3)
      meca: { can, fx, fz },                     canon sorti (mm), fourche de l'ascenseur (position, hauteur) : codeurs
      graal: 'home' | 'ascenseur' | 'toit' | 'retire',
@@ -22,7 +23,7 @@
      etrangeres: [ { foot, bottom, top } ] (facultatif), pierres de l'adversaire connues (non rempli par la simulation : hypothèse)
      echec: booléen,                            la dernière action a échoué (le robot le sait)
      echecs: { t, briques: [brique réelle] },   briques qui ont échoué à l'instant t sans faire avancer le temps (masquées à t)
-     params: { gx, gy, ga, tx, ty, bn, tirDepuisTrone }   départ du Graal (réel) et réglages du tir, connus avant le match
+     params: { gx, gy, ga, tx, ty, bn, tirDepuisTrone, v, w, bdep, bspin }   départ du Graal (réel), réglages du tir, vitesses (connus)
    }
    La simulation construit la croyance depuis le moteur avec le modèle de caméras ENV.VISION (hypothèses, voir plus bas). */
 (function (root) {
@@ -98,6 +99,10 @@
       var pid = brick.p || (brick.s ? String(brick.s).split('.')[0] : null);
       if (pid && mem.paquets[pid]) mem.paquets[pid] = { n: 0, t: t1 };
     }
+    /* rotation préparée (tourner en temps masqué) : faite au prochain trajet ou à la prochaine action sur place */
+    mem.pend = mem.pend || {};
+    if (brick && brick.a === 'tourner' && brick.tm && !(info && info.err)) { if (mem.pend[brick.f] == null && mem.lastRot) mem.pend[brick.f] = mem.lastRot[brick.f]; }
+    else if (brick) mem.pend = {};
     mem.echec = !!(info && info.err);
     /* briques qui viennent d'échouer sans faire avancer le temps : le monde n'a pas changé, elles échoueraient encore */
     if (!mem.echecs || mem.echecs.t !== t1) mem.echecs = { t: t1, briques: [] };
@@ -117,18 +122,20 @@
       var g = s.cur.geo; return { id: s.id, pk: s.pk, foot: g.foot.map(function (v) { return [v[0], v[1]]; }), bottom: g.bottom, top: g.top, vertical: !!g.vertical, grp: s.tag };
     });
     var paquets = {}; Object.keys(mem.paquets).forEach(function (k) { paquets[k] = { n: mem.paquets[k].n, t: mem.paquets[k].t }; });
+    mem.lastRot = { A: p.A.rot, B: p.B.rot };
+    var pend = mem.pend || {};
     var portes = sim.portes(), pl = []; Object.keys(portes).forEach(function (k) { if (portes[k]) pl.push(portes[k]); });
     return {
       version: 3, team: P.team || 'yellow', t: t,
       pose: { x: p.x, y: p.y, h: p.h },
-      pinces: { A: { rot: p.A.rot, hc: p.A.hc, slots: slots('A') }, B: { rot: p.B.rot, hc: p.B.hc, slots: slots('B') } },
+      pinces: { A: { rot: p.A.rot, hc: p.A.hc, slots: slots('A'), rotReelle: pend.A != null ? pend.A : null }, B: { rot: p.B.rot, hc: p.B.hc, slots: slots('B'), rotReelle: pend.B != null ? pend.B : null } },
       meca: { can: p.C.can, fx: p.C.fx, fz: p.C.fz },
       graal: sim.graal().cur.k,
       tir: !!sim.balls().shots,
       adversaire: oppPose && oppPose.x != null ? { x: oppPose.x, y: oppPose.y, vx: oppPose.vx || 0, vy: oppPose.vy || 0, t: oppPose.t != null ? oppPose.t : t } : null,
       pierres: pierres, portes: pl, paquets: paquets, etrangeres: [], echec: !!mem.echec,
       echecs: mem.echecs ? { t: mem.echecs.t, briques: mem.echecs.briques.slice() } : { t: t, briques: [] },
-      params: { gx: P.gx, gy: P.gy, ga: P.ga || 0, tx: P.tx, ty: P.ty, bn: P.bn, tirDepuisTrone: P.tirDepuisTrone }
+      params: { gx: P.gx, gy: P.gy, ga: P.ga || 0, tx: P.tx, ty: P.ty, bn: P.bn, tirDepuisTrone: P.tirDepuisTrone, v: P.v, w: P.w, bdep: P.bdep, bspin: P.bspin }
     };
   }
 
