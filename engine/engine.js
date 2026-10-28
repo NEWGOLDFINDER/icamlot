@@ -2028,7 +2028,7 @@
       program.push(st);
       var i = stepInfo.length;
       stepNo = i + 1; stepInfo.push({ t0: s.t, held: { A: heldStonesOf('A').length, B: heldStonesOf('B').length } });
-      var t0 = s.t, st0 = stock;
+      var t0 = s.t, st0 = stock; kDebut = K.length;
       applyOpp(s.t);
       try { (steps[st.a] || function () { err('Action inconnue.'); })(st); } catch (e) { if (e !== ABORT) err('Erreur interne : ' + e.message); }
       applyOpp(s.t);
@@ -2043,6 +2043,7 @@
       graalConfine(t0, s.t);
       stock = stockCount();
       if (stock > STOCK_MAX && stock > st0) err('Stockage : ' + stock + ' pierres posées dans la cour hors des zones de construction (' + STOCK_MAX + ' au plus, E.1.b).');
+      dernier = { t0: t0, t1: s.t, err: stepInfo[i].err || null, k0: kDebut, k1: K.length };
       return { t0: t0, t1: s.t, dt: s.t - t0, err: stepInfo[i].err || null };
     }
     function attach(res) {
@@ -2120,9 +2121,27 @@
       return into;
     }
     function claimed(id) { return stones.some(function (x) { return x.id === id && isClaimed(x); }); }
+    /* points clés de la dernière étape exécutée (format stable, docs/CONTRATS.md §10) :
+       { t0, t1, err, K: [{ t, x, y, h, A: { hc, rot, vac }, B: { hc, rot, vac }, C: { can, fx, fz }, lin }] } ;
+       K commence par l'état au début de l'étape. */
+    var kDebut = 0, dernier = null;
+    function lastPlan() {
+      if (!dernier) return null;
+      return { t0: dernier.t0, t1: dernier.t1, err: dernier.err, K: K.slice(Math.max(0, dernier.k0 - 1), dernier.k1).map(function (k) { return { t: k.t, x: k.x, y: k.y, h: k.h, A: { hc: k.A.hc, rot: k.A.rot, vac: k.A.vac.slice() }, B: { hc: k.B.hc, rot: k.B.rot, vac: k.B.vac.slice() }, C: { can: k.C.can, fx: k.C.fx, fz: k.C.fz }, lin: !!k.lin }; }) };
+    }
+    /* recalage sur la mesure du robot réel : pose { x, y, h } et horloge t (en avant seulement : le moteur ne remonte pas
+       le temps ; une horloge mesurée en retard est ignorée et signalée). Aucun contrôle de contact : c'est une mesure. */
+    function recaler(m) {
+      m = m || {};
+      var r = { horloge: 'inchangée' };
+      if (m.t != null) { if (+m.t >= s.t) { s.t = +m.t; r.horloge = 'recalée'; } else r.horloge = 'ignorée (en retard de ' + (s.t - m.t).toFixed(3) + ' s)'; }
+      if (m.x != null) s.x = +m.x; if (m.y != null) s.y = +m.y; if (m.h != null) s.h = +m.h;
+      var k = snap(false); K.push(k); ctlPrev = k; applyOpp(s.t);
+      return r;
+    }
     /* rotations de pince préparées encore à faire : angle réel de départ par face (null si rien en attente) */
     function pendantes() { return { A: pend.A ? pend.A.from.rot : null, B: pend.B ? pend.B.from.rot : null }; }
-    return { exec: exec, finish: finish, result: result, preconditions: preconditions, planifier: planifier, planifierEtape: planifierEtape, pendantes: pendantes, poseAtT: poseAtT, claimed: claimed, covered: function (st, excl) { return covered(st, excl); }, foreign: foreign, freeFeet: freeFeet, leftHome: leftHome, snapshot: snapshot, restore: restore, pose: pose, held: getHeld, stones: getStones, graal: getGraal, balls: getBalls, errors: function () { return errors; }, time: time, params: params, hullRadius: hullRadius, stockage: stockCount, portes: function () { return Object.assign({}, doors); }, program: function () { return program.slice(); } };
+    return { exec: exec, finish: finish, result: result, preconditions: preconditions, planifier: planifier, planifierEtape: planifierEtape, pendantes: pendantes, lastPlan: lastPlan, recaler: recaler, poseAtT: poseAtT, claimed: claimed, covered: function (st, excl) { return covered(st, excl); }, foreign: foreign, freeFeet: freeFeet, leftHome: leftHome, snapshot: snapshot, restore: restore, pose: pose, held: getHeld, stones: getStones, graal: getGraal, balls: getBalls, errors: function () { return errors; }, time: time, params: params, hullRadius: hullRadius, stockage: stockCount, portes: function () { return Object.assign({}, doors); }, program: function () { return program.slice(); } };
   }
   function simulate(prog, P, opts) {
     var sim = makeSim(P, opts);

@@ -238,6 +238,10 @@ ok(mD.x === 2700 && mD.ang === 150 && mD.y === 620 && mT.pts[0].x === 2500 && mT
   var b = { t: 12, team: 'yellow', pose: { x: 800, y: 1000, h: 30 }, pinces: { A: { hc: 180, rot: 0, slots: ['P1.1', 'P1.2', 'P1.3'] }, B: { hc: 165, rot: 0, slots: [null, null, null] } },
     meca: { can: 0, fx: GE.fourche.fxRentree, fz: GE.fourche.fzHaut }, graal: 'home', paquets: { P1: { n: 0 } }, pierres: [], etrangeres: [] };
   var W = E.makeSim({ x0: 800, y0: 1000, h0: 30 }, { skipContacts: true, etat: b }), wp = W.pose();
+  var lp = sim.lastPlan(), mono = lp && lp.K.every(function (k, i) { return !i || k.t >= lp.K[i - 1].t - 1e-9; });
+  ok(lp && lp.K.length > 1 && mono && Math.abs(lp.K[0].t - lp.t0) < 1e-9 && Math.abs(lp.K[lp.K.length - 1].t - lp.t1) < 1e-9 && lp.K[0].A.vac.length === 3 && lp.K[0].C.fx != null, 'lastPlan : points clés de la dernière étape (t, x, y, h, A, B, C)', lp && lp.K.length + ' points');
+  var rc = sim.recaler({ x: sim.pose().x + 5, y: sim.pose().y, h: sim.pose().h, t: sim.time() + 0.3 }), rc2 = sim.recaler({ t: 1 });
+  ok(rc.horloge === 'recalée' && /ignorée/.test(rc2.horloge) && !sim.errors().slice(-1).some(function (e) { return /Erreur interne/.test(e.msg); }), 'recaler : pose et horloge mesurées (horloge en avant seulement)', rc2.horloge);
   ok(wp.x === 800 && wp.h === 30 && W.time() === 12 && W.held().A && W.held().A.stack.length === 3 && !W.errors().length, 'monde reconstruit (opts.etat) : pose, horloge, pierres tenues, sans erreur de départ');
 })();
 
