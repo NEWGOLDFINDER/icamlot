@@ -185,3 +185,11 @@ Règle absolue de l'équipe : **ne rien inventer**. Une valeur absente de la spe
 - **`pi5_runner.py`** : refuse un modèle dont l'observation, le catalogue ou les dimensions ne correspondent pas au moteur (code de sortie 2). Modes `--simulation`, `--robot [--mock-esp]`, `--benchmark`.
 - **Protocole ESP32** : proposition dans `docs/PROTOCOLE_ESP32.md` (statut « proposé, à valider par l'équipe »), appliquée par `esp32_bridge.py` et le firmware simulé. NAV = base roulante, ACT = tous les actionneurs.
 - **Paramètres `.meta.json`** : la clé `env_config` y manque (embarqué et entraînement). Par défaut : `{skipContacts: true}`.
+
+## 12. Décision vérins Z (équipe, 2026-10-28)
+- **Choix de l'équipe** : la meilleure conception possible ; l'équipe trouvera le vérin adapté.
+- **Conception retenue** : course géométrique complète, axe de 135 à 273 mm, soit une course utile d'au moins 138 mm. C'est le réglage par défaut du moteur (`GEOM.configurerCourse(null)`) ; la référence y fait 116 pts.
+- **Vitesse cible** : 80 mm/s.
+- **Données conservées** : celles du vérin mesuré (100 mm, 84 / 75 mm/s), qui servent au calcul des rampes.
+- **À vérifier** : l'encombrement du vérin dans la CAO.
+- Cahier des charges : `spec/robot.json` → `actionneurs_carte.verins.cahier_des_charges`.

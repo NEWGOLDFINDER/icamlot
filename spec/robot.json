@@ -622,6 +622,19 @@
           "statut": "declare",
           "valeur": 80,
           "source": "équipe, 2026-10-28"
+        },
+        "note_vérin_actuel": "course_mm, vitesses et durée avec rampes = vérin « allan » mesuré par l'équipe ; servent au calcul des rampes",
+        "cahier_des_charges": {
+          "statut": "propose",
+          "source": "décision équipe 2026-10-28 : « meilleure conception possible, l'équipe trouvera le vérin » ; calcul engine/geom.js HC_MIN/HC_MAX et chantier moteur-2",
+          "course_utile_min_mm": 138,
+          "plage_axe_mm": [
+            135,
+            273
+          ],
+          "justification": "course géométrique complète de la nacelle : prise au sol (axe 165), dépôt tourné (160), linteau de porte (270) ; la référence utilise 160–270 (110 mm) et fait 116 pts, contre 95 pts sans porte avec 100 mm",
+          "vitesse_cible_mm_s": 80,
+          "a_verifier": "encombrement du vérin (corps + course) dans la CAO, effort selon la masse de la nacelle chargée (inconnue)"
         }
       },
       "servo": {
