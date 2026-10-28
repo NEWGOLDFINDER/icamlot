@@ -45,13 +45,13 @@
    physique                              -> { caracteristiques: [{ id, nom, unite, nominal, statut, source, plageDefaut }] }
    Robots adverses « réseau » : modèles figés lus au démarrage dans .data/adversaires/<id>.json (ou ICAMLOT_ADVERSAIRES=<dossier>).
 
-   Scénario : { seed?, intensite?, params?, physique?, opponent?: { program, params } | { brain } | { robot: id, fixe? }, opponentRef?: <id> }
+   Scénario : { seed?, equipe?: 'yellow' | 'blue' (équipe du joueur, défaut yellow ; trainer/duel_equipe.js), intensite?, params?, physique?, opponent?: { program, params } | { brain } | { robot: id, fixe? }, opponentRef?: <id> }
    (opponentRef est accepté par toutes les commandes qui prennent un scénario : reset, imitate, play, *_batch).
 
    État (reset, step) : { obs: number[], mask: (0|1)[], t, score, reward, done, err } (contrat §4 de docs/CONTRATS.md).
    Résultat de step_batch : état + { dt, crash?, truncated?, reset?, final? } où
      final (présent quand l'épisode vient de se terminer) = bilan de l'épisode :
-     { score, detail, T, errors, decisions, invalid, crash, truncated, adversaire: { score, errors } | null }
+     { score, detail, T, errors, decisions, invalid, crash, truncated, equipe, adversaire: { score, errors } | null }
      score = SCORE.scoreAt(result, params, min(T, 100)) ; errors = erreurs moteur du robot.
    crash : ENV.step a levé une exception (l'environnement est considéré terminé, message dans err).
    truncated : l'épisode a atteint maxDecisions décisions sans finir (garde-fou : 300 par défaut, comme ENV.play).
@@ -75,6 +75,9 @@ function chargerAdversaires() {
   });
 }
 chargerAdversaires();
+/* équipe du joueur par scénario (contrat §16) : ENV.create ne joue que le jaune, ce pont échange les équipes du duel */
+var pont = require('../trainer/duel_equipe.js')(ctx);
+function enEquipe(sc, fn) { return pont.avecEquipe(sc && sc.equipe, fn); }
 
 /* Nombre maximal de décisions par épisode en mode groupé (hypothèse reprise de ENV.play : max = 80). */
 var DEFAULT_MAX_DECISIONS = 300;  /* garde-fou ; 80 tronquait les réseaux qui attendent par pas de 1 s (catalogue 3.1), même borne que ENV.play */
@@ -137,7 +140,8 @@ function bilan(s) {
   var sc = finalScore(R);
   var out = {
     score: sc.total, detail: sc.detail, T: R.T, errors: (R.errors || []).length,
-    decisions: s.decisions, invalid: s.invalid, crash: !!s.crash, truncated: !!s.truncated, adversaire: null
+    decisions: s.decisions, invalid: s.invalid, crash: !!s.crash, truncated: !!s.truncated, adversaire: null,
+    equipe: (R.params && R.params.team) || 'yellow'   /* équipe jouée par le moteur (lue sur le robot, pas sur le scénario) */
   };
   if (R.opponent) {
     var so = finalScore(R.opponent);
@@ -149,9 +153,9 @@ function bilan(s) {
 
 function resetSlot(i, scenario) {
   var s = slot(i);
-  var st = s.env.reset(resolveScenario(scenario));
+  var st = enEquipe(scenario, function () { return s.env.reset(resolveScenario(scenario)); });
   s.last = st; s.decisions = 0; s.invalid = 0; s.done = false; s.crash = false; s.truncated = false; s.final = null;
-  return { obs: st.obs, mask: st.mask, t: st.t, score: st.score, reward: 0, done: !!st.done, err: null };
+  return { obs: st.obs, mask: st.mask, t: st.t, score: st.score, reward: 0, done: !!st.done, err: null, equipe: s.env.sim.params().team };
 }
 
 function stepSlot(i, action, next) {
@@ -209,7 +213,7 @@ function imitateTrace(e, program, scenario) {
   ACTIONS.indexOfStep = function () { var r = origIdx.apply(this, arguments); lastIdx = r; return r; };
   var im;
   try {
-    im = e.imitate(program || [], scenario || { intensite: 'aucun' });
+    im = enEquipe(scenario, function () { return e.imitate(program || [], scenario || { intensite: 'aucun' }); });
   } finally {
     ENGINE.makeDuel = origDuel;
     ACTIONS.indexOfStep = origIdx;
@@ -234,7 +238,7 @@ function handle(msg) {
   if (cmd === 'create') return make(msg.config || {});
   if (cmd === 'reset') {
     if (!env) make(msg.config || {});
-    return env.reset(resolveScenario(msg.scenario || {}));
+    return enEquipe(msg.scenario, function () { return env.reset(resolveScenario(msg.scenario || {})); });
   }
   if (cmd === 'step') {
     if (!env) return { error: 'Appelle reset d\'abord.' };
@@ -249,14 +253,14 @@ function handle(msg) {
   if (cmd === 'program') return { program: env ? env.program() : [] };
   if (cmd === 'imitate') {
     if (!env || msg.config) make(msg.config || {});
-    return env.imitate(msg.program || [], resolveScenario(msg.scenario || {}));
+    return enEquipe(msg.scenario, function () { return env.imitate(msg.program || [], resolveScenario(msg.scenario || {})); });
   }
   if (cmd === 'qualify') return ctx.ENV.qualify(msg.strategy || { program: msg.program }, msg.params);
   if (cmd === 'example') return { program: ctx.ENV.EXAMPLE };
   if (cmd === 'play') {
     if (!env) make(msg.config || {});
     var choose = ctx.ENV.chooserFromLayers(msg.layers, msg.acts || []);
-    var st = env.play(choose, resolveScenario(msg.scenario || {}));
+    var st = enEquipe(msg.scenario, function () { return env.play(choose, resolveScenario(msg.scenario || {})); });
     var R = env.result();
     var sc = finalScore(R);
     var out = { score: sc.total, detail: sc.detail, T: R.T, errors: R.errors.length, program: env.program(), done: st.done };
