@@ -343,15 +343,24 @@
           "https://cdn.robotshop.com/media/r/rpk/rb-rpk-22/pdf/rplidar-a2m12-360-laser-range-scanner-datasheet.pdf"
         ]
       },
-      "hauteur_plan_de_scan": "a_definir",
-      "zero_et_sens_angle": "a_definir"
+      "hauteur_plan_de_scan": {
+        "statut": "declare",
+        "valeur": "hauteur réglementaire (voir position)"
+      },
+      "zero_et_sens_angle": "a_definir",
+      "position": {
+        "statut": "declare",
+        "source": "équipe, 2026-10-28",
+        "valeur": "centré sur le robot, à la hauteur réglementaire",
+        "interpretation": "hauteur du support de balise (regles robot_limites.support_balise_hauteur : 425–435 mm), au-dessus des pierres (≤ 350 mm) — à confirmer"
+      }
     },
     "cameras": {
       "statut": "declare",
       "source": "équipe, 2026-10-28",
       "modele": "Arducam OV9281 (global shutter, 1 Mpx mono)",
       "nombre": "1 par face de préhension (A et B)",
-      "usage": "lecture des tags ArUco pour se recaler avant la préhension (préhension précise)",
+      "usage": "lire les tags ArUco ; le Raspberry Pi calcule l'ajustement (x, y, ω) pour la préhension",
       "objectif_et_champ": {
         "statut": "a_definir",
         "note": "le champ dépend de l'objectif (ex. 2,4 mm : 130° diag / 110° H / 90° V ; 3,15 mm : 160° diag / 126° H) — référence exacte à fournir"
@@ -401,7 +410,7 @@
       "ventouses_par_face": 6,
       "hauteur_chariot_min": 140,
       "hauteur_chariot_max": "non bornée dans le simulateur actuel",
-      "vitesse_chariot_mm_s": 100,
+      "vitesse_chariot_mm_s": 80,
       "rotation_angles_deg": [
         0,
         90,
@@ -491,8 +500,9 @@
         "conflit": "course déclarée du vérin 100 mm < 110 mm utilisés par la référence (porte : axe à 265–270 mm ; dépôt tourné à 160 mm)"
       },
       "vitesse_chariot_note": {
-        "statut": "herite",
-        "note": "valeur héritée du simulateur ; vitesses déclarées des vérins : actionneurs_carte.verins (84 à vide / 75 à 120 N), à intégrer par le chantier moteur"
+        "statut": "declare",
+        "source": "équipe, 2026-10-28",
+        "note": "80 mm/s retenu par l'équipe (vérins : 84 à vide, 75 à 120 N)"
       }
     },
     "canon_C": {
@@ -604,6 +614,11 @@
         "duree_100mm_avec_rampes_s": {
           "statut": "declare",
           "valeur": 1.25
+        },
+        "vitesse_retenue_simulation_mm_s": {
+          "statut": "declare",
+          "valeur": 80,
+          "source": "équipe, 2026-10-28"
         }
       },
       "servo": {
