@@ -9,7 +9,9 @@ appelées dans le moteur JS par le pont Node persistant (embarque/bridge.js, cli
      `next_hidden` réinjecté une fois par décision) ;
   3. fournir la croyance : en simulation, construite par le moteur (ENV.beliefFromSim) ; sur le robot, par les capteurs
      (embarque/croyance.py : lidar, caméras A et B, état des actionneurs renvoyé par les ESP32) ;
-  4. envoyer la brique choisie aux ESP32 (esp32_bridge.py) avec le temps masqué décidé par le moteur.
+  4. envoyer la brique choisie aux ESP32 (esp32_bridge.py, protocole docs/PROTOCOLE_ESP32.md) avec le temps masqué décidé par le moteur ;
+     sur le robot, le match commence au retrait de la tirette (ESP32 des actionneurs), l'évitement est décidé ici (STOP à l'ESP32 de
+     navigation) et tout s'arrête à la fin du match.
 
 Modes :
   python pi5_runner.py --modele M.onnx --simulation --graine 10000 [--matchs N] [--intensite realiste --strategie S.json]
@@ -31,7 +33,7 @@ import numpy as np
 from embarque.croyance import CamerasAbsentes, ConstructeurCroyance, Mesures
 from embarque.pont import ErreurPont, PontNode
 from embarque.spec import duree_match_s
-from esp32_bridge import DualESP32Orchestrator, EtatActionneurs, Rapport
+from esp32_bridge import DualESP32Orchestrator, ErreurLiaison, EtatActionneurs, Rapport
 from lidar_tracker import LidarTracker
 
 ROOT = Path(__file__).resolve().parent
@@ -198,6 +200,14 @@ class CapteursRobot:
         self.orch, self.lidar, self.cameras = orch, lidar, cameras or CamerasAbsentes()
         self.source_pose = source_pose or orch.lire_pose
 
+    def menace(self, cible_xy: Tuple[float, float]) -> bool:
+        """Évitement décidé par le Pi : l'adversaire gêne-t-il le déplacement vers `cible_xy` (repère réel) ? Sans lidar : non."""
+        if self.lidar is None:
+            return False
+        pose = self.source_pose()
+        self.lidar.mise_a_jour(pose)
+        return self.lidar.menace_sur_trajet((pose[0], pose[1]), cible_xy)
+
     def lire(self, t: float) -> Mesures:
         pose = self.source_pose()
         adv = None
@@ -211,8 +221,10 @@ class CapteursRobot:
 class RobotBackend:
     """Robot réel (ou ESP32 simulés avec --mock-esp) : croyance = modèle interne + capteurs, brique exécutée par les ESP32."""
 
-    def __init__(self, pont: PontNode, orch: DualESP32Orchestrator, capteurs: Any, equipe: str = "yellow", horloge: Any = None):
-        self.pont, self.orch, self.capteurs, self.equipe = pont, orch, capteurs, equipe
+    def __init__(self, pont: PontNode, orch: DualESP32Orchestrator, capteurs: Any, equipe: str = "yellow", horloge: Any = None,
+                 attendre_tirette: bool = True):
+        """attendre_tirette : le match commence au retrait de la tirette (ESP32 des actionneurs). False : au lancement (essais de banc)."""
+        self.pont, self.orch, self.capteurs, self.equipe, self.attendre_tirette = pont, orch, capteurs, equipe, attendre_tirette
         self.horloge = horloge or orch.horloge
         self.cons = ConstructeurCroyance(pont, equipe)
         self.t_depart = 0.0
@@ -227,10 +239,21 @@ class RobotBackend:
         interne = self.cons.demarrer()
         v = self.pont.hello_info.get("vitesses") or {}
         etat0 = EtatActionneurs(grip={f: (interne["pinces"][f]["hc"], interne["pinces"][f]["rot"]) for f in ("A", "B")},
-                                tenue={"A": (0, 0, 0), "B": (0, 0, 0)}, fourche=(interne["meca"]["fx"], interne["meca"]["fz"]), canon=interne["meca"]["can"])
-        self.orch.initialize(pose=(interne["pose"]["x"], interne["pose"]["y"], interne["pose"]["h"]), equipe=self.equipe, vitesses=v, etat_initial=etat0)
-        self.t_depart = self.horloge.now()
+                                fourche=(interne["meca"]["fx"], interne["meca"]["fz"]))
+        if not self.orch.initialize(pose=(interne["pose"]["x"], interne["pose"]["y"], interne["pose"]["h"]), equipe=self.equipe, vitesses=v,
+                                    etat_initial=etat0):
+            raise ErreurLiaison("initialisation des ESP32 impossible (voir le journal)")
+        if hasattr(self.capteurs, "menace"):
+            self.orch.menace = self.capteurs.menace          # évitement : décidé par le Pi, STOP envoyé à l'ESP32 de navigation
+        if self.attendre_tirette and not self.orch.attendre_depart():
+            raise ErreurLiaison("départ : la tirette n'a pas été retirée")
+        self.t_depart = self.horloge.now()                   # t = 0 du match : retrait de la tirette (ESP32 des actionneurs)
+        self.orch.fin_match = self.t_depart + duree_match_s()
         self.echec_materiel = False
+
+    def finir(self) -> None:
+        """Fin du match : tout s'arrête (pénalité si le robot bouge après la fin, spec/regles_2027.json)."""
+        self.orch.arreter_tout()
 
     def termine(self) -> bool:
         return self.t_match() >= duree_match_s()
@@ -295,6 +318,9 @@ class Pi5Runner:
             d = ResultatDecision(idx, catalogue[idx]["label"], st["brique"], b["t"], dt_mod, dt_pont, err)
             self.decisions.append(d)
             self.log(f"{b['t']:6.1f} s | {idx:3d} {d.label[:46]:46s} | modèle {dt_mod:5.2f} ms, pont {dt_pont:6.1f} ms" + (f" | ERREUR {err}" if err else ""))
+        finir = getattr(self.backend, "finir", None)
+        if finir:
+            finir()
         return self.backend.bilan()
 
 
@@ -405,6 +431,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     except (ModeleIncompatible, ErreurPont) as e:
         print(f"Refus : {e}", file=sys.stderr)
         return 2
+    except ErreurLiaison as e:
+        print(f"Liaison ESP32 : {e}", file=sys.stderr)
+        return 3
 
 
 if __name__ == "__main__":

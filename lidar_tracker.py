@@ -50,6 +50,8 @@ class ParamsLidar:
     perte_apres_s: float = 5.0
     # Distance de sécurité du test de menace (mm). Héritée.
     rayon_securite_mm: float = 350.0
+    # Déplacement plus court que cela (mm) : pas de direction, pas de menace. Valeur du moteur (oppBlocks, engine.js), pas de la spec.
+    deplacement_min_mm: float = 20.0
 
 
 class KalmanFilter2D:
@@ -182,6 +184,21 @@ class LidarTracker:
             return None
         x, y, vx, vy = (float(v) for v in self.kalman.x)
         return {"x": x, "y": y, "vx": vx, "vy": vy, "t": t_match - age}
+
+    def menace_sur_trajet(self, pose_xy: Tuple[float, float], cible_xy: Tuple[float, float], rayon_mm: Optional[float] = None) -> bool:
+        """Évitement décidé par le Pi : vrai si l'adversaire détecté est à moins de `rayon_mm` (défaut : rayon_securite_mm) de notre
+        robot ET devant lui, dans le sens du déplacement vers `cible_xy`. Même critère que le moteur (`oppBlocks`, engine.js : adversaire
+        proche et en avant ; ignoré si la cible est trop proche : `deplacement_min_mm`). Le lidar est supposé au centre du robot (hypothèse : montage non
+        décrit). Repère réel de la table (mm)."""
+        if not self.opp_detected:
+            return False
+        r = self.params.rayon_securite_mm if rayon_mm is None else rayon_mm
+        dx, dy = self.opp_pose[0] - pose_xy[0], self.opp_pose[1] - pose_xy[1]
+        mx, my = cible_xy[0] - pose_xy[0], cible_xy[1] - pose_xy[1]
+        m = math.hypot(mx, my)
+        if m < self.params.deplacement_min_mm or math.hypot(dx, dy) > r:
+            return False
+        return (dx * mx + dy * my) / m > 0.0
 
     def check_collision_threat(self, target_pose: Tuple[float, float], safety_radius: Optional[float] = None) -> bool:
         """Vrai si la cible est à moins de `safety_radius` (défaut : rayon_securite_mm) de l'adversaire détecté."""
