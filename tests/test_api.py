@@ -17,8 +17,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 BASE = os.environ.get("ICAMLOT_TEST", "http://127.0.0.1:8081")
 
-ENTREES = ["temps", "robot", "paquets", "faces", "constructions", "graal", "boulets", "adversaire"]
-FAMILLES = ["prendre", "mur", "tour", "porte", "boulets", "prendreGraal", "poserGraal", "trone"]
+# Entrées et familles lues dans le moteur JS de référence (aucun identifiant en dur).
+_IDS = json.loads(subprocess.check_output(["node", "-e", """
+var c = require(require('path').join(process.argv[1], 'engine', 'load.js')).loadIcamlot(process.argv[1]);
+process.stdout.write(JSON.stringify({e: c.ENV.GROUPS.map(function (x) { return x.id; }),
+  f: c.ACTIONS.FAMILLES.map(function (x) { return x.id; })}));""", str(ROOT)]))
+ENTREES, FAMILLES = _IDS["e"], _IDS["f"]
 
 
 def req(method, path, data=None, cookie=None, base=None):

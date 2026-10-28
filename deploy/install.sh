@@ -30,13 +30,14 @@ apt-get update
 apt-get install -y nginx curl python3 python3-numpy nodejs
 
 # Pages du site
-install -d "$WEB" "$WEB/point-counter" "$WEB/plateau" "$WEB/connexion" "$WEB/cerveau" "$WEB/engine"
+install -d "$WEB" "$WEB/point-counter" "$WEB/plateau" "$WEB/connexion" "$WEB/cerveau" "$WEB/engine" "$WEB/spec"
 install -m 644 "$SRC/index.html" "$SRC/bareme.js" "$WEB/"
 install -m 644 "$SRC/point-counter/index.html" "$WEB/point-counter/index.html"
 install -m 644 "$SRC/connexion/index.html" "$WEB/connexion/index.html"
 install -m 644 "$SRC/plateau/index.html" "$SRC/plateau/app.js" "$SRC/plateau/table.jpg" "$WEB/plateau/"
-install -m 644 "$SRC/cerveau/index.html" "$SRC/cerveau/app.js" "$SRC/cerveau/net.js" "$WEB/cerveau/"
+install -m 644 "$SRC/cerveau/index.html" "$SRC/cerveau/app.js" "$SRC/cerveau/net.js" "$SRC/cerveau/runtime.js" "$WEB/cerveau/"
 install -m 644 "$SRC/engine/geom.js" "$SRC/engine/engine.js" "$SRC/engine/score.js" "$SRC/engine/actions.js" "$SRC/engine/env.js" "$WEB/engine/"
+install -m 644 "$SRC/spec/spec.js" "$WEB/spec/"
 # Version dans les adresses des scripts (app.js?v=...) : à chaque mise à jour, le navigateur
 # et Cloudflare chargent forcément les nouveaux fichiers.
 VER="$(git -C "$SRC" rev-parse --short HEAD 2>/dev/null || date +%Y%m%d%H%M%S)"
