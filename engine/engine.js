@@ -624,9 +624,11 @@
       return out;
     }
     /* Dijkstra (8 voisins) sur les cases où free(k) est vrai, depuis src ; s'arrête à la première case où stop(k) est vrai */
+    /* target : case visée (heuristique euclidienne) ou champ de distances minorant (heuristique cohérente, A*) */
     function gridSearch(free, src, stop, target) {
-      var tx2 = target != null ? target % GW : 0, ty2 = target != null ? (target - tx2) / GW : 0;
-      function hz(i) { if (target == null) return 0; var x = i % GW; return Math.hypot(x - tx2, (i - x) / GW - ty2) * CELL; }
+      var field = target != null && typeof target === 'object' ? target : null;
+      var tx2 = target != null && !field ? target % GW : 0, ty2 = target != null && !field ? (target - tx2) / GW : 0;
+      function hz(i) { if (target == null) return 0; if (field) return field[i] < Infinity ? field[i] : 1e9; var x = i % GW; return Math.hypot(x - tx2, (i - x) / GW - ty2) * CELL; }
       var gS = new Float64Array(GW * GH).fill(Infinity), par = new Int32Array(GW * GH), heap = [[0, src]], found = -1;
       par[src] = -1;
       function push(f, i) { heap.push([f, i]); var c = heap.length - 1; while (c > 0) { var pr = (c - 1) >> 1; if (heap[pr][0] <= heap[c][0]) break; var t = heap[pr]; heap[pr] = heap[c]; heap[c] = t; c = pr; } }
@@ -643,6 +645,24 @@
         }
       }
       return { g: gS, par: par, found: found };
+    }
+    /* distance (8 voisins, sans obstacle) de chaque case à la plus proche case où pred est vrai : heuristique pour gridSearch */
+    function distTo(F, key, pred) {
+      var hit = F.memo.get(key); if (hit) return hit;
+      var d = new Float64Array(GW * GH).fill(Infinity), q = [];
+      for (var k = 0; k < GW * GH; k++) if (pred(k)) { d[k] = 0; q.push(k); }
+      /* deux passes de chanfrein (distance octile exacte sans obstacle) */
+      var D1 = CELL, D2 = CELL * Math.SQRT2, i, j, k2, v;
+      for (j = 0; j < GH; j++) for (i = 0; i < GW; i++) { k2 = j * GW + i; v = d[k2];
+        if (i > 0 && d[k2 - 1] + D1 < v) v = d[k2 - 1] + D1;
+        if (j > 0) { if (d[k2 - GW] + D1 < v) v = d[k2 - GW] + D1; if (i > 0 && d[k2 - GW - 1] + D2 < v) v = d[k2 - GW - 1] + D2; if (i < GW - 1 && d[k2 - GW + 1] + D2 < v) v = d[k2 - GW + 1] + D2; }
+        d[k2] = v; }
+      for (j = GH - 1; j >= 0; j--) for (i = GW - 1; i >= 0; i--) { k2 = j * GW + i; v = d[k2];
+        if (i < GW - 1 && d[k2 + 1] + D1 < v) v = d[k2 + 1] + D1;
+        if (j < GH - 1) { if (d[k2 + GW] + D1 < v) v = d[k2 + GW] + D1; if (i < GW - 1 && d[k2 + GW + 1] + D2 < v) v = d[k2 + GW + 1] + D2; if (i > 0 && d[k2 + GW - 1] + D2 < v) v = d[k2 + GW - 1] + D2; }
+        d[k2] = v; }
+      F.memo.set(key, d);
+      return d;
     }
     function chainOf(par, src, dst) { var out = [], k = dst; while (k >= 0) { out.push(k); if (k === src) break; k = par[k]; } return out.reverse(); }
     function gripKey(p) { return [p.A.hc, p.A.rot, p.B.hc, p.B.rot, p.C.can, p.C.fx, p.C.fz].join(','); }
@@ -881,7 +901,7 @@
            toutes les actions d'un état) */
         function getE() {
           var kE = 'E|' + h0.toFixed(3) + '|' + k0 + '|' + lim + '|' + e0, E = F.memo.get(kE);
-          if (E === undefined) { var A0 = gridSearch(M0, e0, discF); E = A0.found < 0 ? null : { k: A0.found, chain: chainOf(A0.par, e0, A0.found) }; F.memo.set(kE, E); }
+          if (E === undefined) { var A0 = gridSearch(M0, e0, discF, distTo(F, 'hD|' + lim, discF)); E = A0.found < 0 ? null : { k: A0.found, chain: chainOf(A0.par, e0, A0.found) }; F.memo.set(kE, E); }
           if (!E) return null;
           var kD = 'D|' + lim + '|' + E.k; E.DD = F.memo.get(kD);
           if (!E.DD) { E.DD = gridSearch(discF, E.k, null); F.memo.set(kD, E.DD); }
@@ -912,13 +932,15 @@
           x0 = connectCell(F, M1, O, h1, p1, lim, 'x'); if (x0 < 0) return null;
           if (same) {
             /* toutes les cases atteintes au cap de départ (mises en cache : les mêmes pour toutes les destinations d'un état) */
-            var kF = 'F|' + h0.toFixed(3) + '|' + k0 + '|' + lim + '|' + e0, A = F.memo.get(kF);
-            if (!A) { A = gridSearch(M0, e0, null); F.memo.set(kF, A); }
-            if (!(A.g[x0] < Infinity)) return null;
+            /* A* vers l'arrivée ; une région déjà parcourue entièrement sans l'atteindre (même départ) suffit à conclure */
+            var kF = 'F|' + h0.toFixed(3) + '|' + k0 + '|' + e0, FL = F.memo.get(kF);
+            if (FL && !(FL.g[x0] < Infinity)) return null;
+            var A = gridSearch(M0, e0, function (k) { return k === x0; }, x0);
+            if (A.found < 0) { F.memo.set(kF, A); return null; }
             return [{ c: chainOf(A.par, e0, x0), M: M0 }];
           }
           var E = getE(); if (!E) return null;
-          var X = gridSearch(M1, x0, function (k) { return E.DD.g[k] < Infinity; }); if (X.found < 0) return null;
+          var inDD = function (k) { return E.DD.g[k] < Infinity; }, X = gridSearch(M1, x0, inDD, distTo(F, 'hX|' + lim + '|' + E.k, inDD)); if (X.found < 0) return null;
           return [{ c: E.chain, M: M0 }, { c: chainOf(E.DD.par, E.k, X.found), M: discF, disc: true }, { c: chainOf(X.par, x0, X.found).reverse(), M: M1 }];
         }
         /* exec essaie les deux constructions (sans rotation : d'abord les cases au cap de départ, chemin plus court) ;
