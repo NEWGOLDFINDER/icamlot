@@ -1,111 +1,103 @@
-/* Catalogue des actions du réseau (106 actions de base + extensions tactiques V2) et masque de validité. */
+/* Catalogue v3 des macro-actions du réseau, conversion en briques du moteur et masque pur (contrat §4 de docs/CONTRATS.md).
+
+   - Le catalogue est écrit dans le repère de l'équipe (repère jaune) : P1..P10, M1..M5, T1..T4, points de passage W*, stocks S*.
+     Pour l'équipe bleue, ACTIONS.realStep applique le miroir (ids et coordonnées) avant d'envoyer la brique au moteur.
+   - toProgramStep(act, belief) renvoie LA brique de programme de l'action (repère de l'équipe). ENV.step exécute exactement
+     cette brique ; env.program() l'enregistre ; ENGINE.simulate la rejoue à l'identique.
+   - maskBelief(belief, catalogue) : fonction pure de la croyance (voir ENV.BELIEF_DOC dans engine/env.js).
+     Masque = préconditions du moteur (réécrites sur la croyance, mêmes règles que sim.preconditions) + atteignabilité
+     (pose d'approche dans la table, passage sur une grille d'occupation) + règlement (Graal confiné au château).
+     Aucune règle de stratégie.
+   Temps masqué automatique (contrat §7.1) : toutes les briques qui le permettent portent tm: true ; le moteur choisit le
+   moment (pendant le trajet, en fin de trajet, avant de partir, ou sur place). */
 (function (root) {
+  var CATALOGUE_VERSION = 'icamlot-catalogue-3.0';
   var FACES = ['A', 'B'];
   var PACKS = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'P9', 'P10'];
   var MURS = ['M1', 'M2', 'M3', 'M4', 'M5'];
   var TOURS = ['T1', 'T2', 'T3', 'T4'];
   var COTES = ['ext', 'int'];
-  var GRAAL_ZONES = MURS.concat(TOURS);
-  var STAGING_ZONES = ['SN', 'SS', 'SC'];
+  var ANGLES = [0, 90, 180];
 
-  var WAYPOINTS_INFO = [
-    { id: 'W1', x: 1050, y: 450, label: 'Sortie Nord Château (1050, 450)' },
-    { id: 'W2', x: 1050, y: 1550, label: 'Sortie Sud Château (1050, 1550)' },
-    { id: 'W3', x: 1050, y: 1000, label: 'Carrefour Ouest Centre (1050, 1000)' },
-    { id: 'W4', x: 1500, y: 280, label: 'Couloir Nord (1500, 280)' },
-    { id: 'W5', x: 1500, y: 1720, label: 'Couloir Sud (1500, 1720)' },
-    { id: 'W6', x: 1500, y: 1000, label: 'Point Central (1500, 1000)' },
-    { id: 'W7', x: 500, y: 220, label: 'Flanc Nord (500, 220)' },
-    { id: 'W8', x: 500, y: 1780, label: 'Flanc Sud (500, 1780)' }
-  ];
-  var WAYPOINTS = WAYPOINTS_INFO.map(function (w) { return [w.x, w.y]; });
+  /* Hypothèses (paramètres nommés ; aucune de ces valeurs n'est dans spec/*.json). */
+  var HYPOTHESES = {
+    /* points de passage (repère jaune) : carrefours dégagés des paquets au départ, vérifiés dans le moteur (tests/test_engine.js) */
+    waypoints: [
+      { id: 'W1', x: 1050, y: 350, label: 'couloir nord, sortie du château' },
+      { id: 'W2', x: 1050, y: 1650, label: 'couloir sud, sortie du château' },
+      { id: 'W3', x: 1100, y: 1000, label: 'devant la façade (M3)' },
+      { id: 'W4', x: 1500, y: 1000, label: 'centre de la table' },
+      { id: 'W5', x: 500, y: 1000, label: 'cour du château' },
+      { id: 'W6', x: 1950, y: 350, label: 'couloir nord adverse' },
+      { id: 'W7', x: 1950, y: 1650, label: 'couloir sud adverse' },
+      { id: 'W8', x: 1900, y: 1000, label: 'devant la façade adverse' }
+    ],
+    /* points de stockage dans la cour (hors zones de construction et hors salle du trône), pierres à plat, grand axe à ang */
+    stocks: [
+      { id: 'S1', x: 300, y: 620, ang: 0, label: 'cour nord' },
+      { id: 'S2', x: 300, y: 1380, ang: 0, label: 'cour sud' }
+    ],
+    /* grille d'atteignabilité : pas de 40 mm (celui du planificateur du moteur), robot assimilé à un disque de rayon
+       rayonPassage (sans charge) ou rayonPassageCharge (au moins une pierre tenue) pour traverser une case */
+    grille: 40,
+    rayonPassage: 175,
+    rayonPassageCharge: 215,
+    /* tolérance d'arrivée : une case atteinte à moins de cette distance du point de recul suffit */
+    toleranceArrivee: 80,
+    /* robot « coincé » (en contact, ou aucun déplacement de pasCoince mm sans contact) : le planificateur du moteur ne trouve
+       alors aucun passage (mesuré) ; les actions avec trajet sont masquées */
+    pasCoince: 20,
+    /* autour de la pose de départ (mm), le robot peut passer par des cases aussi dégagées que la sienne */
+    zoneDepart: 250
+  };
+  var WAYPOINTS_INFO = HYPOTHESES.waypoints;
+  var STOCKS = HYPOTHESES.stocks;
 
   var FAMILLES = [
-    { id: 'prendre', label: 'Prendre un paquet', n: 20 },
+    { id: 'prendre', label: 'Prendre une pile (3 pierres) à une carrière', n: 20 },
+    { id: 'prendrePartiel', label: 'Prendre 1 ou 2 pierres du dessus d\'une carrière', n: 40 },
     { id: 'mur', label: 'Poser un mur', n: 20 },
-    { id: 'tour', label: 'Faire une tour', n: 24 },
-    { id: 'porte', label: 'Faire une porte', n: 20 },
-    { id: 'boulets', label: 'Lâcher les boulets', n: 1 },
-    { id: 'prendreGraal', label: 'Prendre le Graal', n: 2 },
-    { id: 'poserGraal', label: 'Poser le Graal', n: 18 },
-    { id: 'trone', label: 'Retour au trône', n: 1 },
-    { id: 'staging', label: 'Déposer relais', n: 6 },
-    { id: 'repickup', label: 'Reprendre relais', n: 6 },
-    { id: 'traj', label: 'Naviguer carrefour', n: 8 },
-    { id: 'tournerPince', label: 'Tourner pince', n: 2 },
-    { id: 'deposerZone', label: 'Déposer zone', n: 2 }
+    { id: 'tour', label: 'Poser une tour (pierre d\'une rangée)', n: 24 },
+    { id: 'porte', label: 'Construire une porte (linteau = rangée 3)', n: 20 },
+    { id: 'tir', label: 'Séance de tir (canon, face C)', n: 1 },
+    { id: 'monterGraal', label: 'Monter le Graal sur le toit (ascenseur, face C)', n: 1 },
+    { id: 'trone', label: 'Aller dans la salle du trône', n: 1 },
+    { id: 'attendre', label: 'Finir le match sur place (attendre 100 s)', n: 1 },
+    { id: 'stockage', label: 'Stocker / reprendre des pierres dans la cour (3 au plus)', n: 8 },
+    { id: 'traj', label: 'Aller à un point de passage', n: 8 },
+    { id: 'preparerPince', label: 'Préparer la pince (angle, pendant le trajet suivant)', n: 6 },
+    { id: 'lacher', label: 'Lâcher les pierres sur place', n: 2 }
   ];
 
   function buildAll() {
     var out = [];
-    // 0..19 : Prendre paquet P1..P10
+    function add(o) { o.i = out.length; out.push(o); }
+    FACES.forEach(function (f) { PACKS.forEach(function (p) { add({ famille: 'prendre', a: 'prendre', mode: 'pile', f: f, p: p, label: 'Prendre la pile ' + p + ' · face ' + f }); }); });
     FACES.forEach(function (f) {
-      PACKS.forEach(function (p) { out.push({ i: out.length, famille: 'prendre', a: 'prendre', f: f, p: p, label: 'Prendre ' + p + ' · face ' + f }); });
-    });
-    // 20..39 : Murs M1..M5
-    FACES.forEach(function (f) {
-      MURS.forEach(function (z) {
-        COTES.forEach(function (side) { out.push({ i: out.length, famille: 'mur', a: 'mur', f: f, z: z, side: side, label: 'Mur ' + z + ' · ' + side + ' · face ' + f }); });
+      PACKS.forEach(function (p) {
+        add({ famille: 'prendrePartiel', a: 'prendre', mode: 'deux', f: f, p: p, label: 'Prendre 2 pierres du dessus de ' + p + ' · face ' + f });
+        add({ famille: 'prendrePartiel', a: 'prendre', mode: 'pierre', f: f, p: p, label: 'Prendre la pierre du dessus de ' + p + ' · face ' + f });
       });
     });
-    // 40..63 : Tours T1..T4
-    FACES.forEach(function (f) {
-      TOURS.forEach(function (z) {
-        [0, 1, 2].forEach(function (rank) { out.push({ i: out.length, famille: 'tour', a: 'tour', f: f, z: z, rank: rank, label: 'Tour ' + z + ' · pierre ' + (rank + 1) + ' · face ' + f }); });
-      });
-    });
-    // 64..83 : Portes M1..M5
-    FACES.forEach(function (f) {
-      MURS.forEach(function (z) {
-        COTES.forEach(function (side) { out.push({ i: out.length, famille: 'porte', a: 'porte', f: f, z: z, side: side, label: 'Porte ' + z + ' · ' + side + ' · face ' + f }); });
-      });
-    });
-    // 84 : Boulets
-    out.push({ i: out.length, famille: 'boulets', a: 'boulets', label: 'Lâcher les boulets' });
-    // 85..86 : Prendre Graal
-    FACES.forEach(function (f) { out.push({ i: out.length, famille: 'prendreGraal', a: 'prendreGraal', f: f, label: 'Prendre le Graal · face ' + f }); });
-    // 87..104 : Poser Graal
-    FACES.forEach(function (f) {
-      GRAAL_ZONES.forEach(function (z) { out.push({ i: out.length, famille: 'poserGraal', a: 'poserGraal', f: f, z: z, label: 'Poser le Graal sur ' + z + ' · face ' + f }); });
-    });
-    // 105 : Trône
-    out.push({ i: out.length, famille: 'trone', a: 'trone', label: 'Aller dans la salle du trône' });
-
-    // 106..111 : Staging / Relais sur SN, SS, SC (Face A et B)
-    FACES.forEach(function (f) {
-      STAGING_ZONES.forEach(function (z) {
-        out.push({ i: out.length, famille: 'staging', a: 'staging', f: f, z: z, label: 'Déposer relais ' + z + ' · face ' + f });
-      });
-    });
-
-    // 112..117 : Reprise relais depuis SN, SS, SC (Face A et B)
-    FACES.forEach(function (f) {
-      STAGING_ZONES.forEach(function (z) {
-        out.push({ i: out.length, famille: 'repickup', a: 'reprendre', f: f, z: z, label: 'Reprendre relais ' + z + ' · face ' + f });
-      });
-    });
-
-    // 118..125 : 8 Actions de repositionnement / navigation waypoints
-    WAYPOINTS_INFO.forEach(function (w) {
-      out.push({ i: out.length, famille: 'traj', a: 'traj', w: w.id, tx: w.x, ty: w.y, th: 0, label: 'Trajet ' + w.label });
-    });
-
-    // 126..127 : Rotation pince Face A / Face B (0° <-> 90°)
-    FACES.forEach(function (f) {
-      out.push({ i: out.length, famille: 'tournerPince', a: 'tournerPince', f: f, r: 0, label: 'Tourner pince face ' + f });
-    });
-
-    // 128..129 : Déposer zone / lacher Face A / Face B (purger / débloquer pince)
-    FACES.forEach(function (f) {
-      out.push({ i: out.length, famille: 'deposerZone', a: 'deposerZone', f: f, label: 'Déposer zone face ' + f });
-    });
-
+    FACES.forEach(function (f) { MURS.forEach(function (z) { COTES.forEach(function (side) { add({ famille: 'mur', a: 'mur', f: f, z: z, side: side, label: 'Mur ' + z + ' · ' + side + ' · face ' + f }); }); }); });
+    FACES.forEach(function (f) { TOURS.forEach(function (z) { [1, 2, 3].forEach(function (r) { add({ famille: 'tour', a: 'tour', f: f, z: z, rang: r, label: 'Tour ' + z + ' · pierre de la rangée ' + r + ' · face ' + f }); }); }); });
+    FACES.forEach(function (f) { MURS.forEach(function (z) { COTES.forEach(function (side) { add({ famille: 'porte', a: 'porte', f: f, z: z, side: side, label: 'Porte ' + z + ' · ' + side + ' · face ' + f }); }); }); });
+    add({ famille: 'tir', a: 'tir', label: 'Séance de tir des boulets' });
+    add({ famille: 'monterGraal', a: 'monterGraal', label: 'Monter le Graal sur le toit' });
+    add({ famille: 'trone', a: 'trone', label: 'Aller dans la salle du trône' });
+    add({ famille: 'attendre', a: 'finir', label: 'Finir le match sur place (attendre jusqu\'à 100 s)' });
+    FACES.forEach(function (f) { STOCKS.forEach(function (s) { add({ famille: 'stockage', a: 'stocker', f: f, stock: s.id, label: 'Stocker la charge de la face ' + f + ' en ' + s.id + ' (' + s.label + ')' }); }); });
+    FACES.forEach(function (f) { STOCKS.forEach(function (s) { add({ famille: 'stockage', a: 'reprendre', f: f, stock: s.id, label: 'Reprendre les pierres de ' + s.id + ' · face ' + f }); }); });
+    WAYPOINTS_INFO.forEach(function (w) { add({ famille: 'traj', a: 'traj', w: w.id, label: 'Aller en ' + w.id + ' (' + w.label + ', ' + w.x + ', ' + w.y + ')' }); });
+    FACES.forEach(function (f) { ANGLES.forEach(function (r) { add({ famille: 'preparerPince', a: 'preparer', f: f, r: r, label: 'Préparer la pince ' + f + ' à ' + r + '° (pendant le trajet suivant)' }); }); });
+    FACES.forEach(function (f) { add({ famille: 'lacher', a: 'lacher', f: f, label: 'Lâcher la charge de la face ' + f + ' sur place' }); });
     return out;
   }
   var ALL = buildAll();
-  var ALL_BASE = ALL.slice(0, 106);
-  if (ALL.length !== 130) throw new Error('Le catalogue étendu doit compter 130 actions, pas ' + ALL.length + '.');
-  if (ALL_BASE.length !== 106) throw new Error('Le catalogue de base doit compter 106 actions, pas ' + ALL_BASE.length + '.');
+  (function () {
+    var n = 0; FAMILLES.forEach(function (F) { var k = ALL.filter(function (a) { return a.famille === F.id; }).length; if (k !== F.n) throw new Error('Famille ' + F.id + ' : ' + k + ' actions au lieu de ' + F.n + '.'); n += k; });
+    if (n !== ALL.length) throw new Error('Catalogue incohérent.');
+  })();
 
   function filterByFamilles(familles) {
     var set = {};
@@ -113,563 +105,534 @@
     return ALL.filter(function (a) { return set[a.famille]; });
   }
 
-  function indexOfStep(st, sim, catalogue) {
-    catalogue = catalogue || ALL;
-    for (var i = 0; i < catalogue.length; i++) {
-      var a = catalogue[i];
-      if (st.a === 'tourner' && a.famille === 'tournerPince' && a.f === st.f) return i;
-      if (st.a === 'lacher' && a.famille === 'deposerZone' && a.f === st.f) return i;
-      if (st.a === 'seDeplacer' && a.famille === 'traj' && Math.hypot((a.tx || 0) - (st.x || 0), (a.ty || 0) - (st.y || 0)) < 10) return i;
-      if (st.a === 'traj' && a.famille === 'traj' && st.pts && st.pts[0] && Math.hypot((a.tx || 0) - (st.pts[0].x || 0), (a.ty || 0) - (st.pts[0].y || 0)) < 10) return i;
-      if (a.a !== (st.a === 'tir' ? 'boulets' : st.a)) continue;
-      if (a.f && a.f !== st.f) continue;
-      if (a.p && a.p !== st.p) continue;
-      if (a.z && a.z !== st.z) continue;
-      if (a.side && a.side !== st.side) continue;
-      if (a.a === 'tour') {
-        var held = sim.held()[st.f];
-        var stack = held && held.stack ? held.stack.filter(function (x) { return x; }) : [];
-        var rank = -1;
-        stack.forEach(function (x, k) { if (x.id === st.s) rank = k; });
-        if (rank !== a.rank) continue;
-      }
-      return i;
-    }
-    return -1;
+  /* ------------------------------------------------------------------ outils géométriques purs */
+  function E() { return root.ENGINE; }
+  function G() { return root.GEOM; }
+  var D2R = Math.PI / 180;
+  function nv(a) { return [Math.cos(a * D2R), Math.sin(a * D2R)]; }
+  function lv(a) { return [-Math.sin(a * D2R), Math.cos(a * D2R)]; }
+  function dist(a, b) { return Math.hypot(a[0] - b[0], a[1] - b[1]); }
+  function centroid(P) { var c = [0, 0]; P.forEach(function (v) { c[0] += v[0] / P.length; c[1] += v[1] / P.length; }); return c; }
+  function ptSegD(p, a, b) { var dx = b[0] - a[0], dy = b[1] - a[1], L = dx * dx + dy * dy, t = L ? ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / L : 0; t = Math.max(0, Math.min(1, t)); return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy); }
+  function ptPolyD(p, P) { if (E().inPoly(p[0], p[1], P)) return 0; var d = 1e9; for (var i = 0; i < P.length; i++) d = Math.min(d, ptSegD(p, P[i], P[(i + 1) % P.length])); return d; }
+  function mirX(x, team) { return team === 'blue' ? 3000 - x : x; }
+  function mirId(id, team) {
+    if (team !== 'blue' || id == null) return id;
+    var s = String(id);
+    if (s.indexOf('.') >= 0) return E().mirrorId(s.split('.')[0]) + '.' + s.split('.')[1];
+    return E().mirrorId(s);
   }
+  function packIndex(pid) { var k = -1; E().PK.forEach(function (pk, i) { if (pk.id === pid) k = i; }); return k; }
+  function packFoot(pk) { return G().rectPoly({ cx: pk.x, cy: pk.y, hl: 160, hn: 55, ang: pk.tan + 90 }); }
+  function geo() { return G().GEO; }
+  function zOk(hc) { return hc >= geo().hcMin - 0.5 && hc <= geo().hcMax + 0.5; }
+  function ZTR() { return root.SPEC.regles.remparts_jaune.tour_diametre / 2; }
+  function STOCK_MAX() { return root.SPEC.regles.construction.stockage_max_cour; }
 
-  function toProgramStep(act, sim) {
-    var st = { a: act.a === 'boulets' ? 'tir' : (act.a === 'reprendre' ? 'prendre' : act.a) };
-    var blue = teamOf(sim) === 'blue';
-    if (act.f) st.f = act.f;
-    if (act.p) st.p = act.p;
-    if (act.z) st.z = act.z;
-    if (act.side) st.side = act.side;
-    // R4 : Mode de placement adaptatif proche par défaut pour constructions
-    if (act.a === 'mur' || act.a === 'tour' || act.a === 'porte') {
-      st.pm = act.pm || 'proche';
-    } else if (act.pm) {
-      st.pm = act.pm;
-    }
-    if (act.a === 'tour') {
-      var held = sim.held()[act.f];
-      var stack = held && held.stack ? held.stack : [];
-      var target = stack.filter(function (x) { return x; })[act.rank];
-      st.s = target ? (blue ? ENGINE.mirrorId(target.id.split('.')[0]) + '.' + target.id.split('.')[1] : target.id) : 'P1.1';
-    }
-    if (act.a === 'traj') {
-      st.pts = [{ x: blue ? 3000 - act.tx : act.tx, y: act.ty }];
-    }
-    if (act.a === 'tournerPince' || act.famille === 'tournerPince') {
-      var curRot = (sim.pose()[act.f] && sim.pose()[act.f].rot) || 0;
-      st.a = 'tourner';
-      st.r = (curRot === 90) ? 0 : 90;
-    }
-    if (act.a === 'deposerZone' || act.famille === 'deposerZone') {
-      st.a = 'lacher';
-    }
-    return st;
-  }
-
-  function faceEmpty(sim, f) { return !sim.held()[f]; }
-  function faceStackFlat(sim, f) {
-    var h = sim.held()[f];
-    if (!h || !h.stack) return false;
-    var n = h.stack.filter(function (x) { return x; }).length;
-    return n === 3 && sim.pose()[f].rot === 0;
-  }
-  function faceHoldsGraal(sim, f) { var h = sim.held()[f]; return !!(h && h.graal); }
-
-  // R1 : Support de la reprise de paquets déposés (cur.k === 'free') et de la prise partielle
-  function packetStacked(sim, p, f) {
-    var idx = -1;
-    if (typeof ENGINE !== 'undefined' && ENGINE.PK) {
-      ENGINE.PK.forEach(function (pk, i) { if (pk.id === p) idx = i; });
-    } else {
-      idx = parseInt(p.replace(/\D/g, ''), 10) - 1;
-    }
-    if (idx < 0) return false;
-    var stones = typeof sim.stones === 'function' ? sim.stones() : (sim.stones || []);
-    var sts = stones.filter(function (st) { return st.pk === idx; });
-
-    // Pierres disponibles sur la table (home ou free)
-    var avail = sts.filter(function (x) {
-      return x.cur && (x.cur.k === 'home' || x.cur.k === 'free') && !(sim.claimed && sim.claimed(x.id));
+  /* ------------------------------------------------------------------ lecture de la croyance (repère réel) */
+  function heldList(b, f) { var sl = (b.pinces[f] && b.pinces[f].slots) || [null, null, null]; var out = []; sl.forEach(function (id, l) { if (id) out.push({ id: id, sl: l }); }); return out; }
+  function heldMask(b, f) { var m = 0; heldList(b, f).forEach(function (x) { m |= 1 << x.sl; }); return m; }
+  function packN(b, pid) { var p = b.paquets && b.paquets[pid]; return p ? p.n : 3; }
+  /* pierres « au sol » connues : pierres de carrière présentes (croyance) et pierres posées par ce robot */
+  function homeStones(b) {
+    var out = [];
+    E().PK.forEach(function (pk, i) {
+      var n = packN(b, pk.id), foot = packFoot(pk);
+      for (var l = 0; l < n; l++) out.push({ id: pk.id + '.' + (l + 1), pk: i, foot: foot, bottom: 110 * l, top: 110 * l + 110, vertical: false, home: true, c: [pk.x, pk.y], tan: pk.tan });
     });
-    if (avail.length === 0) return false;
+    return out;
+  }
+  function ownStones(b) { return (b.pierres || []).map(function (s) { var c = centroid(s.foot); return Object.assign({ c: c }, s); }); }
+  function groundStones(b) { return homeStones(b).concat(ownStones(b)); }
+  function coveredBy(st, all) {
+    for (var i = 0; i < all.length; i++) { var o = all[i]; if (o.id === st.id) continue; if (o.bottom >= st.top - 1 && G().overlap(st.foot, o.foot, 1)) return o.id; }
+    return null;
+  }
+  function stoneById(b, id) { var all = groundStones(b); for (var i = 0; i < all.length; i++) if (all[i].id === id) return all[i]; return null; }
+  function stackAxis(st) {
+    if (st.home) return { c: st.c, tan: st.tan };
+    var P = st.foot, e0 = dist(P[0], P[1]), e1 = dist(P[1], P[2]), a = e0 >= e1 ? [P[0], P[1]] : [P[1], P[2]];
+    return { c: st.c, tan: Math.atan2(a[1][1] - a[0][1], a[1][0] - a[0][0]) / D2R };
+  }
+  function inAnyZone(foot) {
+    var en = E(), i;
+    for (i = 0; i < en.ZM.length; i++) if (G().overlap(foot, en.zoneRect(en.ZM[i]), 0)) return true;
+    for (i = 0; i < en.ZT.length; i++) if (ptPolyD(en.ZT[i].c, foot) < ZTR()) return true;
+    return false;
+  }
+  function ownCour(team) { return team === 'blue' ? E().COUR_B : E().COUR; }
+  function stored(foot, team) { var c = centroid(foot); return E().inPoly(c[0], c[1], ownCour(team)) && !inAnyZone(foot); }
+  function stockCount(b) { return (b.pierres || []).filter(function (s) { return stored(s.foot, b.team); }).length; }
+  function zoneTakenB(b, zid) {
+    var z = E().zoneById(zid); if (!z) return 'Zone inconnue.';
+    var hit = (b.pierres || []).concat(b.etrangeres || []).some(function (s) { var c = centroid(s.foot); return z.tan !== undefined ? E().inPoly(c[0], c[1], E().zoneRect(z)) : dist(c, z.c) < ZTR(); });
+    return hit ? 'La zone ' + zid + ' est déjà occupée (une construction par zone, E.1).' : null;
+  }
+  function robotPose(b) { return { x: b.pose.x, y: b.pose.y, h: b.pose.h, A: { hc: b.pinces.A.hc, rot: b.pinces.A.rot, vac: [0, 0, 0] }, B: { hc: b.pinces.B.hc, rot: b.pinces.B.rot, vac: [0, 0, 0] } }; }
+  function heldFootAt(b, f, sl) { return G().rectPoly(G().heldFoot(robotPose(b), f === 'A' ? 0 : 1, sl)); }
+  function balayageOk(mask, ch, a0, a1) { return Math.abs(a0 - a1) <= 0.5 || G().balayage(mask, ch, a0, a1).ok; }
 
-    // Prise partielle : vérifier la capacité disponible sur la face
-    if (f && sim.held && sim.held()[f]) {
-      var h = sim.held()[f];
-      var heldN = h.stack ? h.stack.filter(function (x) { return x; }).length : 0;
-      if (heldN >= 3) return false;
+  /* ------------------------------------------------------------------ préconditions sur la croyance
+     Mêmes règles que sim.preconditions (engine.js, PRE), brique en repère réel. Renvoie null ou la raison. */
+  function preBelief(st, b) {
+    if (!st) return 'Action non résolue.';
+    var f = st.f, hs, why;
+    switch (st.a) {
+      case 'prendre':
+        if (f !== 'A' && f !== 'B') return 'Face inconnue (A ou B).';
+        if (heldList(b, f).length) return 'La face ' + f + ' tient déjà quelque chose.';
+        if (st.mode === 'pierre' || st.mode === 'deux') return prePierreB(st, b).why;
+        return prePileB(st, b);
+      case 'mur':
+        hs = heldList(b, f);
+        if (!E().zoneById(st.z) || E().zoneById(st.z).tan === undefined) return 'Zone de mur inconnue.';
+        if (hs.length !== 3 || (b.pinces[f].rot !== 0 && b.pinces[f].rot !== 180)) return 'Il faut une pile de 3 pierres à plat sur la face ' + f + '.';
+        return zoneTakenB(b, st.z);
+      case 'tour':
+        if (!E().zoneById(st.z) || E().zoneById(st.z).tan !== undefined) return 'Zone de tour inconnue.';
+        if (!heldList(b, f).some(function (x) { return x.id === st.s; })) return 'La pierre ' + st.s + ' n\'est pas tenue par la face ' + f + '.';
+        if (!balayageOk(heldMask(b, f), true, b.pinces[f].rot, 90)) return 'Rotation impossible sous 350 mm.';
+        return zoneTakenB(b, st.z);
+      case 'porte':
+        hs = heldList(b, f);
+        if (!E().zoneById(st.z) || E().zoneById(st.z).tan === undefined) return 'Zone de mur inconnue.';
+        if (!(hs.length === 3 && hs.every(function (x, i) { return x.sl === i; })) || b.pinces[f].rot !== 0) return 'Il faut une pile de 3 pierres à plat sur la face ' + f + ' (rangées 1, 2 et 3).';
+        var cas = E().inPoly(E().zoneById(st.z).c[0], E().zoneById(st.z).c[1], E().CASTLE) ? 'jaune' : 'bleu';
+        if ((b.portes || []).some(function (id) { var z = E().zoneById(id); return z && (E().inPoly(z.c[0], z.c[1], E().CASTLE) ? 'jaune' : 'bleu') === cas; })) return 'Une seule porte par château (E.1.b).';
+        return zoneTakenB(b, st.z);
+      case 'tir': case 'boulets':
+        if (b.tir) return 'La séance de tir a déjà eu lieu.';
+        if (b.t >= E().MATCH) return 'Tir impossible : le match est terminé.';
+        if (!(Math.round(b.params && b.params.bn != null ? b.params.bn : 10) > 0)) return 'Aucun boulet à tirer.';
+        return null;
+      case 'monterGraal':
+        if (b.graal !== 'home') return 'Le Graal n\'est plus à son départ.';
+        if (!E().inPoly(b.pose.x, b.pose.y, E().castleOf(b.team))) return 'Monter le Graal : le robot doit être dans son château.';
+        if (Math.abs(b.meca.fx - geo().fourche.fxRentree) > 0.5 || Math.abs(b.meca.fz - geo().fourche.fzHaut) > 0.5) return 'Monter le Graal : la fourche n\'est pas rangée.';
+        return null;
+      case 'deposer':
+        hs = heldList(b, f);
+        var rot = st.r != null ? +st.r : 0;
+        if ([0, 90, 180].indexOf(rot) < 0) return 'Angle de pince : 0, 90 ou 180°.';
+        if (!hs.length) return 'La face ' + f + ' ne tient aucune pierre.';
+        if (rot !== 90 && !contiguous(hs)) return 'Pile à plat impossible : il manque une pierre au milieu de la pince.';
+        if (!balayageOk(heldMask(b, f), st.tm ? true : heldInCastleB(b, f), b.pinces[f].rot, rot)) return 'Rotation impossible sous 350 mm.';
+        /* hauteur d'axe qui pose la pierre la plus basse au sol (comme le moteur) : dans la course de la pince ? */
+        var cs = Math.cos(rot * D2R), sls = hs.map(function (x) { return x.sl; }), lLow = cs > 0 ? Math.min.apply(null, sls) : Math.max.apply(null, sls);
+        if (rot !== 90 && !zOk(55 - G().stoneZc(lLow) * cs)) return 'Dépôt au sol : pince hors de sa course pour la rangée ' + (lLow + 1) + '.';
+        var foot = G().rectPoly({ cx: +st.x, cy: +st.y, hl: 160, hn: 55, ang: +st.ang || 0 });
+        why = stockPreB(b, hs.map(function () { return foot; })); if (why) return why;
+        /* place libre : une pierre déjà au point de dépôt mettrait la pince hors de sa course */
+        if (groundStones(b).some(function (o) { return G().overlap(foot, o.foot, 1); })) return 'Point de dépôt occupé.';
+        return null;
+      case 'lacher': case 'deposerZone':
+        hs = heldList(b, f);
+        if (!hs.length) return 'La face ' + f + ' ne tient aucune pierre.';
+        if (Math.abs(Math.cos(b.pinces[f].rot * D2R)) >= 0.5 && !contiguous(hs)) return 'Lâcher : il manque une pierre au milieu de la pince.';
+        return stockPreB(b, hs.map(function (x) { return heldFootAt(b, f, x.sl); }));
+      case 'tourner':
+        var r = +st.r;
+        if ([0, 90, 180].indexOf(r) < 0) return 'Angle de pince : 0, 90 ou 180°.';
+        if (!balayageOk(heldMask(b, f), st.tm ? true : heldInCastleB(b, f), b.pinces[f].rot, r)) return 'Rotation impossible sous 350 mm.';
+        /* en temps masqué, la rotation a lieu pendant le prochain trajet, peut-être hors du château : elle doit y être faisable */
+        if (st.tm && !balayageOk(heldMask(b, f), false, b.pinces[f].rot, r)) return 'Rotation impossible sous 350 mm hors du château (préparation pendant un trajet).';
+        return null;
+      case 'traj': case 'seDeplacer': case 'trone': case 'attendre': case 'attendreJusqua':
+        return null;
+      default:
+        return 'Action inconnue.';
     }
-
-    // 1. Paquet intact au point de départ (home)
-    var allHome = avail.every(function (x) { return x.cur && x.cur.k === 'home'; });
-    if (allHome) return true;
-
-    // 2. Paquet déposé / relayé sur la table (cur.k === 'free')
-    var allFree = avail.every(function (x) { return x.cur && x.cur.k === 'free'; });
-    if (!allFree) return false;
-
-    // Vérifier qu'aucune pierre n'est debout (doit être empilée à plat)
-    if (avail.some(function (x) { return x.cur.geo && x.cur.geo.vertical; })) return false;
-
-    // Vérifier la co-localisation horizontale des pierres (tolérance 25 mm)
-    if (avail.length > 1) {
-      var p0 = avail[0].cur.geo && avail[0].cur.geo.fo;
-      if (!p0) return false;
-      for (var i = 1; i < avail.length; i++) {
-        var pi = avail[i].cur.geo && avail[i].cur.geo.fo;
-        if (!pi) return false;
-        if (Math.hypot(pi.cx - p0.cx, pi.cy - p0.cy) > 25.0) return false;
-      }
+  }
+  function contiguous(hs) { var sl = hs.map(function (x) { return x.sl; }); return Math.max.apply(null, sl) - Math.min.apply(null, sl) + 1 === hs.length; }
+  /* pierres tenues par f dans un château (n'importe lequel, comme heldInCastle du moteur) */
+  function heldInCastleB(b, f) {
+    return heldList(b, f).every(function (x) { return heldFootAt(b, f, x.sl).every(function (v) { return E().inPoly(v[0], v[1], E().CASTLE) || E().inPoly(v[0], v[1], E().CASTLE_B); }); });
+  }
+  function stockPreB(b, feet) {
+    var n = feet.filter(function (ft) { return stored(ft, b.team); }).length, k = stockCount(b);
+    if (n && k + n > STOCK_MAX()) return 'Stockage : ' + (k + n) + ' pierres dans la cour hors des zones de construction (' + STOCK_MAX() + ' au plus, E.1.b).';
+    return null;
+  }
+  function prePileB(st, b) {
+    var idx = packIndex(st.p); if (idx < 0) return 'Paquet inconnu.';
+    var pk = E().PK[idx], all = groundStones(b);
+    if (packN(b, pk.id) === 3) {
+      var top = { id: pk.id + '.3', foot: packFoot(pk), top: 330 };
+      var on = coveredBy(top, all); if (on) return 'Le paquet ' + st.p + ' n\'est pas dégagé : ' + on + ' est posé dessus.';
+      return null;
     }
-
-    // Vérifier qu'aucun objet n'est posé par-dessus la pierre supérieure
-    var sorted = avail.slice().sort(function (a, b) {
-      var za = (a.cur.geo && a.cur.geo.zc) || 0;
-      var zb = (b.cur.geo && b.cur.geo.zc) || 0;
-      return za - zb;
-    });
-    var topStone = sorted[sorted.length - 1];
-    if (sim.covered && sim.covered(topStone, avail)) return false;
-
-    return true;
+    /* pile reconstituée : les 3 pierres du paquet posées ensemble par ce robot, à plat */
+    var mine = ownStones(b).filter(function (s) { return s.pk === idx; }).sort(function (a, c) { return a.bottom - c.bottom; });
+    if (mine.length !== 3 || packN(b, pk.id) !== 0) return 'Le paquet ' + st.p + ' n\'est plus complet (croyance).';
+    if (!mine.every(function (s) { return s.grp === mine[0].grp && !s.vertical; })) return 'Les pierres de ' + st.p + ' ne sont plus empilées.';
+    var on2 = coveredBy(mine[2], all);
+    if (on2) return 'Le paquet ' + st.p + ' n\'est pas dégagé : ' + on2 + ' est posé dessus.';
+    if (!zOk(mine[0].bottom + 165)) return 'Prise de ' + st.p + ' : pince hors de sa course.';
+    return null;
   }
-
-  function stoneHeldRank(sim, f, rank) {
-    var h = sim.held()[f];
-    if (!h || !h.stack) return false;
-    return !!h.stack.filter(function (x) { return x; })[rank];
-  }
-  function zoneStoneCount(sim, z) {
-    var zone = ENGINE.zoneById(z); if (!zone) return 0;
-    var isWall = z && z[0] === 'M';
-    var zr = zone.tan !== undefined ? rectPoly({ cx: zone.c[0], cy: zone.c[1], hl: 200, hn: 100, ang: zone.tan + 90 }) : null;
-    var n = 0;
-    var all = [];
-    sim.stones().forEach(function (st) { if (st.cur.k === 'free' && st.cur.geo) all.push(st.cur.geo); });
-    (sim.foreign ? sim.foreign() : []).forEach(function (g) { all.push(g); });
-    all.forEach(function (g) {
-      if (!isWall && !g.vertical) return;
-      if (zr) { if (overlap(g.foot, zr, 0)) n++; return; }
-      var d = 1e9, P = g.foot;
-      if (ENGINE.inPoly(zone.c[0], zone.c[1], P)) { n++; return; }
-      for (var i = 0; i < P.length; i++) {
-        var a = P[i], b = P[(i + 1) % P.length], dx = b[0] - a[0], dy = b[1] - a[1], L = dx * dx + dy * dy;
-        var u = L ? Math.max(0, Math.min(1, ((zone.c[0] - a[0]) * dx + (zone.c[1] - a[1]) * dy) / L)) : 0;
-        d = Math.min(d, Math.hypot(zone.c[0] - a[0] - u * dx, zone.c[1] - a[1] - u * dy));
-      }
-      if (d < 100) n++;
-    });
-    return n;
-  }
-  function zoneHasBuild(sim, z) {
-    var isWall = z && z[0] === 'M';
-    return isWall ? zoneStoneCount(sim, z) >= 3 : zoneStoneCount(sim, z) >= 1;
-  }
-  function towerComplete(sim, z) { return zoneStoneCount(sim, z) >= 1; }
-
-  function validDoorTarget(act) {
-    if (act.z === 'M5') return false;
-    if (act.z === 'M1' && act.side === 'ext') return false;
-    return true;
-  }
-  function castleHasDoor(sim) {
-    if (typeof SCORE === 'undefined' || !SCORE.outcome) return false;
-    var r = sim.result(false);
-    var o = SCORE.outcome(r, sim.params(), sim.time());
-    var team = teamOf(sim);
-    return o.doors.some(function (id) { return SCORE.own(id, team); });
-  }
-
-  function teamOf(sim) { if (!sim) return 'yellow'; var P = sim.params && sim.params(); return (P && P.team) || 'yellow'; }
-  function real(act, sim) {
-    if (teamOf(sim) !== 'blue') return act;
-    var o = {}; Object.keys(act).forEach(function (k) { o[k] = act[k]; });
-    if (o.p) o.p = ENGINE.mirrorId(o.p);
-    if (o.z) o.z = ENGINE.mirrorId(o.z);
-    return o;
-  }
-
-  var PACK_CENTERS = [
-    [750, 55], [1250, 55], [1750, 55], [2250, 55],
-    [750, 1945], [1250, 1945], [1750, 1945], [2250, 1945],
-    [1500, 500], [1500, 1500]
-  ];
-
-  var ACTION_TARGETS = {
-    'P1': [750, 305.5], 'P2': [1250, 305.5], 'P3': [1750, 305.5], 'P4': [2250, 305.5],
-    'P5': [750, 1694.5], 'P6': [1250, 1694.5], 'P7': [1750, 1694.5], 'P8': [2250, 1694.5],
-    'P9': [1249.5, 500], 'P10': [1249.5, 1500],
-    'M1_ext': [250, 229.5], 'M1_int': [250, 570.5],
-    'M2_ext': [799.8, 450.3], 'M2_int': [558.8, 691.3],
-    'M3_ext': [1020.5, 1000], 'M3_int': [679.5, 1000],
-    'M4_ext': [799.8, 1550.0], 'M4_int': [558.8, 1309.0],
-    'M5_ext': [250, 1770.5], 'M5_int': [250, 1429.5],
-    'T1': [329.5, 400], 'T2': [679.5, 750], 'T3': [679.5, 1250], 'T4': [329.5, 1600],
-    'PG_M1': [150, 320], 'PG_M2': [579.3, 490.8], 'PG_M3': [750, 920], 'PG_M4': [579.3, 1349.5], 'PG_M5': [150, 1520],
-    'PG_T1': [400, 320], 'PG_T2': [750, 670], 'PG_T3': [750, 1170], 'PG_T4': [400, 1520],
-    'SN': [1120.5, 450.0], 'SS': [1120.5, 1550.0], 'SC': [1279.5, 800.0]
-  };
-
-  var STAGING_TARGETS = {
-    'SN': [1120.5, 450.0],
-    'SS': [1120.5, 1550.0],
-    'SC': [1279.5, 800.0]
-  };
-
-  function getActionTarget(act, sim) {
-    if (!act) return null;
-    if (act.tx != null && act.ty != null) return [act.tx, act.ty];
-    if (act.p) {
-      if (sim && typeof sim.stones === 'function') {
-        var pkIdx = parseInt(act.p.replace(/\D/g, ''), 10) - 1;
-        var sts = sim.stones().filter(function (st) { return st.pk === pkIdx; });
-        if (sts.length === 3 && sts.every(function (x) { return x.cur && x.cur.k === 'free'; })) {
-          var fo = sts[0].cur.geo && sts[0].cur.geo.fo;
-          if (fo) {
-            var rin = 400.0 / (2.0 * Math.sqrt(3.0));
-            var phi = (fo.ang != null ? fo.ang - 90 : 0);
-            var rad = phi * Math.PI / 180.0;
-            return [fo.cx - (rin + 55.0) * Math.cos(rad), fo.cy - (rin + 55.0) * Math.sin(rad)];
-          }
-        }
-      }
-      if (ACTION_TARGETS[act.p]) return ACTION_TARGETS[act.p];
+  function prePierreB(st, b) {
+    var x = stoneById(b, st.s), two = st.mode === 'deux';
+    if (!x) return { why: 'Pierre ' + st.s + ' absente (croyance).' };
+    if (x.vertical) return { why: 'La pierre ' + x.id + ' est debout.' };
+    var all = groundStones(b), on = coveredBy(x, all);
+    if (on) return { why: 'La pierre ' + x.id + ' n\'est pas sur le dessus (' + on + ' est posé dessus).' };
+    var gl = x;
+    if (two) {
+      var under = all.filter(function (o) { return o.id !== x.id && Math.abs(o.top - x.bottom) < 1 && G().overlap(x.foot, o.foot, 1); });
+      if (under.length !== 1) return { why: 'Prendre deux pierres : rien (ou plusieurs pierres) sous ' + x.id + '.' };
+      var y = under[0], ax = stackAxis(x), ay = stackAxis(y), da = Math.abs(((ay.tan - ax.tan) % 180 + 180) % 180);
+      if (y.vertical || dist(ax.c, ay.c) > 10 || Math.min(da, 180 - da) > 3) return { why: 'Prendre deux pierres : pierres non alignées.' };
+      gl = y;
     }
-    if (act.z) {
-      if (act.famille === 'mur' || act.famille === 'porte') {
-        var key = act.z + '_' + (act.side || 'ext');
-        if (ACTION_TARGETS[key]) return ACTION_TARGETS[key];
-      }
-      if (act.famille === 'tour' && ACTION_TARGETS[act.z]) return ACTION_TARGETS[act.z];
-      if (act.famille === 'poserGraal') {
-        var pgKey = 'PG_' + act.z;
-        if (ACTION_TARGETS[pgKey]) return ACTION_TARGETS[pgKey];
-      }
-      if ((act.famille === 'staging' || act.famille === 'repickup') && ACTION_TARGETS[act.z]) {
-        return ACTION_TARGETS[act.z];
-      }
+    var lmax = two ? 1 : 2, ok = false;
+    for (var l = 0; l <= lmax; l++) if (zOk(gl.bottom + 55 - G().stoneZc(l))) ok = true;
+    return ok ? { why: null } : { why: 'Prise de ' + x.id + ' : pince hors de sa course.' };
+  }
+
+  /* ------------------------------------------------------------------ résolution d'une action en brique */
+  function stockById(id) { for (var i = 0; i < STOCKS.length; i++) if (STOCKS[i].id === id) return STOCKS[i]; return null; }
+  function wpById(id) { for (var i = 0; i < WAYPOINTS_INFO.length; i++) if (WAYPOINTS_INFO[i].id === id) return WAYPOINTS_INFO[i]; return null; }
+  /* pierres posées par ce robot sur un point de stockage (repère réel), de bas en haut */
+  function stockStack(b, sid) {
+    var s = stockById(sid); if (!s) return [];
+    var c = [mirX(s.x, b.team), s.y];
+    return ownStones(b).filter(function (o) { return dist(o.c, c) < 40; }).sort(function (a, d) { return a.bottom - d.bottom; });
+  }
+  function ownStoneId(id, team) { return mirId(id, team); }
+
+  /* Brique de programme de l'action (repère de l'équipe, comme une stratégie écrite pour le jaune), ou null si l'action
+     ne désigne rien dans cet état (pile vide, rangée vide...). belief est la croyance (repère réel). */
+  function toProgramStep(act, b) {
+    var team = (b && b.team) || 'yellow';
+    switch (act.a) {
+      case 'prendre':
+        if (act.mode === 'pile') return { a: 'prendre', f: act.f, p: act.p, tm: true };
+        var n = packN(b, mirId(act.p, team));
+        if (n < (act.mode === 'deux' ? 2 : 1)) return null;
+        return { a: 'prendre', f: act.f, mode: act.mode, s: act.p + '.' + n, tm: true };
+      case 'mur': return { a: 'mur', f: act.f, z: act.z, side: act.side };
+      case 'tour':
+        var id = (b.pinces[act.f].slots || [])[act.rang - 1];
+        if (!id) return null;
+        return { a: 'tour', f: act.f, z: act.z, s: ownStoneId(id, team), tm: true };
+      case 'porte': return { a: 'porte', f: act.f, z: act.z, side: act.side };
+      case 'tir': return { a: 'tir' };
+      case 'monterGraal': return { a: 'monterGraal' };
+      case 'trone': return { a: 'trone' };
+      case 'finir': return { a: 'attendreJusqua', sec: E().MATCH };
+      case 'traj': var w = wpById(act.w); return { a: 'seDeplacer', x: w.x, y: w.y };
+      case 'preparer': return { a: 'tourner', f: act.f, r: act.r, tm: true };
+      case 'lacher': return { a: 'deposerZone', f: act.f, q: 'pile' };
+      case 'stocker':
+        /* pose à plat au sol : à 0° si la rangée 1 est tenue, sinon retournée à 180° si la rangée 3 l'est (la pierre la plus basse touche le sol) */
+        var s = stockById(act.stock), sl = (b.pinces[act.f].slots || []), r0 = sl[0] || !sl[2] ? 0 : 180;
+        return { a: 'deposer', f: act.f, q: 'pile', x: s.x, y: s.y, ang: s.ang, r: r0, tm: true };
+      case 'reprendre':
+        var stk = stockStack(b, act.stock);
+        if (!stk.length) return null;
+        var topS = stk[stk.length - 1];
+        if (stk.length === 3 && stk.every(function (o) { return o.pk === topS.pk && o.grp === topS.grp; }) && packN(b, E().PK[topS.pk].id) === 0) return { a: 'prendre', f: act.f, p: ownStoneId(E().PK[topS.pk].id, team), tm: true };
+        return { a: 'prendre', f: act.f, mode: stk.length >= 2 ? 'deux' : 'pierre', s: ownStoneId(topS.id, team), tm: true };
     }
-    if (act.famille === 'boulets' || act.famille === 'trone') return [250, 1000];
-    if (act.famille === 'prendreGraal') return [295.3, 1067.3];
     return null;
   }
 
-  // R2 : Approches multi-angles dynamiques (dual opposé pour paquets, 4 cardinaux pour tours)
-  function getActionTargets(act, sim) {
-    if (!act) return [];
-    if (act.w) {
-      for (var wi = 0; wi < WAYPOINTS_INFO.length; wi++) {
-        if (WAYPOINTS_INFO[wi].id === act.w) return [[WAYPOINTS_INFO[wi].x, WAYPOINTS_INFO[wi].y]];
-      }
-    }
-    if (act.famille === 'traj' && act.tx != null) {
-      return [[act.tx, act.ty]];
-    }
-    if (act.famille === 'tournerPince' || act.famille === 'deposerZone') {
-      if (sim && typeof sim.pose === 'function') {
-        var sp = sim.pose();
-        return [[sp.x, sp.y]];
-      }
-      return [[250, 1000]];
-    }
-    if (act.p) {
-      var pId = act.p;
-      if (pId === 'P9') return [[1249.5, 500], [1750.5, 500]];
-      if (pId === 'P10') return [[1249.5, 1500], [1750.5, 1500]];
-      if (ACTION_TARGETS[pId]) {
-        var base = ACTION_TARGETS[pId];
-        if (pId === 'P1' || pId === 'P2' || pId === 'P3' || pId === 'P4') {
-          return [[base[0], 305.5], [base[0], -195.5]];
-        }
-        if (pId === 'P5' || pId === 'P6' || pId === 'P7' || pId === 'P8') {
-          return [[base[0], 1694.5], [base[0], 2195.5]];
-        }
-        return [base];
-      }
-    }
-    if (act.z) {
-      if (act.famille === 'tour' || (act.famille === 'poserGraal' && act.z && act.z.charAt(0) === 'T')) {
-        var twCenters = {
-          'T1': [500, 400], 'T2': [850, 750], 'T3': [850, 1250], 'T4': [500, 1600]
-        };
-        var c = twCenters[act.z];
-        if (c) {
-          return [
-            [c[0] - 170.5, c[1]], // Ouest / Extérieur
-            [c[0] + 170.5, c[1]], // Est / Intérieur
-            [c[0], c[1] - 170.5], // Nord / Haut
-            [c[0], c[1] + 170.5]  // Sud / Bas
-          ];
-        }
-      }
-      if (act.famille === 'mur' || act.famille === 'porte') {
-        var key = act.z + '_' + (act.side || 'ext');
-        if (ACTION_TARGETS[key]) return [ACTION_TARGETS[key]];
-      }
-      if (act.famille === 'poserGraal') {
-        var pgKey = 'PG_' + act.z;
-        if (ACTION_TARGETS[pgKey]) return [ACTION_TARGETS[pgKey]];
-      }
-      if ((act.famille === 'staging' || act.famille === 'repickup') && ACTION_TARGETS[act.z]) {
-        return [ACTION_TARGETS[act.z]];
-      }
-    }
-    if (act.famille === 'boulets' || act.famille === 'trone') return [[250, 1000]];
-    if (act.famille === 'prendreGraal') return [[295.3, 1067.3]];
-    var single = getActionTarget(act, sim);
-    return single ? [single] : [];
+  /* Brique en repère réel (envoyée au moteur) : ids en miroir et coordonnées de dépôt / trajectoire en miroir pour le bleu.
+     seDeplacer est déjà mis en miroir par le moteur (repère de l'équipe). */
+  function realStep(st, team) {
+    if (!st || team !== 'blue') return st;
+    var o = E().mirrorStep(st);
+    if (o.a === 'deposer') { if (o.x != null) o.x = 3000 - o.x; if (o.ang != null) o.ang = 180 - o.ang; }
+    if (o.a === 'traj' && o.pts) o.pts = o.pts.map(function (q) { var r = Object.assign({}, q); r.x = 3000 - q.x; if (q.a != null && q.a !== '') r.a = 180 - q.a; return r; });
+    return o;
   }
 
-  var BUILD_OBSTACLES = [
-    { id: 'M1', x: 250, y: 400, r: 210 },
-    { id: 'M2', x: 679.3, y: 570.8, r: 210 },
-    { id: 'M3', x: 850, y: 1000, r: 210 },
-    { id: 'M4', x: 679.3, y: 1429.5, r: 210 },
-    { id: 'M5', x: 250, y: 1600, r: 210 },
-    { id: 'M6', x: 2750, y: 400, r: 210 },
-    { id: 'M7', x: 2320.7, y: 570.8, r: 210 },
-    { id: 'M8', x: 2150, y: 1000, r: 210 },
-    { id: 'M9', x: 2320.7, y: 1429.5, r: 210 },
-    { id: 'M10', x: 2750, y: 1600, r: 210 },
-    { id: 'T1', x: 500, y: 400, r: 180 },
-    { id: 'T2', x: 850, y: 750, r: 180 },
-    { id: 'T3', x: 850, y: 1250, r: 180 },
-    { id: 'T4', x: 500, y: 1600, r: 180 },
-    { id: 'T5', x: 2500, y: 400, r: 180 },
-    { id: 'T6', x: 2150, y: 750, r: 180 },
-    { id: 'T7', x: 2150, y: 1250, r: 180 },
-    { id: 'T8', x: 2500, y: 1600, r: 180 }
-  ];
-
-  function segmentHitsCircle(ax, ay, bx, by, cx, cy, r) {
-    var abx = bx - ax, aby = by - ay;
-    var l2 = abx * abx + aby * aby;
-    if (l2 < 1e-4) return false;
-    var u = Math.max(0, Math.min(1, ((cx - ax) * abx + (cy - ay) * aby) / l2));
-    var isDepartingFromThis = Math.hypot(ax - cx, ay - cy) < (r + 80);
-    var isArrivingAtThis = Math.hypot(bx - cx, by - cy) < (r + 80);
-    var uMin = isDepartingFromThis ? 0.13 : 0.02;
-    var uMax = isArrivingAtThis ? 0.87 : 0.98;
-    if (u <= uMin || u >= uMax) return false;
-    var px = ax + u * abx, py = ay + u * aby;
-    return Math.hypot(cx - px, cy - py) < r;
+  /* même brique, au temps masqué près (tm est ajouté automatiquement par le catalogue) */
+  function sameStep(a, b) {
+    if (!a || !b) return false;
+    var ka = Object.keys(a).filter(function (k) { return k !== 'tm'; }), kb = Object.keys(b).filter(function (k) { return k !== 'tm'; });
+    if (ka.length !== kb.length) return false;
+    return ka.every(function (k) { return JSON.stringify(a[k]) === JSON.stringify(b[k]); });
   }
 
-  function isSegmentBlocked(ax, ay, bx, by, act, sim) {
-    var abx = bx - ax, aby = by - ay;
-    var l2 = abx * abx + aby * aby;
-    if (l2 < 1e-4) return false;
+  /* Index de l'action du catalogue dont la brique est celle du programme (au temps masqué près), -1 sinon. */
+  function indexOfStep(st, b, catalogue) {
+    catalogue = catalogue || ALL;
+    if (!st) return -1;
+    var norm = Object.assign({}, st);
+    if (norm.a === 'boulets') norm.a = 'tir';
+    if (norm.a === 'lacher') { norm.a = 'deposerZone'; if (norm.q == null) norm.q = 'pile'; }
+    if (norm.a === 'deposerZone' && norm.q == null) norm.q = 'pile';
+    if (norm.a === 'attendreJusqua' && +norm.sec >= E().MATCH) norm.sec = E().MATCH;
+    for (var i = 0; i < catalogue.length; i++) {
+      var act = catalogue[i];
+      if (!quickMatch(act, norm)) continue;
+      var c = toProgramStep(act, b);
+      if (c && sameStep(c, norm)) return i;
+    }
+    return -1;
+  }
+  function quickMatch(act, st) {
+    var a = act.a;
+    if (st.a === 'prendre') return (a === 'prendre' || a === 'reprendre') && act.f === st.f;
+    if (st.a === 'mur' || st.a === 'porte') return a === st.a && act.f === st.f && act.z === st.z;
+    if (st.a === 'tour') return a === 'tour' && act.f === st.f && act.z === st.z;
+    if (st.a === 'tir') return a === 'tir';
+    if (st.a === 'attendreJusqua') return a === 'finir';
+    if (st.a === 'seDeplacer') return a === 'traj';
+    if (st.a === 'tourner') return a === 'preparer' && act.f === st.f;
+    if (st.a === 'deposerZone') return a === 'lacher' && act.f === st.f;
+    if (st.a === 'deposer') return a === 'stocker' && act.f === st.f;
+    return a === st.a;
+  }
 
-    var isBlue = (sim.params && sim.params().team === 'blue');
-    var targetPk = act && act.famille === 'prendre' ? (isBlue && typeof ENGINE !== 'undefined' ? ENGINE.mirrorId(act.p) : act.p) : null;
-    var stones = typeof sim.stones === 'function' ? sim.stones() : [];
-    var held = typeof sim.held === 'function' ? sim.held() : (sim.held || {});
-    var nA = (held.A && held.A.stack) ? held.A.stack.filter(function (x) { return x; }).length : 0;
-    var nB = (held.B && held.B.stack) ? held.B.stack.filter(function (x) { return x; }).length : 0;
-    var rRob = 235;
-    if (nA > 0 && nB > 0) rRob = 350;
-    else if (nA > 0 || nB > 0) rRob = 310;
-
-    // 1. Collision avec les paquets P1..P10 encore au sol
-    for (var k = 0; k < 10; k++) {
-      var pkId = 'P' + (k + 1);
-      if (pkId === targetPk) continue;
-
-      var hasStones = stones.some(function (st) {
-        return st.pk === k && st.cur && st.cur.k === 'home';
+  /* ------------------------------------------------------------------ contacts à une pose (portage 2D de hits() du moteur)
+     Corps : châssis (exact), nacelles A/B, canon, ascenseur (enveloppe convexe), pierres tenues ; obstacles : pierres au sol
+     (carrières crues présentes, pierres posées par ce robot), Graal à son départ, pierres étrangères connues, bords de table,
+     (l'adversaire n'est jamais pris en compte : décision §9, c'est au réseau d'apprendre à l'éviter). Hauteurs comparées comme le moteur (un corps passe au-dessus d'une pierre plus basse). */
+  function gripOf(b, f) { return { hc: b.pinces[f].hc, rot: b.pinces[f].rot, vac: [0, 0, 0] }; }
+  function poseOf(b, x, y, h, over) {
+    var p = { x: x, y: y, h: h, A: gripOf(b, 'A'), B: gripOf(b, 'B'), C: { can: b.meca.can, fx: b.meca.fx, fz: b.meca.fz } };
+    if (over) ['A', 'B', 'C'].forEach(function (k) { if (over[k]) p[k] = Object.assign({}, p[k], over[k]); });
+    return p;
+  }
+  function bodiesAt(b, p) {
+    var L = [], Gm = G(), GE = geo();
+    ['A', 'B'].forEach(function (f, k) { var g = p[f], e = Gm.actExt(g.rot); L.push({ P: Gm.toTable(Gm.nacPtsR(k, g, e.umax), p), z0: g.hc + e.zmin, z1: g.hc + e.zmax }); });
+    var cp = Gm.canonPtsR(p.C.can); if (cp) L.push({ P: Gm.toTable(cp, p), z0: GE.canon.z[0], z1: GE.canon.z[1] });
+    var fz = Gm.fourcheZ(p.C.fz); L.push({ P: Gm.toTable(Gm.convexHull(Gm.fourchePtsR(p.C.fx)), p), z0: fz[0], z1: fz[1] });
+    ['A', 'B'].forEach(function (f, k) {
+      var g = p[f];
+      heldList(b, f).forEach(function (x) {
+        var th = g.rot * D2R, zc = g.hc + Gm.stoneZc(x.sl) * Math.cos(th), hz = 160 * Math.abs(Math.sin(th)) + 55 * Math.abs(Math.cos(th));
+        L.push({ P: Gm.rectPoly(Gm.heldFoot(p, k, x.sl)), z0: zc - hz, z1: zc + hz, held: true });
       });
-      if (!hasStones) continue;
-
-      var cx = PACK_CENTERS[k][0], cy = PACK_CENTERS[k][1];
-      var acx = cx - ax, acy = cy - ay;
-      var u = Math.max(0, Math.min(1, (acx * abx + acy * aby) / l2));
-      var px = ax + u * abx, py = ay + u * aby;
-      var hx = (k === 8 || k === 9) ? 55 : 160;
-      var hy = (k === 8 || k === 9) ? 160 : 55;
-      var dx = Math.max(0, Math.abs(px - cx) - hx);
-      var dy = Math.max(0, Math.abs(py - cy) - hy);
-      var distToBox = Math.hypot(dx, dy);
-      if (distToBox < rRob && u > 0.05 && u < 0.95) return true;
+    });
+    return L;
+  }
+  function obstacleList(b, cache) {
+    if (cache && cache.obs) return cache.obs;
+    var obs = groundStones(b).map(function (s) { return { id: s.id, foot: s.foot, bottom: s.bottom, top: s.top }; });
+    (b.etrangeres || []).forEach(function (s, i) { obs.push({ id: s.id || 'etrangere' + i, foot: s.foot, bottom: s.bottom || 0, top: s.top || 330 }); });
+    if (b.graal === 'home' && b.params && b.params.gx != null) obs.push({ id: 'graal', foot: E().graalPoly([b.params.gx, b.params.gy], b.params.ga || 0), bottom: 0, top: geo().graal.h });
+    obs.forEach(function (o) { var c = centroid(o.foot), r = 0; o.foot.forEach(function (v) { r = Math.max(r, dist(v, c)); }); o.c = c; o.rad = r; });
+    if (cache) cache.obs = obs;
+    return obs;
+  }
+  function inTableP(P, m) { return P.every(function (v) { return v[0] >= -m && v[0] <= 3000 + m && v[1] >= -m && v[1] <= 2000 + m; }); }
+  /* premier contact (id) du robot à la pose p, ou null ; excl : ids d'obstacles ignorés ; tol : pénétration tolérée (mm) */
+  function poseHit(b, p, excl, cache, tol) {
+    tol = tol == null ? 1 : tol;
+    var Gm = G(), L = bodiesAt(b, p), BR = geo().R, BORD = geo().bordure, i, j;
+    L.forEach(function (o) { o.P.forEach(function (v) { BR = Math.max(BR, Math.hypot(v[0] - p.x, v[1] - p.y)); }); });
+    if (p.x < BR + 1 || p.x > 2999 - BR || p.y < BR + 1 || p.y > 1999 - BR) {
+      if (!inTableP(Gm.robotPoly(p), 1)) return 'bord de table';
+      for (i = 0; i < L.length; i++) if (L[i].z0 < BORD && !inTableP(L[i].P, 1)) return 'bord de table';
     }
-
-    // 2. Collision avec les constructions (M1..M10, T1..T8) déjà posées
-    var targetZone = act && act.z ? (isBlue && typeof ENGINE !== 'undefined' ? ENGINE.mirrorId(act.z) : act.z) : null;
-    for (var b = 0; b < BUILD_OBSTACLES.length; b++) {
-      var obs = BUILD_OBSTACLES[b];
-      var zId = isBlue && typeof ENGINE !== 'undefined' ? ENGINE.mirrorId(obs.id) : obs.id;
-      if (zId === targetZone) continue;
-      if (!zoneHasBuild(sim, zId)) continue;
-      var ox = isBlue ? 3000 - obs.x : obs.x, oy = obs.y;
-      if (segmentHitsCircle(ax, ay, bx, by, ox, oy, obs.r)) return true;
-    }
-
-    // 2b. Collision avec toute pierre libre sur la table (déposée)
-    for (var sIdx = 0; sIdx < stones.length; sIdx++) {
-      var stItem = stones[sIdx];
-      if (stItem.cur && stItem.cur.k === 'free' && stItem.cur.geo && stItem.cur.geo.fo) {
-        var fo = stItem.cur.geo.fo;
-        if (targetPk && stItem.pk === parseInt(targetPk.slice(1), 10) - 1) continue;
-        if (segmentHitsCircle(ax, ay, bx, by, fo.cx, fo.cy, rRob + 55)) return true;
+    var obs = obstacleList(b, cache);
+    for (j = 0; j < obs.length; j++) {
+      var o = obs[j];
+      if (excl && excl.indexOf(o.id) >= 0) continue;
+      var d = Math.hypot(o.c[0] - p.x, o.c[1] - p.y);
+      if (d >= BR + o.rad + Math.max(0, -tol)) continue;
+      if (d < geo().R + o.rad && Gm.hullHit(p, o.foot, tol)) return o.id;
+      for (i = 0; i < L.length; i++) {
+        var q = L[i];
+        if (q.z0 >= o.top - 1 || q.z1 <= o.bottom + 1) continue;
+        if (Gm.overlap(q.P, o.foot, tol)) return o.id;
       }
     }
+    return null;
+  }
 
-    // 3. Empêcher de traverser l'enceinte du château si elle est fermée
-    var inCastleNow = (isBlue ? (3000 - ax) : ax) < 760 && ay > 300 && ay < 1700;
-    var inCastleAfter = (isBlue ? (3000 - bx) : bx) < 760 && by > 300 && by < 1700;
-    var exitsOpen = ['M2', 'M3', 'M4'].filter(function (z) {
-      var zid = isBlue && typeof ENGINE !== 'undefined' ? ENGINE.mirrorId(z) : z;
-      if (zid === targetZone && act && (act.famille === 'mur' || act.famille === 'porte')) {
-        if (inCastleAfter) return true;
+  /* ------------------------------------------------------------------ atteignabilité : grille de dégagement (disque) */
+  function reachOf(b, cache) {
+    if (cache && cache.reach) return cache.reach;
+    var H = HYPOTHESES, C = H.grille, GW = Math.ceil(3000 / C), GH = Math.ceil(2000 / C), N = GW * GH;
+    var loaded = heldList(b, 'A').length + heldList(b, 'B').length > 0, R = loaded ? H.rayonPassageCharge : H.rayonPassage;
+    var clr = new Float32Array(N), obs = obstacleList(b, cache), i, j, k;
+    for (j = 0; j < GH; j++) for (i = 0; i < GW; i++) { var x = (i + 0.5) * C, y = (j + 0.5) * C; clr[j * GW + i] = Math.min(x, y, 3000 - x, 2000 - y); }
+    obs.forEach(function (o) {
+      var reach = R + o.rad + C, i0 = Math.max(0, Math.floor((o.c[0] - reach) / C)), i1 = Math.min(GW - 1, Math.floor((o.c[0] + reach) / C));
+      var j0 = Math.max(0, Math.floor((o.c[1] - reach) / C)), j1 = Math.min(GH - 1, Math.floor((o.c[1] + reach) / C));
+      for (var jj = j0; jj <= j1; jj++) for (var ii = i0; ii <= i1; ii++) { var q = [(ii + 0.5) * C, (jj + 0.5) * C], d = ptPolyD(q, o.foot), kk = jj * GW + ii; if (d < clr[kk]) clr[kk] = d; }
+    });
+    function cellOf(x, y) { return [Math.max(0, Math.min(GW - 1, Math.floor(x / C))), Math.max(0, Math.min(GH - 1, Math.floor(y / C)))]; }
+    var sc = cellOf(b.pose.x, b.pose.y), s0 = sc[1] * GW + sc[0], seen = new Uint8Array(N), q = [s0];
+    /* près du départ, le robot peut toujours s'éloigner par des cases au moins aussi dégagées que la sienne */
+    var startClr = Math.min(R, clr[s0]) - 5, start = [b.pose.x, b.pose.y];
+    seen[s0] = 1;
+    for (var qi = 0; qi < q.length; qi++) {
+      var cur = q[qi], ci = cur % GW, cj = (cur - ci) / GW;
+      for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) {
+        if (!dx && !dy) continue;
+        var ni = ci + dx, nj = cj + dy; if (ni < 0 || nj < 0 || ni >= GW || nj >= GH) continue;
+        k = nj * GW + ni; if (seen[k]) continue;
+        var need = Math.hypot((ni + 0.5) * C - start[0], (nj + 0.5) * C - start[1]) < H.zoneDepart ? startClr : R;
+        if (clr[k] >= need) { seen[k] = 1; q.push(k); }
+      }
+    }
+    var out = {
+      R: R,
+      ok: function (x, y, tol) {
+        tol = tol == null ? H.toleranceArrivee : tol;
+        if (dist([x, y], start) <= tol) return true;
+        var c0 = cellOf(x - tol, y - tol), c1 = cellOf(x + tol, y + tol);
+        for (var jj = c0[1]; jj <= c1[1]; jj++) for (var ii = c0[0]; ii <= c1[0]; ii++) if (seen[jj * GW + ii] && Math.hypot((ii + 0.5) * C - x, (jj + 0.5) * C - y) <= tol) return true;
         return false;
       }
-      return !zoneHasBuild(sim, zid);
-    }).length;
-
-    if (exitsOpen === 0 && (inCastleNow !== inCastleAfter)) {
-      return true;
-    }
-
-    // 4. Ne pas fermer la DERNIÈRE porte de façade depuis l'EXTÉRIEUR
-    if (act) {
-      var isFrontWall = (act.famille === 'mur' || act.famille === 'porte') && (act.z === 'M2' || act.z === 'M3' || act.z === 'M4');
-      if (isFrontWall && !inCastleAfter && exitsOpen === 0 && !zoneHasBuild(sim, targetZone)) {
-        return true;
-      }
-    }
-
-    // 5. Collision avec le robot adverse si détecté
-    var opp = (typeof sim.oppPose === 'function' ? sim.oppPose() : (sim.opp ? sim.opp : null));
-    if (opp && opp.x > 0 && opp.y > 0) {
-      if (segmentHitsCircle(ax, ay, bx, by, opp.x, opp.y, 350)) return true;
-    }
-
-    return false;
+    };
+    if (cache) cache.reach = out;
+    return out;
   }
-
-  function getEffectiveActionDistance(ax, ay, tx, ty, act, sim) {
-    if (!isSegmentBlocked(ax, ay, tx, ty, act, sim)) {
-      return Math.hypot(tx - ax, ty - ay);
-    }
-    var isBlue = (sim.params && sim.params().team === 'blue');
-    var bestDist = Infinity;
-    for (var w = 0; w < WAYPOINTS.length; w++) {
-      var wx = isBlue ? 3000 - WAYPOINTS[w][0] : WAYPOINTS[w][0];
-      var wy = WAYPOINTS[w][1];
-      if (!isSegmentBlocked(ax, ay, wx, wy, null, sim) && !isSegmentBlocked(wx, wy, tx, ty, act, sim)) {
-        var d = Math.hypot(wx - ax, wy - ay) + Math.hypot(tx - wx, ty - wy);
-        if (d < bestDist) bestDist = d;
-      }
-    }
-    return bestDist < Infinity ? bestDist : null;
+  function fk(f) { return f === 'A' ? 0 : f === 'B' ? 1 : 2; }
+  function inCastleAny(x, y) { return E().inPoly(x, y, E().CASTLE) || E().inPoly(x, y, E().CASTLE_B); }
+  function footIn(p, Rr) {
+    var xs = Rr.map(function (q) { return q[0]; }), ys = Rr.map(function (q) { return q[1]; }), x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs), y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
+    return G().robotFootprint(p).every(function (v) { return v[0] >= x0 - 0.5 && v[0] <= x1 + 0.5 && v[1] >= y0 - 0.5 && v[1] <= y1 + 0.5; });
   }
-
-  // R2 : Validation multi-angle : valide si AU MOINS UN angle est libre
-  function hitsCrates(act, sim) {
-    if (!act) return false;
-    if (act.famille === 'boulets' || act.famille === 'trone' || act.famille === 'tournerPince' || act.famille === 'deposerZone') return false;
-    if (!sim || typeof sim.pose !== 'function') return false;
-    var s = sim.pose();
-    if (!s || s.x == null) return false;
-    var tgts = getActionTargets(act, sim);
-    if (!tgts || !tgts.length) return false;
-
-    var isBlue = (sim.params && sim.params().team === 'blue');
-    var bestDist = Infinity;
-    for (var i = 0; i < tgts.length; i++) {
-      var raw = tgts[i];
-      var tx = isBlue ? 3000 - raw[0] : raw[0];
-      var ty = raw[1];
-      if (tx < 70 || tx > 2930 || ty < 70 || ty > 1930) continue;
-      var effDist = getEffectiveActionDistance(s.x, s.y, tx, ty, act, sim);
-      if (effDist != null && effDist < bestDist) {
-        bestDist = effDist;
-      }
-    }
-    return bestDist === Infinity;
-  }
-
-  function valid(act, sim) {
-    if (hitsCrates(act, sim)) return false;
-
-    // Anticipation temporelle : budget temps pour rentrer au trône et tirer les boulets (<= 100s)
-    if (act.famille !== 'boulets' && act.famille !== 'trone' && typeof sim.pose === 'function' && typeof sim.time === 'function') {
-      var tgts = getActionTargets(act, sim);
-      if (tgts && tgts.length) {
-        var s = sim.pose();
-        var isBlue = (sim.params && sim.params().team === 'blue');
-        var thX = isBlue ? 2750 : 250, thY = 1000;
-        var MECH_DURATIONS = {
-          'prendre': 1.8, 'mur': 1.6, 'tour': 2.2, 'porte': 4.8, 'boulets': 5.0,
-          'prendreGraal': 2.5, 'poserGraal': 2.9, 'trone': 2.0,
-          'staging': 1.6, 'repickup': 1.6, 'traj': 0.2, 'tournerPince': 0.75, 'deposerZone': 1.0
-        };
-        var mech = act.mech || MECH_DURATIONS[act.famille] || 1.0;
-        var minTime = Infinity;
-        for (var ti = 0; ti < tgts.length; ti++) {
-          var rawTgt = tgts[ti];
-          var tx = isBlue ? 3000 - rawTgt[0] : rawTgt[0], ty = rawTgt[1];
-          if (tx < 70 || tx > 2930 || ty < 70 || ty > 1930) continue;
-          var effDist = getEffectiveActionDistance(s.x, s.y, tx, ty, act, sim) || Math.hypot(tx - s.x, ty - s.y);
-          var dt_act = effDist / 500.0 + mech;
-          var dt_throne = Math.hypot(thX - tx, thY - ty) / 500.0 + 0.5;
-          var tTotal = dt_act + dt_throne;
-          if (tTotal < minTime) minTime = tTotal;
-        }
-        var ballsFired = sim.balls && sim.balls().shots;
-        var dt_tir = ballsFired ? 0.0 : 6.1;
-        if (minTime < Infinity && sim.time() + minTime + dt_tir > 100.0) return false;
-      }
-    }
-
-    act = real(act, sim);
-    switch (act.famille) {
+  /* Poses d'approche candidates, comme le moteur (choose) : { O, h, over (état des pinces / face C à la pose), excl, back: [points de recul] }.
+     null = pas de trajet (action sur place). */
+  function approaches(act, st, b) {
+    var en = E(), team = b.team, out = [], DP = geo().dPierre, z, phi, n, t;
+    function cand(O, h, over, excl, backs) { out.push({ O: O, h: h, over: over || null, excl: excl || null, back: backs || [] }); }
+    function backN(O, nn, d) { return [[O[0] - d * nn[0], O[1] - d * nn[1]]]; }
+    function backAll(O, ph, d) { var nn = nv(ph), tt = lv(ph); return [[O[0] - d * nn[0], O[1] - d * nn[1]], [O[0] + 170 * tt[0] - 8 * nn[0], O[1] + 170 * tt[1] - 8 * nn[1]], [O[0] - 170 * tt[0] - 8 * nn[0], O[1] - 170 * tt[1] - 8 * nn[1]]]; }
+    var over = {};
+    switch (st.a) {
       case 'prendre':
-        var h = sim.held()[act.f];
-        var heldCount = (h && h.stack) ? h.stack.filter(function (x) { return x; }).length : 0;
-        var faceCanTake = (heldCount === 0) || (heldCount < 3 && ((sim.pose()[act.f] && sim.pose()[act.f].rot) || 0) === 0);
-        return faceCanTake && !faceHoldsGraal(sim, act.f) && packetStacked(sim, act.p, act.f);
-      case 'mur': return faceStackFlat(sim, act.f) && !zoneHasBuild(sim, act.z);
-      case 'tour': return stoneHeldRank(sim, act.f, act.rank) && !towerComplete(sim, act.z);
-      case 'porte': return faceStackFlat(sim, act.f) && !zoneHasBuild(sim, act.z) && !castleHasDoor(sim) && validDoorTarget(act);
-      case 'boulets': return !sim.balls().shots && sim.time() >= 80;
-      case 'prendreGraal': return faceEmpty(sim, act.f) && sim.graal().cur.k === 'home';
-      case 'poserGraal': return faceHoldsGraal(sim, act.f) && zoneHasBuild(sim, act.z);
-      case 'trone': return true;
-      case 'staging':
-        var hS = sim.held()[act.f];
-        var nS = (hS && hS.stack) ? hS.stack.filter(function (x) { return x; }).length : 0;
-        return nS === 3 && ((sim.pose()[act.f] && sim.pose()[act.f].rot) || 0) === 0;
-      case 'repickup':
-        return faceEmpty(sim, act.f) && !faceHoldsGraal(sim, act.f);
-      case 'traj':
-        return true;
-      case 'tournerPince':
-        return true;
-      case 'deposerZone':
-        var hD = sim.held()[act.f];
-        return !!(hD && hD.stack && hD.stack.some(function (x) { return x; }));
-      default: return false;
+        var ax = null, excl = [];
+        if (st.mode === 'pierre' || st.mode === 'deux') {
+          var x = stoneById(b, st.s); if (!x) return out;
+          ax = stackAxis(x); excl = [x.id];
+          if (st.mode === 'deux') groundStones(b).forEach(function (o) { if (o.id !== x.id && Math.abs(o.top - x.bottom) < 1 && G().overlap(x.foot, o.foot, 1)) excl.push(o.id); });
+        } else {
+          var idx = packIndex(st.p), mine = ownStones(b).filter(function (s) { return s.pk === idx; });
+          if (packN(b, st.p) === 3) { ax = { c: [en.PK[idx].x, en.PK[idx].y], tan: en.PK[idx].tan }; excl = [st.p + '.1', st.p + '.2', st.p + '.3']; }
+          else if (mine.length) { ax = stackAxis(mine[0]); excl = mine.map(function (s) { return s.id; }); }
+          else return out;
+        }
+        [ax.tan + 90, ax.tan - 90].forEach(function (p) { n = nv(p); var O = [ax.c[0] - DP * n[0], ax.c[1] - DP * n[1]]; cand(O, p - 120 * fk(st.f), null, excl, backN(O, n, 80)); });
+        return out;
+      case 'mur':
+        z = en.zoneById(st.z); phi = st.side === 'ext' ? z.nin : z.nin + 180; n = nv(phi); t = lv(phi); over[st.f] = { hc: 165 };
+        [0, 20, -20, 40, -40].forEach(function (sl) { [0, 20, 40, -20, -40].forEach(function (ac) {
+          var Cc = [z.c[0] + sl * t[0] + ac * n[0], z.c[1] + sl * t[1] + ac * n[1]], O = [Cc[0] - DP * n[0], Cc[1] - DP * n[1]];
+          cand(O, phi - 120 * fk(st.f), over, null, backAll(O, phi, 85));
+        }); });
+        return out;
+      case 'porte':
+        z = en.zoneById(st.z); phi = st.side === 'ext' ? z.nin : z.nin + 180; n = nv(phi); t = lv(phi); over[st.f] = { hc: 160, rot: 90 };
+        var O2 = [z.c[0] - DP * n[0] + 55 * t[0], z.c[1] - DP * n[1] + 55 * t[1]];
+        /* recul où la pile tourne dans le château (100 à 300 mm) */
+        var bk = []; for (var bd = 100; bd <= 300; bd += 50) bk.push([O2[0] - bd * n[0], O2[1] - bd * n[1]]);
+        cand(O2, phi - 120 * fk(st.f), over, null, bk);
+        out[0].porteF = st.f;
+        return out;
+      case 'tour':
+        z = en.zoneById(st.z); over[st.f] = { hc: 160, rot: 90 };
+        var sl0 = -1; heldList(b, st.f).forEach(function (q) { if (q.id === st.s) sl0 = q.sl; });
+        var zl = G().stoneZc(sl0 < 0 ? 1 : sl0);
+        for (phi = 0; phi < 360; phi += 30) { n = nv(phi); t = lv(phi); var Ot = [z.c[0] - DP * n[0] - zl * t[0], z.c[1] - DP * n[1] - zl * t[1]]; cand(Ot, phi - 120 * fk(st.f), over, null, backN(Ot, n, 80)); }
+        return out;
+      case 'monterGraal':
+        var P = b.params || {}, Gc = [P.gx, P.gy];
+        [0, 180].forEach(function (k) { var p = (P.ga || 0) + k, nn = nv(p), tt = lv(p), O = [Gc[0] - geo().graal.xPrise * nn[0] - geo().graal.y * tt[0], Gc[1] - geo().graal.xPrise * nn[1] - geo().graal.y * tt[1]]; cand(O, p - 240, { C: { fx: geo().fourche.fxSortie, fz: geo().fourche.fzBas } }, ['graal'], backN(O, nn, 80)); });
+        return out;
+      case 'trone':
+        var Ot2 = [mirX(250, team), 1000], TRn = en.throneOf(team), hh = b.pose.h;
+        for (var kk = 0; kk <= 36; kk++) { var hk = b.pose.h + (kk % 2 ? 1 : -1) * Math.ceil(kk / 2) * 5; if (footIn(poseOf(b, Ot2[0], Ot2[1], hk), TRn)) { hh = hk; break; } }
+        cand(Ot2, hh, null, null, []);
+        return out;
+      case 'tir':
+        var tx = b.params && b.params.tx != null ? b.params.tx : 250, ty = b.params && b.params.ty != null ? b.params.ty : 1000;
+        var Otr = b.params && b.params.tirDepuisTrone === false ? [b.pose.x, b.pose.y] : [mirX(tx, team), ty];
+        cand(Otr, team === 'blue' ? 300 : 120, { C: { can: geo().canon.course } }, null, []);
+        out[0].tir = true;
+        return out;
+      case 'seDeplacer': cand([mirX(st.x, team), st.y], b.pose.h, null, null, []); return out;
+      case 'deposer':
+        var rot = st.r != null ? +st.r : 0, hs = heldList(b, st.f);
+        [(+st.ang || 0) - 90, (+st.ang || 0) + 90].forEach(function (p) {
+          var h = p - 120 * fk(st.f), q = poseOf(b, 0, 0, h), cx = 0, cy = 0; q[st.f] = { hc: 165, rot: rot, vac: [0, 0, 0] };
+          hs.forEach(function (x) { var fo = G().heldFoot(q, fk(st.f), x.sl); cx += fo.cx / hs.length; cy += fo.cy / hs.length; });
+          var O = [+st.x - cx, +st.y - cy], o2 = {}; o2[st.f] = { hc: 165, rot: rot };
+          cand(O, h, o2, null, backN(O, nv(p), 85));
+        });
+        return out;
     }
+    return null;
+  }
+  /* pierres tenues par la face f dans un château pour les angles donnés (comme heldInCastle du moteur) */
+  function heldInCastleAt(b, p, f, rots) {
+    return heldList(b, f).every(function (x) {
+      return rots.every(function (r) { var q = Object.assign({}, p); q[f] = { hc: p[f].hc, rot: r }; return G().rectPoly(G().heldFoot(q, fk(f), x.sl)).every(function (v) { return inCastleAny(v[0], v[1]); }); });
+    });
+  }
+  /* robot coincé : en contact à sa pose, ou aucun petit déplacement (8 directions, même cap) sans contact */
+  function coince(b, cache) {
+    var x = b.pose.x, y = b.pose.y, h = b.pose.h, d = HYPOTHESES.pasCoince;
+    if (poseHit(b, poseOf(b, x, y, h), null, cache)) return true;
+    for (var k = 0; k < 8; k++) { var a = k * 45 * D2R; if (!poseHit(b, poseOf(b, x + d * Math.cos(a), y + d * Math.sin(a), h), null, cache)) return false; }
+    return true;
+  }
+  /* une pose candidate est-elle tenable (sans contact, avec un recul libre) ? */
+  function candOk(b, c, cache) {
+    var p = poseOf(b, c.O[0], c.O[1], c.h, c.over);
+    if (poseHit(b, p, c.excl, cache)) return false;
+    if (c.tir && b.params && b.params.tirDepuisTrone !== false && !footIn(p, E().throneOf(b.team))) return false;
+    if (!c.back.length) return true;
+    return c.back.some(function (q) {
+      if (c.porteF) {
+        /* porte : recul où la pile tourne de 0 à 90° dans le château, sans contact */
+        var p0 = poseOf(b, q[0], q[1], c.h), o90 = {}; o90[c.porteF] = { rot: 90 };
+        return heldInCastleAt(b, p0, c.porteF, [0, 45, 90]) && !poseHit(b, p0, c.excl, cache) && !poseHit(b, poseOf(b, q[0], q[1], c.h, o90), c.excl, cache);
+      }
+      return !poseHit(b, poseOf(b, q[0], q[1], c.h, c.over), c.excl, cache);
+    });
   }
 
-  function mask(sim, catalogue) {
-    return (catalogue || ALL).map(function (act) { return valid(act, sim) ? 1 : 0; });
+  /* raison pour laquelle l'action est masquée (null = valide) */
+  function explain(act, b, cache) {
+    if (b.t >= E().MATCH - 1e-6) return 'Match terminé.';
+    var stP = toProgramStep(act, b);
+    if (!stP) return 'Rien à prendre ou à poser pour cette action (croyance).';
+    var st = realStep(stP, b.team);
+    var why = preBelief(st, b); if (why) return why;
+    /* actions sans effet (aucun mouvement) */
+    if (st.a === 'tourner' && Math.abs(b.pinces[st.f].rot - st.r) <= 0.5) return 'La pince est déjà à cet angle.';
+    if (st.a === 'attendreJusqua' && b.t >= st.sec - 0.05) return 'Déjà l\'heure.';
+    /* échec appris : la même brique vient d'échouer à cet instant, le monde n'a pas changé */
+    if (b.echecs && b.echecs.t === b.t && (b.echecs.briques || []).some(function (x) { return sameStep(x, st); })) return 'Vient d\'échouer à cet instant.';
+    var ap = approaches(act, st, b);
+    if (!ap) return null;
+    /* règlement E.2.b : le Graal monté ne doit pas sortir du château */
+    if (b.graal === 'toit' || b.graal === 'ascenseur') {
+      var CST = E().castleOf(b.team);
+      ap = ap.filter(function (c) { return E().inPoly(c.O[0], c.O[1], CST) && c.back.every(function (q) { return E().inPoly(q[0], q[1], CST); }); });
+      if (!ap.length) return 'Le Graal sur le toit sortirait du château (E.2.b).';
+    }
+    if (!ap.length) return 'Aucune pose d\'approche.';
+    ap = ap.filter(function (c) { return candOk(b, c, cache); });
+    if (!ap.length) return 'Aucune pose sans contact (bord de table, obstacle ou recul).';
+    if (cache.coince == null) cache.coince = coince(b, cache);
+    if (cache.coince) return 'Robot coincé : en contact, ou aucun déplacement de ' + HYPOTHESES.pasCoince + ' mm sans contact.';
+    var R = reachOf(b, cache);
+    if (!ap.some(function (c) { return R.ok(c.O[0], c.O[1]) || c.back.some(function (q) { return R.ok(q[0], q[1]); }); })) return 'Hors d\'atteinte (passage bloqué).';
+    return null;
   }
+  /* fonctions pures : la grille d'atteignabilité est calculée une fois par appel, au besoin */
+  function explainBelief(b, catalogue) { var cache = {}; return (catalogue || ALL).map(function (a) { return explain(a, b, cache); }); }
+  function maskBelief(b, catalogue) { var cache = {}; return (catalogue || ALL).map(function (a) { return explain(a, b, cache) ? 0 : 1; }); }
 
   var api = {
-    FACES: FACES, PACKS: PACKS, MURS: MURS, TOURS: TOURS, COTES: COTES, FAMILLES: FAMILLES, ALL: ALL,
-    ALL_BASE: ALL_BASE,
-    filterByFamilles: filterByFamilles, toProgramStep: toProgramStep, indexOfStep: indexOfStep,
-    valid: valid, mask: mask, hitsCrates: hitsCrates, isSegmentBlocked: isSegmentBlocked,
-    getEffectiveActionDistance: getEffectiveActionDistance, packetStacked: packetStacked,
-    getActionTarget: getActionTarget, getActionTargets: getActionTargets,
-    STAGING_ZONES: STAGING_ZONES, STAGING_TARGETS: STAGING_TARGETS,
-    WAYPOINTS: WAYPOINTS, WAYPOINTS_INFO: WAYPOINTS_INFO
+    CATALOGUE_VERSION: CATALOGUE_VERSION, HYPOTHESES: HYPOTHESES,
+    FACES: FACES, PACKS: PACKS, MURS: MURS, TOURS: TOURS, COTES: COTES, ANGLES: ANGLES, FAMILLES: FAMILLES, ALL: ALL,
+    WAYPOINTS_INFO: WAYPOINTS_INFO, STOCKS: STOCKS,
+    filterByFamilles: filterByFamilles, toProgramStep: toProgramStep, realStep: realStep, sameStep: sameStep, indexOfStep: indexOfStep,
+    maskBelief: maskBelief, explainBelief: explainBelief, preBelief: preBelief, approaches: approaches,
+    stockCount: stockCount, stored: stored, heldFootAt: heldFootAt,
+    _poseHitNow: function (b, tol, dx, dy) { return poseHit(b, poseOf(b, b.pose.x + (dx || 0), b.pose.y + (dy || 0), b.pose.h), null, {}, tol); }
   };
   root.ACTIONS = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
