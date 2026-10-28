@@ -10,7 +10,7 @@ import pytest
 
 import embarque_fixtures as F
 from embarque.pont import PontNode
-from esp32_bridge import (BriqueNonPriseEnCharge, DualESP32Orchestrator, PARAMS, chevauchements, format_status, parse_pose,
+from esp32_bridge import (BriqueNonPriseEnCharge, DualESP32Orchestrator, chevauchements, format_status, parse_pose,
                           parse_status, traduire)
 
 NB_DECISIONS = 200

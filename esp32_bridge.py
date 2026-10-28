@@ -449,18 +449,22 @@ class DualESP32Orchestrator:
         self._seq = 0
 
     # ---- cycle de vie -------------------------------------------------------------------------------------------------
-    def initialize(self, pose: Tuple[float, float, float] = (250.0, 1000.0, 0.0), equipe: str = "yellow",
-                   vitesses: Optional[Dict[str, float]] = None) -> bool:
-        """Connecte les deux ESP32. `pose` : départ dans le repère de l'équipe (spec : ENGINE.DEF x0, y0, h0), mis en miroir pour le bleu.
-        `vitesses` : {lineaire_mm_s, rotation_deg_s} lues dans spec/robot.json via le pont (H4)."""
+    def initialize(self, pose: Optional[Tuple[float, float, float]] = None, equipe: str = "yellow",
+                   vitesses: Optional[Dict[str, float]] = None, etat_initial: Optional["EtatActionneurs"] = None) -> bool:
+        """Connecte les deux ESP32. `pose` : départ dans le repère de l'équipe (valeurs du moteur, ENGINE.DEF x0, y0, h0), mis en miroir pour le bleu ; None : NAV garde sa pose.
+        `vitesses` : {lineaire_mm_s, rotation_deg_s} lues dans spec/robot.json via le pont (H4).
+        `etat_initial` : état de départ des actionneurs, utilisé seulement par le firmware SIMULÉ (le vrai robot lit ses codeurs)."""
         self.equipe = equipe
         ok_nav = self.nav.connect()
         ok_act = self.act.connect()
-        x, y, h = _mirror_xy_h(pose[0], pose[1], pose[2], equipe, self.params.largeur_table_mm)
-        self.nav.send_command(f"SET_POSE {x:.1f} {y:.1f} {_h_norm(h):.1f}")
+        if pose is not None:                     # pose de départ (spec / moteur : ENGINE.DEF x0, y0, h0), fournie par l'appelant
+            x, y, h = _mirror_xy_h(pose[0], pose[1], pose[2], equipe, self.params.largeur_table_mm)
+            self.nav.send_command(f"SET_POSE {x:.1f} {y:.1f} {_h_norm(h):.1f}")
         if self.params.envoyer_limites and vitesses and vitesses.get("lineaire_mm_s") and vitesses.get("rotation_deg_s"):
             self.nav.send_command(f"SET_LIMITS {vitesses['lineaire_mm_s']:g} {vitesses['rotation_deg_s']:g}")
         self.act.send_command("RESET_ACTUATORS")
+        if isinstance(self.act, FirmwareSimule) and etat_initial is not None:
+            self.act.etat = etat_initial
         return ok_nav and ok_act
 
     def close(self) -> None:
@@ -538,4 +542,7 @@ class DualESP32Orchestrator:
                 hz.sleep(min(prochains) - now)
             else:
                 hz.sleep(self.params.poll_s)
+        if getattr(hz, "virtuelle", False):
+            # temps simulé : la durée de la brique est celle du moteur même sans commande (attentes internes, retour au trône...)
+            hz.sleep(max(0.0, float(plan.get("dt") or 0.0) - (hz.now() - origine)))
         return rap

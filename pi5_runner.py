@@ -22,16 +22,17 @@ import argparse
 import json
 import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, List, Optional, Tuple
 
 import numpy as np
 
 from embarque.croyance import CamerasAbsentes, ConstructeurCroyance, Mesures
 from embarque.pont import ErreurPont, PontNode
 from embarque.spec import duree_match_s
-from esp32_bridge import DualESP32Orchestrator, EtatActionneurs, HorlogeReelle, HorlogeVirtuelle, Rapport, traduire
+from esp32_bridge import DualESP32Orchestrator, EtatActionneurs, Rapport
+from lidar_tracker import LidarTracker
 
 ROOT = Path(__file__).resolve().parent
 
@@ -39,6 +40,9 @@ ROOT = Path(__file__).resolve().parent
 MAX_DECISIONS = 80
 # Hypothèse : configuration ENV.create de l'évaluation quand le modèle n'en porte pas (trainer/evaluation.py : skipContacts).
 ENV_CONFIG_DEFAUT = {"skipContacts": True}
+# Hypothèse : garde-fou du nombre de décisions sur le robot réel (le match s'arrête à 100 s ; la limite de 80 de l'évaluation
+# n'est qu'un protocole d'entraînement). Évite une boucle de décisions sans avance du temps.
+MAX_DECISIONS_ROBOT = 1000
 
 
 class ModeleIncompatible(RuntimeError):
@@ -187,11 +191,15 @@ class CapteursRobot:
     """Lecture des capteurs réels : pose (odométrie ESP32 NAV, hypothèse faute de triangulation lidar), adversaire (lidar_tracker),
     caméras A et B (non fournies : CamerasAbsentes), codeurs et ventouses (ESP32 ACT)."""
 
-    def __init__(self, orch: DualESP32Orchestrator, lidar: Any = None, cameras: Any = None):
+    def __init__(self, orch: DualESP32Orchestrator, lidar: Any = None, cameras: Any = None,
+                 source_pose: Optional[Callable[[], Tuple[float, float, float]]] = None):
+        """source_pose : pose (x, y, cap) en repère réel, par exemple la triangulation du lidar quand elle existera ;
+        par défaut, l'odométrie de l'ESP32 NAV (`POSE?`, hypothèse H5)."""
         self.orch, self.lidar, self.cameras = orch, lidar, cameras or CamerasAbsentes()
+        self.source_pose = source_pose or orch.lire_pose
 
     def lire(self, t: float) -> Mesures:
-        pose = self.orch.lire_pose()
+        pose = self.source_pose()
         adv = None
         if self.lidar is not None:
             self.lidar.mise_a_jour(pose)
@@ -218,7 +226,9 @@ class RobotBackend:
     def demarrer(self) -> None:
         interne = self.cons.demarrer()
         v = self.pont.hello_info.get("vitesses") or {}
-        self.orch.initialize(pose=(interne["pose"]["x"], interne["pose"]["y"], interne["pose"]["h"]), equipe=self.equipe, vitesses=v)
+        etat0 = EtatActionneurs(grip={f: (interne["pinces"][f]["hc"], interne["pinces"][f]["rot"]) for f in ("A", "B")},
+                                tenue={"A": (0, 0, 0), "B": (0, 0, 0)}, fourche=(interne["meca"]["fx"], interne["meca"]["fz"]), canon=interne["meca"]["can"])
+        self.orch.initialize(pose=(interne["pose"]["x"], interne["pose"]["y"], interne["pose"]["h"]), equipe=self.equipe, vitesses=v, etat_initial=etat0)
         self.t_depart = self.horloge.now()
         self.echec_materiel = False
 
@@ -386,9 +396,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         with pont:
             kw = {k: v for k, v in (("nav_port", a.nav_port), ("act_port", a.act_port)) if v}
             orch = DualESP32Orchestrator(mock=a.mock_esp, **kw)
-            capteurs = CapteursRobot(orch)
+            capteurs = CapteursRobot(orch, lidar=LidarTracker(mock=a.mock_esp))
             be = RobotBackend(pont, orch, capteurs, equipe)
-            bilan = Pi5Runner(pol, pont, be, log=print).jouer()
+            bilan = Pi5Runner(pol, pont, be, MAX_DECISIONS_ROBOT, log=print).jouer()
             print(json.dumps({k: v for k, v in bilan.items() if k != "programme"}, indent=1))
             orch.close()
         return 0

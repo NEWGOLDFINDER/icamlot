@@ -80,6 +80,7 @@ class ConstructeurCroyance:
         self.interne: dict = {}
         self.echec = False
         self.divergences: List[str] = []
+        self.historique_divergences: List[str] = []
 
     def demarrer(self) -> dict:
         """Crée le modèle interne. vision=False : les caméras sont réelles, le modèle de caméras simulé du moteur est coupé."""
@@ -121,6 +122,7 @@ class ConstructeurCroyance:
         self.divergences = self._recouper(b, m.actionneurs) if m.actionneurs is not None else []
         if any(d.startswith("perte:") for d in self.divergences):
             b["echec"] = True
+        self.historique_divergences += self.divergences
         for d in self.divergences:
             logger.warning("Écart modèle interne / ESP32 : %s", d)
         return b
