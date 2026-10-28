@@ -152,7 +152,37 @@ cas('deuxième séance de tir', [{ a: 'tir' }], { a: 'tir' }, false);
 cas('monterGraal au départ', [], { a: 'monterGraal' }, true);
 cas('monterGraal deux fois', [{ a: 'monterGraal' }], { a: 'monterGraal' }, false);
 cas('lâcher sans pierre', [], { a: 'lacher', f: 'A' }, false);
+cas('mur sur une zone déjà construite', [{ a: 'prendre', f: 'A', p: 'P1' }, { a: 'mur', f: 'A', z: 'M1' }, { a: 'prendre', f: 'A', p: 'P2' }], { a: 'mur', f: 'A', z: 'M1' }, false);
+cas('pile tournée sur place hors du château', [{ a: 'prendre', f: 'A', p: 'P1' }], { a: 'tourner', f: 'A', r: 90 }, false);
+cas('nacelle vide tournée à 90°', [], { a: 'tourner', f: 'A', r: 90 }, true);
 cas('action inconnue', [], { a: 'voler' }, false);
+
+/* programmes tirés au hasard (graine fixe) : toute étape refusée par preconditions échoue à l'identique dans exec, sans avancer le temps */
+(function () {
+  var seed = 7; function rnd() { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; }
+  function pick(a) { return a[Math.floor(rnd() * a.length)]; }
+  var PKS = E.PK.map(function (p) { return p.id; }), ZMS = ['M1', 'M2', 'M3', 'M4', 'M5'], ZTS = ['T1', 'T2', 'T3', 'T4'], nPre = 0, incoh = [], nApres = 0;
+  for (var m = 0; m < 6; m++) {
+    var sim = E.makeSim({}, { skipContacts: true });
+    for (var i = 0; i < 16 && sim.time() < 100; i++) {
+      var f = pick(['A', 'B']), k = rnd(), st;
+      if (k < 0.3) st = { a: 'prendre', f: f, p: pick(PKS) };
+      else if (k < 0.4) st = { a: 'prendre', f: f, mode: 'pierre', s: pick(PKS) + '.' + (1 + Math.floor(rnd() * 3)) };
+      else if (k < 0.55) st = { a: 'mur', f: f, z: pick(ZMS) };
+      else if (k < 0.62) st = { a: 'porte', f: f, z: pick(ZMS) };
+      else if (k < 0.72) { var hs = sim.held()[f] ? sim.held()[f].stack.filter(Boolean) : []; st = { a: 'tour', f: f, z: pick(ZTS), s: hs.length ? pick(hs).id : 'P1.1' }; }
+      else if (k < 0.78) st = { a: 'tourner', f: f, r: pick([0, 90, 180]) };
+      else if (k < 0.84) st = { a: 'lacher', f: f };
+      else if (k < 0.9) st = { a: 'monterGraal' };
+      else if (k < 0.95) st = { a: 'seDeplacer', x: 300 + rnd() * 2400, y: 300 + rnd() * 1400 };
+      else st = { a: 'tir' };
+      var pre = sim.preconditions(st), t0 = sim.time(), e = sim.exec(st);
+      if (pre) { nPre++; if (e.err !== pre || e.dt !== 0) incoh.push(st.a + ' : « ' + pre + ' » / « ' + e.err + ' »'); }
+      else if (e.err) nApres++;
+    }
+  }
+  ok(!incoh.length, 'programmes au hasard : refus de preconditions identiques à exec', nPre + ' refus vérifiés, ' + nApres + ' échecs dépendant du trajet' + (incoh.length ? ' ; ' + incoh.slice(0, 3).join(' ; ') : ''));
+})();
 
 /* ------------------------------------------------------------------ */
 titre('Instantané et restauration (utilisés par l\'environnement)');

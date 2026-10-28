@@ -797,6 +797,18 @@
     }
 
     /* ---- préconditions (vérification pure : ni avance du temps, ni planification) ---- */
+    /* une construction par zone (E.1) : zone où est déjà posée une pierre (centre de sa projection dans la zone), de ce robot ou de l'adversaire */
+    function zoneTaken(z) {
+      var feet = freeStones().map(function (x) { return stoneFoot(x).foot; }).concat(foreign().map(function (g) { return g.foot; }));
+      var hit = feet.some(function (ft) { var c = [0, 0]; ft.forEach(function (v) { c[0] += v[0] / ft.length; c[1] += v[1] / ft.length; }); return z.tan !== undefined ? inPoly(c[0], c[1], zoneRect(z)) : dist(c, z.c) < ZTR; });
+      return hit ? 'La zone ' + z.id + ' est déjà occupée (une construction par zone, E.1).' : null;
+    }
+    /* rotation faite sur place (sans temps masqué) : vérifiée avec les pierres là où elles sont ; sinon, au mieux (dans un château) */
+    function rotPre(f, a1, surPlace) {
+      if (Math.abs(s[f].rot - a1) <= 0.5) return null;
+      var ch = surPlace ? heldInCastle(poseNow(), f, [s[f].rot, a1]) : true, b = G.balayage(maskOf(f), ch, s[f].rot, a1);
+      return b.ok ? null : rotMsg(f, s[f].rot, a1, ch, b.marge);
+    }
     function holdsPile(f) { var hs = heldStonesOf(f); return hs.length === 3 && hs.every(function (x, i) { return x.sl === i; }); }
     var PRE = {
       prendre: function (st) {
@@ -825,7 +837,7 @@
           if (Math.max.apply(null, dsl) - Math.min.apply(null, dsl) + 1 !== dep.length) return 'Pile à plat impossible : il manque une pierre au milieu de la pince, celles du dessus tomberaient.';
           if (st.q !== 'pile' && low.apply(null, dsl) !== low.apply(null, all)) return 'À plat, seule la pierre du bas de la pince peut être posée seule : ' + st.q + ' a une pierre tenue sous elle.';
         }
-        if (Math.abs(s[f].rot - rot) > 0.5 && !G.balayage(maskOf(f), true, s[f].rot, rot).ok) return rotMsg(f, s[f].rot, rot, true, G.balayage(maskOf(f), true, s[f].rot, rot).marge);
+        var wr = rotPre(f, rot, !st.tm); if (wr) return wr;
         var T = [+st.x || 0, +st.y || 0], foot = rectPoly({ cx: T[0], cy: T[1], hl: 160, hn: 55, ang: (+st.ang || 0) });
         return stockPre(dep.map(function () { return foot; }));
       },
@@ -833,14 +845,14 @@
         var f = st.f, z = zoneById(st.z);
         if (!z || z.tan === undefined) return 'Zone de mur inconnue.';
         if (heldStonesOf(f).length !== 3 || (s[f].rot !== 0 && s[f].rot !== 180)) return 'Il faut une pile de 3 pierres à plat sur la face ' + f + '.';
-        return null;
+        return zoneTaken(z);
       },
       tour: function (st) {
         var f = st.f, z = zoneById(st.z);
         if (!z || z.tan !== undefined) return 'Zone de tour inconnue.';
         if (!heldStonesOf(f).some(function (x) { return x.id === st.s; })) return 'La pierre ' + st.s + ' n\'est pas tenue par la face ' + f + '.';
         if (Math.abs(s[f].rot - 90) > 0.5) { var b = G.balayage(maskOf(f), true, s[f].rot, 90); if (!b.ok) return rotMsg(f, s[f].rot, 90, true, b.marge); }
-        return null;
+        return zoneTaken(z);
       },
       porte: function (st) {
         var f = st.f, z = zoneById(st.z);
@@ -848,7 +860,7 @@
         if (!holdsPile(f) || s[f].rot !== 0) return 'Il faut une pile de 3 pierres à plat sur la face ' + f + ' (rangées 1, 2 et 3).';
         var cas = inPoly(z.c[0], z.c[1], CASTLE) ? 'jaune' : 'bleu';
         if (doors[cas]) return 'Une seule porte par château (E.1.b) : porte déjà construite sur ' + doors[cas] + '.';
-        return null;
+        return zoneTaken(z);
       },
       tir: function () { return preTir(); },
       boulets: function () { return preTir(); },
@@ -877,8 +889,7 @@
       tourner: function (st) {
         var f = st.f, r = +st.r;
         if ([0, 90, 180].indexOf(r) < 0) return 'Angle de pince : 0, 90 ou 180°.';
-        if (Math.abs(s[f].rot - r) > 0.5) { var b = G.balayage(maskOf(f), true, s[f].rot, r); if (!b.ok) return rotMsg(f, s[f].rot, r, true, b.marge); }
-        return null;
+        return rotPre(f, r, !st.tm);
       },
       attendre: function () { return null; },
       attendreJusqua: function () { return null; },
@@ -892,9 +903,6 @@
     }
     function preconditions(st) {
       if (!st || !PRE[st.a]) return 'Action inconnue.';
-      if ((st.f === 'A' || st.f === 'B') && pend[st.f] && st.a !== 'tourner') {
-        /* rotation demandée en temps masqué : l'état logique est déjà tourné, le contrôle se fait sur lui */
-      }
       return PRE[st.a](st);
     }
     /* une pierre seule (ou deux) prise à plat */
@@ -1513,7 +1521,7 @@
       res.collisions = doContacts === false || opts.skipContacts ? [] : contactsOf(res);
       return res;
     }
-    function finish() { flushPend(); if (stepNo === 0) { stepNo = 1; stepInfo.push({ t0: s.t, held: { A: 0, B: 0 } }); } adv(0.5, 'Fin du programme'); return result(true); }
+    function finish() { try { flushPend(); } catch (e) { if (e !== ABORT) throw e; } adv(0.5, 'Fin du programme'); return result(true); }
     function clone(o) { return JSON.parse(JSON.stringify(o)); }
     function snapshot() {
       return { s: clone(s), stones: clone(stones), graal: clone(graal), balls: clone(balls), K: clone(K), segs: clone(segs), errors: clone(errors), stepInfo: clone(stepInfo), stepNo: stepNo, program: clone(program), oppApplied: clone(oppApplied), pend: clone(pend), held: serializeHeld(), doors: clone(doors), stock: stock, ctlPrev: clone(ctlPrev), ctlSeen: clone(ctlSeen) };
