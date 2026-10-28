@@ -9,7 +9,7 @@ Même pipeline que notre robot (catalogue, observation, trainer/) :
 - imitation d'un programme de démonstration (ADVERSAIRES.programmeDemo : la référence pour le champion, 3 murs + Graal + tir
   pour l'intermédiaire ; attentes courtes avant le tir ajustées à la vitesse tirée), puis PPO ;
 - adversaires pendant son entraînement : 50 % seul sur la table, 50 % programme de référence en miroir (hypothèse) ;
-- deux couleurs (contrat §16) : démonstrations, PPO et évaluation de sélection en jaune ET en bleu (--part-bleu, défaut 50 %) ;
+- deux couleurs (contrat §17) : démonstrations, PPO et évaluation de sélection en jaune ET en bleu (--part-bleu, défaut 50 %) ;
 - sélection sur l'évaluation dans le moteur JS.
 Sortie : .data/adversaires/<modele>.json (JSON web « icamlot-modele-recurrent », chargé par engine/env_worker.js et le
 plateau) et .data/adversaires/<modele>.entrainement.json (réglages, durée mesurée, évaluation). L'API lance la même commande

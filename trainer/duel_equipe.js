@@ -1,4 +1,4 @@
-/* Pont d'équipe de l'environnement d'apprentissage (chantier deux-côtés, docs/CONTRATS.md §16).
+/* Pont d'équipe de l'environnement d'apprentissage (chantier deux-côtés, docs/CONTRATS.md §17).
 
    Constat : ENV.create (engine/env.js) ne fait jouer que le jaune. ENGINE.makeDuel force `team: 'yellow'` pour le robot du
    joueur (clé « yellow » du duel), l'adversaire est toujours bleu (clé « blue », `oBlue.team = 'blue'`, params passés par

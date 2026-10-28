@@ -75,7 +75,7 @@ function chargerAdversaires() {
   });
 }
 chargerAdversaires();
-/* équipe du joueur par scénario (contrat §16) : ENV.create ne joue que le jaune, ce pont échange les équipes du duel */
+/* équipe du joueur par scénario (contrat §17) : ENV.create ne joue que le jaune, ce pont échange les équipes du duel */
 var pont = require('../trainer/duel_equipe.js')(ctx);
 function enEquipe(sc, fn) { return pont.avecEquipe(sc && sc.equipe, fn); }
 

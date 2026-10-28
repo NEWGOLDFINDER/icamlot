@@ -124,7 +124,7 @@ _job_id = None
 # adverses + 20 % de self-play. Composantes acceptées : les robots, « self », « reference », « aucun ».
 MELANGE_DEFAUT = {"batisseur": 0.2, "razzia": 0.2, "champion": 0.2, "intermediaire": 0.2, "self": 0.2}
 COMPOSANTES_HORS_ROBOTS = ("self", "reference", "aucun")
-# Proportion de matchs joués en bleu à l'entraînement et à l'évaluation (docs/CONTRATS.md §16) : décision de l'équipe, 50 %
+# Proportion de matchs joués en bleu à l'entraînement et à l'évaluation (docs/CONTRATS.md §17) : décision de l'équipe, 50 %
 # (même valeur que trainer.scenarios.PART_BLEU_DEFAUT) ; 0 = jaune seul.
 PART_BLEU_DEFAUT = 0.5
 
@@ -1374,7 +1374,7 @@ def lancer_entrainement_adversaire(rid, j):
                 cmd += [opt, str(int(float(j[k])))]
             except (TypeError, ValueError):
                 pass
-    if j.get("part_bleu") is not None:   # proportion de matchs bleus (contrat §16), défaut de la commande : 50 %
+    if j.get("part_bleu") is not None:   # proportion de matchs bleus (contrat §17), défaut de la commande : 50 %
         try:
             cmd += ["--part-bleu", str(max(0.0, min(1.0, float(j["part_bleu"]))))]
         except (TypeError, ValueError):

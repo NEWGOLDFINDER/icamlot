@@ -1,4 +1,4 @@
-"""Deux côtés (docs/CONTRATS.md §16) : équipe par scénario, jeu réel en bleu, rapport jaune / bleu, démonstrations bleues."""
+"""Deux côtés (docs/CONTRATS.md §17) : équipe par scénario, jeu réel en bleu, rapport jaune / bleu, démonstrations bleues."""
 from collections import Counter
 
 import numpy as np

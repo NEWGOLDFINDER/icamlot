@@ -188,7 +188,7 @@ def sampler_of(cfg: dict, opponents: List[dict], pool: Optional[JsEnvPool] = Non
     adv = cfg.get("adversaire") or {}
     intensity = adv.get("intensite") or "aucun"
     seed = int((cfg.get("reglages") or {}).get("graine") or 1)
-    # proportion de matchs joués en bleu (contrat §16) : reglages.part_bleu, défaut PART_BLEU_DEFAUT (50 %) ; 0 = jaune seul
+    # proportion de matchs joués en bleu (contrat §17) : reglages.part_bleu, défaut PART_BLEU_DEFAUT (50 %) ; 0 = jaune seul
     part_bleu = (cfg.get("reglages") or {}).get("part_bleu")
     part_bleu = PART_BLEU_DEFAUT if part_bleu is None else part_bleu
     melange = adv.get("melange")
@@ -315,7 +315,7 @@ def demos_for(job: Job, pool: JsEnvPool, cfg: dict, strats: List[dict], sampler:
     base = [{"seed": int(regl.get("graine") or 1) + k, "intensite": "aucun"} for k in range(n_sc)]
     if sampler.opponents or sampler.melange:
         base += [{k: v for k, v in sampler.sample().items() if k != "equipe"} for _ in range(n_sc)]
-    # deux couleurs (contrat §16) : chaque scénario est joué en jaune et en bleu (selon reglages.part_bleu : 0 = jaune seul)
+    # deux couleurs (contrat §17) : chaque scénario est joué en jaune et en bleu (selon reglages.part_bleu : 0 = jaune seul)
     scs = scenarios_deux_couleurs(base, sampler.part_bleu)
     job.logline(f"Collecte des démonstrations : {len(progs)} programme(s) × {len(scs)} scénario(s)…")
     demos = collect_demos(pool, progs, scs)

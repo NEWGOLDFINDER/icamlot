@@ -322,7 +322,7 @@ class PPOTrainer:
             "erreurs_moyennes": float(np.mean([e.get("errors") or 0 for e in new])) if new else None,
             "recompense_rollout": float(data["rew"].sum() / max(1, data["rew"].shape[1])),
         })
-        # scores d'entraînement par couleur (équipe lue sur le moteur, contrat §16)
+        # scores d'entraînement par couleur (équipe lue sur le moteur, contrat §17)
         for equipe, cle in (("yellow", "score_jaune"), ("blue", "score_bleu")):
             xs = [e.get("score", 0) for e in new if e.get("equipe") == equipe]
             st[cle] = float(np.mean(xs)) if xs else None

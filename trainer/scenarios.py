@@ -7,7 +7,7 @@ Un scénario est l'objet passé à `ENV.reset(scenario)` (engine/env.js) :
 Intensités reconnues par le moteur (ENGINE.intensityParams) : « aucun », « faible », « realiste », « agressif ».
 « aucun » = pas d'adversaire.
 
-Équipe (docs/CONTRATS.md §16) : chaque scénario porte `equipe` = « yellow » | « blue » (équipe de NOTRE robot ; l'adversaire joue
+Équipe (docs/CONTRATS.md §17) : chaque scénario porte `equipe` = « yellow » | « blue » (équipe de NOTRE robot ; l'adversaire joue
 l'autre). Entraînement : tirée par la graine du scénario, avec la proportion `part_bleu` (défaut 50 %, `PART_BLEU_DEFAUT`).
 Évaluation (`fixed`) : répartition déterministe et équilibrée dans chaque adversaire (pas de tirage), pour que les deux couleurs
 soient comparées sur les mêmes adversaires.
@@ -60,7 +60,7 @@ def equipe_scenario(sc: Optional[dict]) -> str:
 
 
 def critere_selection(ev: Optional[dict]) -> Optional[float]:
-    """Critère du champion : moyenne des scores moyens jaune et bleu (docs/CONTRATS.md §16). Une seule couleur jouée (ancien
+    """Critère du champion : moyenne des scores moyens jaune et bleu (docs/CONTRATS.md §17). Une seule couleur jouée (ancien
     rapport, ou proportion bleue 0 ou 1) : la moyenne de cette couleur."""
     if not ev:
         return None
@@ -152,7 +152,7 @@ class ScenarioSampler:
         self.seed = seed
         # mélange d'adversaires (proportions) : prioritaire sur opponents / intensites pour sample() et fixed()
         self.melange = normaliser_melange(melange) if melange else None
-        # proportion de scénarios joués en bleu (contrat §16)
+        # proportion de scénarios joués en bleu (contrat §17)
         self.part_bleu = normaliser_part_bleu(part_bleu)
 
     def _equipe(self, seed: int, k: Optional[int] = None) -> str:
