@@ -65,7 +65,30 @@ python -m trainer.ppo_trainer --processus 2 --envs-par-processus 4 --rollout 16 
     --sortie .data/modeles/fumee
 ```
 
-Résultats : voir `.data/modeles/fumee.eval.json` et le rapport du chantier. C'est un entraînement de **fumée**, pas un cerveau utilisable.
+Pour le run versionné dans `.data/modeles/fumee.*`, on a ajouté `--intensites aucun realiste --strategie <exemple.json>`. Cet adversaire est le programme `ENV.EXAMPLE` enregistré comme stratégie.
+
+C'est un entraînement de **fumée**, pas un cerveau utilisable. Machine : Xeon 2,1 GHz, 4 vCPU, sans GPU. Durée totale : 2 min 37 s.
+
+- **Imitation** : 4 démonstrations de l'exemple (105 pts), 56 décisions. 4 cibles étaient invalides sous le masque (« Lâcher les boulets ») ; elles ont été ignorées. Après 200 époques, la perte d'entropie croisée vaut 0,006 et la précision 100 %.
+- **PPO** : 6 mises à jour de 2 × 4 environnements × 16 pas, soit 768 transitions et 70 épisodes. Le score moyen des épisodes échantillonnés est de 71,6 à 77,6. Le KL reste ≤ 0,0014. Le débit est de 6 à 12 décisions/s.
+- **Évaluation gloutonne**, 24 matchs : 76,0 ± 0,0 pts, 0 erreur moteur, 12 victoires sur 12 contre l'exemple (qui fait 54 pts en duel), 1,4 match/s. L'écart-type est nul parce que le moteur est déterministe pour un même adversaire.
+- **Export** : `fumee.onnx` (opset 17, écart ONNX Runtime / PyTorch de 3,6e-7), `fumee.meta.json`, `fumee.json`.
+
+La politique imitée fait 76 pts et non 105. Elle diverge dès la 4ᵉ décision. Exécutée par `ENV.step`, une action du catalogue n'a pas le même effet que la brique du programme dont `ACTIONS.indexOfStep` l'a déduite : `toProgramStep` ajoute `pm: 'proche'`. Par exemple, « Mur M1 » rapporte 13 pts au lieu de 8, et la pose qui suit diffère. C'est à corriger côté actions-env.
+
+## Débit mesuré (`python -m trainer.debit`, politique aléatoire, 4 environnements par processus, 45 s)
+
+| Processus | Décisions/s | Matchs/s | Décisions/s par processus |
+|---|---|---|---|
+| 1 | 4,8 | 0,20 | 4,8 |
+| 2 | 5,8 | 0,30 | 2,9 |
+| 3 | 8,3 | 0,31 | 2,8 |
+
+Il y a environ 20 à 27 décisions par match avec une politique aléatoire. L'efficacité à 3 processus est de 58 %. Deux causes possibles :
+- le pas est synchrone : chaque pas attend le processus le plus lent, et la durée d'une macro-action varie beaucoup (planification A*, attente du trône) ;
+- 3 processus Node sur 4 vCPU partagés avec Python.
+
+**Estimation pour un Ryzen 5 3600 (12 threads, 11 processus).** Elle suppose la même vitesse par cœur que cette machine (hypothèse). La fourchette va d'environ 30 décisions/s (efficacité de 58 %, ≈ 1,3 match/s, ≈ 110 000 matchs/jour) à 53 décisions/s (mise à l'échelle linéaire, ≈ 2,2 matchs/s). À mesurer sur la machine avec `python -m trainer.debit --processus 1 2 4 6 8 11`.
 
 ## Hypothèses (paramètres nommés, valeurs par défaut non mesurées sur ce problème)
 
