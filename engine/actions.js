@@ -32,10 +32,12 @@
       { id: 'W7', x: 1950, y: 1650, label: 'couloir sud adverse' },
       { id: 'W8', x: 1900, y: 1000, label: 'devant la façade adverse' }
     ],
-    /* points de stockage dans la cour (hors zones de construction et hors salle du trône), pierres à plat, grand axe à ang */
+    /* points de stockage dans la cour (hors zones de construction et hors salle du trône), pierres à plat. Le moteur pose la
+       pierre grand axe selon ang, mais PRE.deposer teste le stockage avec le grand axe perpendiculaire : les points sont choisis
+       pour que les deux orientations soient hors des zones (sinon le compte de stockage diffère avant et après la pose). */
     stocks: [
-      { id: 'S1', x: 300, y: 620, ang: 0, label: 'cour nord' },
-      { id: 'S2', x: 300, y: 1380, ang: 0, label: 'cour sud' }
+      { id: 'S1', x: 300, y: 680, ang: 0, label: 'cour nord' },
+      { id: 'S2', x: 300, y: 1320, ang: 0, label: 'cour sud' }
     ],
     /* grille d'atteignabilité : pas de 40 mm (celui du planificateur du moteur), robot assimilé à un disque de rayon
        rayonPassage (sans charge) ou rayonPassageCharge (au moins une pierre tenue) pour traverser une case */
@@ -50,6 +52,8 @@
     /* atteignabilité : 'grille' (A* sur la grille du planificateur, robot exact au cap d'arrivée) ou 'disque' (rapide, approché) */
     planification: 'grille',
     planMax: 4000,
+    /* case libre : sans contact avec cette tolérance (mm, négative = marge exigée) ; le moteur vérifie ensuite le tracé au mm */
+    margeGrille: 1,
     viaRotationEssais: 6,
     /* autour de la pose de départ (mm), le robot peut passer par des cases aussi dégagées que la sienne */
     zoneDepart: 250
@@ -602,7 +606,7 @@
     var st = new Int8Array(GRID.W * GRID.H);
     var f = function (i, j) {
       var k = j * GRID.W + i; if (st[k]) return st[k] > 0;
-      var free = !poseHit(b, poseOf(b, (i + 0.5) * GRID.C, (j + 0.5) * GRID.C, h, over), null, cache);
+      var free = !poseHit(b, poseOf(b, (i + 0.5) * GRID.C, (j + 0.5) * GRID.C, h, over), null, cache, HYPOTHESES.margeGrille);
       st[k] = free ? 1 : -1; return free;
     };
     f.key = key;

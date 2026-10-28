@@ -20,7 +20,7 @@
      portes: [ 'M3', ... ],                     portes construites par ce robot (ids réels)
      paquets: { P1: { n, t }, ... },            caméras A et B : pierres encore à la carrière (0..3, de bas en haut) et instant de
                                                  l'information (0 = connaissance du règlement au départ) ; ids réels
-     etrangeres: [ { foot, bottom, top } ] (facultatif), pierres de l'adversaire connues (non rempli par la simulation : hypothèse)
+     etrangeres: [ { id, foot, bottom, top, t } ],  pierres posées par l'adversaire, vues par les caméras (même modèle de vue)
      echec: booléen,                            la dernière action a échoué (le robot le sait)
      echecs: { t, briques: [brique réelle] },   briques qui ont échoué à l'instant t sans faire avancer le temps (masquées à t)
      params: { gx, gy, ga, tx, ty, bn, tirDepuisTrone, v, w, bdep, bspin }   départ du Graal (réel), réglages du tir, vitesses (connus)
@@ -75,18 +75,22 @@
   function homeCountAt(sim, pkIdx, t) { return sim.stones().filter(function (s) { return s.pk === pkIdx && stoneStateAt(s, t) === 'home'; }).length; }
   /* mise à jour après une action jouée de t0 à t1 : vue des caméras, pierres prises par ce robot, échec de prise appris */
   function updateMemory(mem, sim, t0, t1, brick, info) {
-    var held = sim.held();
+    var held = sim.held(), foreign = sim.foreign ? sim.foreign() : [];
+    mem.etr = mem.etr || {};
     var times = []; for (var tt = Math.max(0, t0); tt < t1; tt += VISION.pas) times.push(tt); times.push(t1);
     times.forEach(function (tt) {
       var p = sim.poseAtT(tt);
       ['A', 'B'].forEach(function (f, k) {
         if (VISION.masqueeParCharge && held[f]) return;
         var ax = p.h + 120 * k;
-        ENGINE.PK.forEach(function (pk, i) {
-          var dx = pk.x - p.x, dy = pk.y - p.y, d = Math.hypot(dx, dy);
-          if (d > VISION.portee || Math.abs(angd(ax, Math.atan2(dy, dx) / D2R)) > VISION.demiAngle) return;
-          mem.paquets[pk.id] = { n: homeCountAt(sim, i, tt), t: tt };
-        });
+        function seen(x, y) { var dx = x - p.x, dy = y - p.y; return Math.hypot(dx, dy) <= VISION.portee && Math.abs(angd(ax, Math.atan2(dy, dx) / D2R)) <= VISION.demiAngle; }
+        ENGINE.PK.forEach(function (pk, i) { if (seen(pk.x, pk.y)) mem.paquets[pk.id] = { n: homeCountAt(sim, i, tt), t: tt }; });
+        /* pierres posées par l'adversaire (et son Graal resté au sol) : vues ou disparues (état au moment de la décision) */
+        if (tt === t1) {
+          var now = {};
+          foreign.forEach(function (o) { var c = centroid(o.foot); now[o.id] = 1; if (seen(c[0], c[1])) mem.etr[o.id] = { id: o.id, foot: o.foot.map(function (v) { return [v[0], v[1]]; }), bottom: o.bottom, top: o.top, t: tt }; });
+          Object.keys(mem.etr).forEach(function (id) { var c = centroid(mem.etr[id].foot); if (!now[id] && seen(c[0], c[1])) delete mem.etr[id]; });
+        }
       });
     });
     /* pierres de carrière prises par ce robot : il le sait */
@@ -133,7 +137,8 @@
       graal: sim.graal().cur.k,
       tir: !!sim.balls().shots,
       adversaire: oppPose && oppPose.x != null ? { x: oppPose.x, y: oppPose.y, vx: oppPose.vx || 0, vy: oppPose.vy || 0, t: oppPose.t != null ? oppPose.t : t } : null,
-      pierres: pierres, portes: pl, paquets: paquets, etrangeres: [], echec: !!mem.echec,
+      pierres: pierres, portes: pl, paquets: paquets, echec: !!mem.echec,
+      etrangeres: Object.keys(mem.etr || {}).map(function (id) { var o = mem.etr[id]; return { id: o.id, foot: o.foot, bottom: o.bottom, top: o.top, t: o.t }; }),
       echecs: mem.echecs ? { t: mem.echecs.t, briques: mem.echecs.briques.slice() } : { t: t, briques: [] },
       params: { gx: P.gx, gy: P.gy, ga: P.ga || 0, tx: P.tx, ty: P.ty, bn: P.bn, tirDepuisTrone: P.tirDepuisTrone, v: P.v, w: P.w, bdep: P.bdep, bspin: P.bspin }
     };
