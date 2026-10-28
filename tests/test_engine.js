@@ -28,7 +28,7 @@ console.log('Moteur ' + ENGINE.VERSION + ', barème ' + ctx.BAREME_VERSION + ', 
 
 console.log('\n1. Catalogue v3');
 var ALL = ACTIONS.ALL;
-check('versions exposées', ACTIONS.CATALOGUE_VERSION === 'icamlot-catalogue-3.1' && ENV.OBS_VERSION === 'icamlot-obs-3.0');
+check('versions exposées', ACTIONS.CATALOGUE_VERSION === 'icamlot-catalogue-3.1' && ENV.OBS_VERSION === 'icamlot-obs-3.1');
 check('familles = catalogue', sum(ACTIONS.FAMILLES.map(function (f) { return f.n; })) === ALL.length, ALL.length + ' actions');
 check('labels uniques', new Set(ALL.map(function (a) { return a.label; })).size === ALL.length);
 check('plus de prendreGraal / poserGraal / staging / repickup', !ALL.some(function (a) { return /Graal$|staging|repickup/.test(a.famille) && a.famille !== 'monterGraal'; }));
