@@ -131,10 +131,13 @@ class PontNode:
         return self.appeler("sim_step", index=int(index), trace=trace)
 
     # ---- modèle interne du robot réel ------------------------------------------------------------------------------
-    def track_start(self, params: Optional[dict] = None, vision: Optional[bool] = None) -> Dict[str, Any]:
+    def track_start(self, params: Optional[dict] = None, vision: Optional[bool] = None, equipe: Optional[str] = None) -> Dict[str, Any]:
+        """equipe « blue » : modèle interne bleu en repère réel, sorties dans le repère de l'équipe (docs/CONTRATS.md §15)."""
         champs: Dict[str, Any] = {"params": params or {}}
         if vision is not None:
             champs["vision"] = vision
+        if equipe is not None:
+            champs["equipe"] = equipe
         return self.appeler("track_start", **champs)
 
     def track_exec(self, brique: dict, adversaire: Optional[dict] = None, trace: bool = False) -> Dict[str, Any]:

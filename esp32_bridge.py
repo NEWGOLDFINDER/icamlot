@@ -32,6 +32,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
 
+from embarque.miroir import face_reelle, pose_miroir
 from embarque.spec import depression_minimale_kpa, table_longueur_mm
 
 try:
@@ -85,7 +86,8 @@ class ParamsESP32:
     # --- évitement (décidé par le Pi) ---
     periode_evitement_s: float = 0.1        # cadence du lidar (typique 10 Hz, fiche constructeur dans spec/robot.json)
     attente_evitement_max_s: float = 8.0    # 4 attentes de 2 s du moteur (engine.js, travel)
-    # Repère : miroir de la table pour l'équipe bleue (CONTRATS §2) : x -> LONGUEUR - x, h -> 180 - h (longueur lue dans la spec).
+    # Repère : miroir de l'équipe bleue (CONTRATS §15, embarque/miroir.py) : x -> LONGUEUR - x, cap de la vraie face B en miroir
+    # (h -> 180 - 120 - h), faces A <-> B (longueur lue dans la spec).
     largeur_table_mm: float = field(default_factory=table_longueur_mm)
     # H7 : le moteur échantillonne les mouvements aux instants où un AUTRE axe change. Chaque mouvement est réduit à ses points de
     #      passage (Ramer-Douglas-Peucker en fonction du temps) dont l'écart maximal à la trajectoire du moteur reste sous ces
@@ -151,9 +153,8 @@ def _h_norm(h: float) -> float:
 
 
 def _mirror_xy_h(x: float, y: float, h: float, equipe: str, largeur: float) -> Tuple[float, float, float]:
-    if equipe == "blue":
-        return largeur - x, y, 180.0 - h
-    return x, y, h
+    """Repère de l'équipe -> repère réel (CONTRATS §15) : bleu, x -> largeur - x, cap de la face A de l'équipe = vraie face B."""
+    return pose_miroir(x, y, h, equipe, largeur)
 
 
 def _simplifier(pts: List[dict], tol: Sequence[float]) -> List[dict]:
@@ -227,7 +228,7 @@ def traduire(plan: dict, equipe: str = "yellow", params: ParamsESP32 = PARAMS) -
                 h = _h_norm(h)
                 add("NAV", f"GOTO {x:.1f} {y:.1f} {h:.1f}", p["t"], q["t"], "NAV", cible=(round(x, 1), round(y, 1), round(h, 1)))
         elif g in ("GRIP_A", "GRIP_B"):
-            face = g[-1]
+            face = face_reelle(g[-1], equipe)            # bleu : la face A de l'équipe est la vraie face B (CONTRATS §15)
             for axe, i, tol in (("Z", 0, params.tol_hc_mm), ("ROT", 1, params.tol_rot_deg)):     # hc -> vérin Z ; rot -> rotation
                 for run in _mouvements_de_l_axe([{"t": p["t"], "v": [p["v"][i]]} for p in pts], params.eps_val):
                     run = _simplifier(run, (tol,))
@@ -245,8 +246,8 @@ def traduire(plan: dict, equipe: str = "yellow", params: ParamsESP32 = PARAMS) -
     for ev in plan.get("events", []):
         k = ev["kind"]
         if k == "VAC":
-            r = ev["rows"]
-            add("ACT", f"PUMP {ev['face']} {int(r[0])} {int(r[1])} {int(r[2])}", ev["t0"], ev["t1"], "PUMP_" + ev["face"])
+            r, fr = ev["rows"], face_reelle(ev["face"], equipe)
+            add("ACT", f"PUMP {fr} {int(r[0])} {int(r[1])} {int(r[2])}", ev["t0"], ev["t1"], "PUMP_" + fr)
         elif k == "CANON_SPIN":
             spin = ev
         elif k == "FIRE":

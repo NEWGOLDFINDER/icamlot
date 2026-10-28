@@ -14,8 +14,10 @@ Origine de chaque champ :
   - échec de la dernière action : refus du moteur local (action impossible) ou erreur d'un ESP32.
 
 Repère : la croyance est toujours construite dans le repère de l'ÉQUIPE (jaune), comme à l'entraînement où le robot est
-toujours jaune. Les mesures de l'équipe bleue sont mises en miroir à l'entrée (x -> longueur - x, h -> 180 - h, vx -> -vx,
-ids des paquets par ENGINE.mirrorId) ; les commandes ESP32 le sont en sortie (esp32_bridge.traduire).
+toujours jaune. Les mesures de l'équipe bleue sont mises en miroir à l'entrée (embarque/miroir.py, docs/CONTRATS.md §15 :
+x -> longueur - x, cap de la VRAIE face B mis en miroir h -> 180 - 120 - h, faces A <-> B pour l'état des pinces lu sur
+l'ESP32, vx -> -vx, ids des paquets par ENGINE.mirrorId) ; les commandes ESP32 le sont en sortie (esp32_bridge.traduire :
+la face A de l'équipe pilote la vraie face B).
 """
 from __future__ import annotations
 
@@ -24,6 +26,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Protocol, Tuple
 
+from embarque.miroir import face_reelle, pose_miroir
 from embarque.spec import table_longueur_mm
 
 logger = logging.getLogger("Croyance")
@@ -56,9 +59,8 @@ class CamerasAbsentes:
 
 
 def miroir_pose(pose: Tuple[float, float, float], equipe: str) -> Tuple[float, float, float]:
-    if equipe != "blue":
-        return tuple(pose)  # type: ignore[return-value]
-    return table_longueur_mm() - pose[0], pose[1], 180.0 - pose[2]
+    """Pose réelle <-> pose dans le repère de l'équipe (involutif) : bleu, x -> longueur - x et cap de la vraie face B en miroir."""
+    return pose_miroir(pose[0], pose[1], pose[2], equipe)
 
 
 def miroir_adversaire(adv: Optional[dict], equipe: str) -> Optional[dict]:
@@ -105,7 +107,8 @@ class ConstructeurCroyance:
 
     def demarrer(self) -> dict:
         """Crée le modèle interne. vision=False : les caméras sont réelles, le modèle de caméras simulé du moteur est coupé."""
-        self.interne = self.pont.track_start(self.params_moteur, vision=False)["belief"]
+        # bleu : moteur bleu en repère réel (vraie disposition des faces), croyance rendue dans le repère de l'équipe (§15)
+        self.interne = self.pont.track_start(self.params_moteur, vision=False, equipe=self.equipe)["belief"]
         self.echec = False
         return self.interne
 
@@ -157,18 +160,19 @@ class ConstructeurCroyance:
         return out
 
     def _recouper(self, b: dict, st: Any, tol_hc_mm: float = 2.0, tol_rot_deg: float = 2.0) -> List[str]:
-        """Écarts entre le modèle interne et l'état renvoyé par l'ESP32 ACT. tol_* : hypothèses de réglage (jeu des codeurs)."""
+        """Écarts entre le modèle interne et l'état renvoyé par l'ESP32 ACT. tol_* : hypothèses de réglage (jeu des codeurs).
+        Le modèle interne est en faces de l'équipe, l'ESP32 en faces réelles (bleu : face A de l'équipe = vraie face B, §15)."""
         out: List[str] = []
         tenues = 0
         for f in ("A", "B"):
             g = b["pinces"][f]
-            hc, rot = st.grip[f]
+            hc, rot = st.grip[face_reelle(f, self.equipe)]
             if abs(hc - g["hc"]) > tol_hc_mm:
                 out.append(f"hc {f} : modèle {g['hc']:.1f} mm, codeur {hc:.1f} mm")
             rot_attendue = g["rotReelle"] if g.get("rotReelle") is not None else g["rot"]
             if abs(rot - rot_attendue) > tol_rot_deg:
                 out.append(f"rot {f} : modèle {rot_attendue:.1f}°, codeur {rot:.1f}°")
-            tenues += sum(1 for v in st.tenue[f] if v)
+            tenues += sum(1 for v in st.tenue[face_reelle(f, self.equipe)] if v)
         modele = sum(1 for f in ("A", "B") for s in b["pinces"][f]["slots"] if s)
         if tenues < modele:
             out.append(f"perte: {modele} pierre(s) tenues dans le modèle, {tenues} avec dépression")

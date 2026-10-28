@@ -8,6 +8,7 @@ import pytest
 
 import embarque_fixtures as F
 from embarque.croyance import ConstructeurCroyance, Mesures, miroir_adversaire, miroir_pose
+from embarque.miroir import ECART_FACES_DEG, cap_miroir, face_miroir, face_reelle
 from embarque.pont import PontNode
 from embarque.spec import duree_match_s
 from esp32_bridge import DualESP32Orchestrator
@@ -79,11 +80,36 @@ def test_les_capteurs_remplacent_le_modele_interne_quand_ils_sont_plus_recents()
 
 def test_miroir_bleu():
     assert miroir_pose(miroir_pose((250.0, 1000.0, 30.0), "blue"), "blue") == (250.0, 1000.0, 30.0)
-    assert miroir_pose((250.0, 1000.0, 0.0), "blue") == (2750.0, 1000.0, 180.0)
+    # CONTRATS §15 : cap de la vraie face B mis en miroir, 180 - 120 - h
+    assert miroir_pose((250.0, 1000.0, 0.0), "blue") == (2750.0, 1000.0, 60.0)
+    assert [face_miroir(f) for f in "ABC"] == ["B", "A", "C"] and all(cap_miroir(cap_miroir(h)) == h for h in (0.0, 37.5, -200.0))
+    assert face_reelle("A", "blue") == "B" and face_reelle("A", "yellow") == "A"
     assert miroir_pose((250.0, 1000.0, 0.0), "yellow") == (250.0, 1000.0, 0.0)
     adv = {"x": 1000.0, "y": 500.0, "vx": 100.0, "vy": -50.0, "t": 3.0}
     assert miroir_adversaire(adv, "blue") == {"x": 2000.0, "y": 500.0, "vx": -100.0, "vy": -50.0, "t": 3.0}
     assert miroir_adversaire(adv, "yellow") == adv
+
+
+def test_equipe_bleue_echange_les_faces_a_et_b():
+    """CONTRATS §15 : en bleu, la pince A de l'équipe (modèle interne, réseau) est la VRAIE face B ; le recoupement avec l'ESP32
+    compare donc l'état réel de B à la pince A du modèle. Même écart angulaire entre faces que le moteur (hello du pont)."""
+    from esp32_bridge import EtatActionneurs
+    with PontNode() as interne:
+        assert interne.hello(vision=False)["miroir"]["ecartFaces"] == ECART_FACES_DEG
+        cons = ConstructeurCroyance(interne, "blue")
+        cons.demarrer()
+        r = cons.appliquer({"a": "prendre", "f": "A", "p": "P1", "tm": True})
+        assert not r["info"].get("err")
+        a, b = cons.interne["pinces"]["A"], cons.interne["pinces"]["B"]
+        assert a["slots"] == ["P1.1", "P1.2", "P1.3"] and b["slots"] == [None, None, None]
+        assert abs(a["hc"] - b["hc"]) > 2.0                                 # la pince qui a pris n'est plus à la hauteur de l'autre
+        vide = cons.croyance(Mesures(t=r["belief"]["t"], pose=miroir_pose((r["belief"]["pose"]["x"], r["belief"]["pose"]["y"], r["belief"]["pose"]["h"]), "blue")))
+        assert vide["pinces"] == cons.interne["pinces"]
+        pleine = (100.0, 100.0, 100.0)
+        reel = EtatActionneurs(grip={"A": (b["hc"], b["rot"]), "B": (a["hc"], a["rot"])}, pression={"A": (0.0, 0.0, 0.0), "B": pleine})
+        assert cons._recouper(cons.interne, reel) == []                      # vraie face B = pince A de l'équipe
+        inverse = EtatActionneurs(grip={"A": (a["hc"], a["rot"]), "B": (b["hc"], b["rot"])}, pression={"A": pleine, "B": (0.0, 0.0, 0.0)})
+        assert any(d.startswith("hc A") for d in cons._recouper(cons.interne, inverse))
 
 
 def test_equipe_bleue_voit_le_meme_monde_que_l_equipe_jaune():
@@ -135,7 +161,9 @@ def test_robot_equipe_bleue_envoie_des_commandes_en_miroir(tmp_path_factory):
         be = RobotBackend(pont, orch, CapteursRobot(orch), "blue")
         Pi5Runner(pol, pont, be, max_decisions=3).jouer()
         mouvements = [c for c in orch.nav.journal if c.startswith(("GOTO", "PATH"))]
-        assert [c for c in orch.nav.journal if c.startswith("SET_POSE")][0].startswith("SET_POSE 2750.0 1000.0 180.0 #")
+        # départ bleu (CONTRATS §15) : vraie face B vers le centre, cap réel 180 - 120 - 0 = 60°
+        assert [c for c in orch.nav.journal if c.startswith("SET_POSE")][0].startswith("SET_POSE 2750.0 1000.0 60.0 #")
+        assert be.cons.historique_divergences == [], be.cons.historique_divergences
         assert mouvements and all(float(g.split()[2 if g.startswith("PATH") else 1]) > 1500 for g in mouvements[:1])
 
 
