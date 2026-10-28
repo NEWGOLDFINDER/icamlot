@@ -416,6 +416,7 @@
       "hauteur_chariot_max": "non bornée dans le simulateur actuel",
       "vitesse_chariot_mm_s": 80,
       "rotation_angles_deg": [
+        -90,
         0,
         90,
         180
@@ -507,6 +508,12 @@
         "statut": "declare",
         "source": "équipe, 2026-10-28",
         "note": "80 mm/s retenu par l'équipe (vérins : 84 à vide, 75 à 120 N)"
+      },
+      "rotation_moins_90": {
+        "statut": "declare",
+        "source": "équipe, 2026-10-28",
+        "valeur": "la nacelle peut tourner à −90° (dans l'autre sens)",
+        "raison": "rend le miroir bleu exact : une rotation de +90° en jaune devient −90° en bleu (CONTRATS §15)"
       }
     },
     "canon_C": {
