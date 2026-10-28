@@ -54,7 +54,7 @@
      { score, detail, T, errors, decisions, invalid, crash, truncated, adversaire: { score, errors } | null }
      score = SCORE.scoreAt(result, params, min(T, 100)) ; errors = erreurs moteur du robot.
    crash : ENV.step a levé une exception (l'environnement est considéré terminé, message dans err).
-   truncated : l'épisode a atteint maxDecisions décisions sans finir (hypothèse : 80 par défaut, comme ENV.play).
+   truncated : l'épisode a atteint maxDecisions décisions sans finir (garde-fou : 300 par défaut, comme ENV.play).
 */
 var path = require('path');
 var crypto = require('crypto');
@@ -77,7 +77,7 @@ function chargerAdversaires() {
 chargerAdversaires();
 
 /* Nombre maximal de décisions par épisode en mode groupé (hypothèse reprise de ENV.play : max = 80). */
-var DEFAULT_MAX_DECISIONS = 80;
+var DEFAULT_MAX_DECISIONS = 300;  /* garde-fou ; 80 tronquait les réseaux qui attendent par pas de 1 s (catalogue 3.1), même borne que ENV.play */
 
 function reply(obj) {
   process.stdout.write(JSON.stringify(obj) + '\n');

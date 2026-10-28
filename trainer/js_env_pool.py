@@ -35,7 +35,7 @@ WORKER = ROOT / "engine" / "env_worker.js"
 # Un pas groupé de M environnements prend de l'ordre de M × 0,25 s sur un cœur (mesure de l'audit : ~5 décisions/s).
 DELAI_REPONSE_S = 120.0
 # Hypothèse : nombre maximal de décisions par épisode (repris de ENV.play dans engine/env.js : max = 80).
-MAX_DECISIONS = 80
+MAX_DECISIONS = 300  # même garde-fou que engine/env_worker.js (DEFAULT_MAX_DECISIONS) et ENV.play
 
 
 class EnvPoolError(RuntimeError):

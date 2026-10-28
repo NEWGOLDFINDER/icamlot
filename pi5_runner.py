@@ -38,8 +38,8 @@ from lidar_tracker import LidarTracker
 
 ROOT = Path(__file__).resolve().parent
 
-# Hypothèse : mêmes bornes que l'évaluation (engine/env_worker.js, DEFAULT_MAX_DECISIONS = 80 ; repris de ENV.play).
-MAX_DECISIONS = 80
+# Hypothèse : mêmes bornes que l'évaluation (engine/env_worker.js, DEFAULT_MAX_DECISIONS = 300, comme ENV.play).
+MAX_DECISIONS = 300
 # Hypothèse : configuration ENV.create de l'évaluation quand le modèle n'en porte pas (trainer/evaluation.py : skipContacts).
 ENV_CONFIG_DEFAUT = {"skipContacts": True}
 # Hypothèse : garde-fou du nombre de décisions sur le robot réel (le match s'arrête à 100 s ; la limite de 80 de l'évaluation
