@@ -203,3 +203,91 @@ Règle absolue de l'équipe : **ne rien inventer**. Une valeur absente de la spe
 - **Référence** : … Graal (fin à 70,4 s), trône, attentes 4 + 4 + 2 + 1 s, tir à 81,7 s (attente interne 0,09 s, premier boulet à 85 s), trône. 116 pts, 90,30 s, 20 paires imitables, 0 cible invalide.
   - Une prise et une tour de plus (P6.2, tours T4 ou T1, 122 pts, Graal fini à 80,2 s) réussissent dans le moteur, mais ne sont pas imitables. Le masque refuse la tour T4 ou T1 de la face A ou B : le trajet vers la pose (680, 1815) ou (680, 185) n'est pas trouvé par le planificateur certifié, alors que la recherche d'origine d'`exec` le trouve.
 - **Conséquence** : 155 sorties au lieu de 152 ; les modèles et `.meta.json` du catalogue 3.0 sont refusés (version) et **à réentraîner**.
+
+## 14. Adversaires, caractéristiques physiques tirées, mélange d'entraînement (chantier adversaires)
+
+### 14.0 Masque et recherche de secours ; référence à 122 pts
+- **Constat (§13)** : le masque refusait les tours T1 et T4 depuis (680, 185) / (680, 1815), qu'`exec` réussit grâce à sa recherche d'origine.
+- **Masque** : quand le planificateur certifié (`'disque'`) ne trouve aucun passage, le masque rejoue l'étape à blanc en mode `'secours'` de `planifierEtape` (début de la recherche d'origine d'`exec`, sans ses replis coûteux : `discMode 'non'` + `rapide`). Limité aux étapes `HYPOTHESES.secoursEtapes` = tour, mur, porte, dépôts, Graal (mesure : le secours pour toutes les étapes coûtait +155 % par masque pour 0,8 % d'actions valides en plus, presque toutes sur les prises et déplacements). `HYPOTHESES.secours = false` rétablit l'ancien masque.
+- **Coût** (800 croyances d'épisodes aléatoires, graine 11, même machine, sans autre charge) : sans secours 71,9 ms par masque ; secours limité 77,3 ms (**+7,5 %**) ; secours pour toutes les étapes 179,8 ms (+155 %, écarté).
+- **Masque → moteur** (6000 décisions aléatoires, graine 11, sans adversaire) : échecs **1,80 % → 0,90 %** (base 5402b1d : 87,1 ms/décision ; après : 97,7 ms/décision, mesurés pendant un entraînement en parallèle) ; avec le tirage physique de notre robot : **0,98 %** (88,2 ms/décision), soit +0,08 point.
+- **Durées déclarées par l'équipe** (spec 134a8e7 : nacelle 1 s, prise 0,35 s, approche 200 mm/s, canon 2 s + 0 s, 1,25 boulet/s ; lâcher 0,4 s hérité) : `tests/test_moteur.js` lit ces valeurs dans la spec.
+- **Référence adoptée** (`ENGINE.PROGRAMME_REFERENCE`, golden) : P1, P9, M2, M1, P5, P10, M4, M5, P6.3 face B, P6.2 face A, tour T4 face A, P2 face A, tour T2 face B, porte M3, Graal (fin à 75,8 s), trône, attentes 4 + 1 s, tir lancé à 81,1 s (attente interne 0,20 s, premier boulet à 85 s), trône. **122 pts, 93,00 s, 0 erreur, 20 paires imitables, 0 cible invalide.** Les prises et tours portent `tm: true` (comme les briques du catalogue).
+
+### 14.1 Caractéristiques physiques de notre robot (`ADVERSAIRES.PHYSIQUE`, `engine/adversaires.js`)
+| id (moteur) | caractéristique | nominale (spec) | statut | plage par défaut |
+|---|---|---|---|---|
+| `v` | Vitesse de déplacement | 500 mm/s | déclaré | ± 15 % |
+| `va` | Vitesse d'approche | 200 mm/s | déclaré | ± 15 % |
+| `w` | Rotation de la base | 120 °/s | déclaré | ± 15 % |
+| `vz` | Vitesse des vérins Z | 80 mm/s | déclaré | ± 15 % |
+| `trot` | Rotation 90° des nacelles | 1 s | déclaré | ± 15 % |
+| `tvac` | Prise par le vide | 0,35 s | déclaré | ± 15 % |
+| `trel` | Lâcher | 0,4 s | hérité | ± 15 % |
+| `tMonteeGraal` | Montée du Graal | 3,5 s | déclaré | [3, 4] s (plage déclarée) |
+| `bdep` | Sortie du canon | 2 s | déclaré | ± 15 % |
+| `bspin` | Mise en route du canon | 0 s | déclaré | ± 15 % (reste 0) |
+| `brate` | Cadence du canon | 1,25 boulet/s | déclaré | ± 15 % |
+- **Tirage** : `ADVERSAIRES.tirerPhysique(graine, { actif, valeurs, plages })` ; une plage = ± % autour de la nominale, `[min, max]` (unité affichée), ou 0 (fixe). Un tirage par caractéristique, toujours consommé : reproductible par graine. La descente de la fourche suit la montée du Graal (hypothèse du moteur).
+- **Environnement** : `ENV.create({ physique })` ou `scenario.physique` ; les valeurs tirées priment sur `params`. `reset()` renvoie `physique: { notre, plages, tirageActif, adversaire }` (aussi `env.physique()` et le bilan du worker).
+- **Croyance** : `belief.params` contient toutes les clés physiques effectives (`ENV.paramsBelief`) ; le masque (`worldOf`) et l'observation les utilisent.
+- **Observation `icamlot-obs-3.1`** : nouveau groupe `physique` (11 entrées, dans les groupes par défaut) = valeur effective / nominale de la spec − 1, bornée à ±1 (mise en route du canon, nominale nulle : écart en s). Les modèles `obs-3.0` sont refusés (version).
+- **Embarqué** : spec par défaut ; `pi5_runner.py --calibration fichier.json` (clés du moteur, `embarque/croyance.py: params_calibration`).
+- **Entraînement** : `cfg.physique` (API / atelier Cerveau, section « Caractéristiques de notre robot ») → `ENV.create({ physique })` ; enregistré dans `.meta.json` et le JSON web (`physique` : caractéristiques, nominales, statut, réglages ; `env_config`).
+
+### 14.2 Robots adverses (`ADVERSAIRES.PROFILS`)
+| id | type | esquisse | description |
+|---|---|---|---|
+| `batisseur` | à règles | 64 | rond, rapide ; construction pure, Graal sur une construction, trône ; pas de tir |
+| `razzia` | à règles | 54 | rond, très rapide ; vide d'abord P1, P5, P2, P6 (carrières proches de notre château), construit chez lui, tir sur notre cour à 85 s, trône |
+| `champion` | réseau figé | 116 | mêmes mécanismes que nous ; imitation de la référence + PPO (entraînement complet) |
+| `intermediaire` | réseau figé | 41 | mêmes mécanismes, plus lent ; imitation (3 murs, Graal, tir) + PPO bref |
+
+- **Spécification d'adversaire** : `{ robot: id, fixe?: { caractéristique: valeur } }` dans `scenario.opponent` (ou `opts.adversaires`) ; caractéristiques tirées par la graine du scénario.
+- **Robot à règles = robot abstrait** (`ADVERSAIRES.makeRobot`) joué par `ENGINE.makeDuel` (`cfg.blue.make`, même interface que `makeSim`). Abstraction (hypothèses) : une prise ramasse d'un coup les pierres disponibles d'une carrière (≤ capacité) en `tPrise` ; une construction (mur 3 pierres à plat, tour 1 debout, porte 2 piliers + linteau) se pose depuis une pose d'approche hors de la zone en `tPose` par pierre (porte × `facteurPorte`) ; le Graal est pris (`tPrise`), monté (`tGraal`) et posé sur une de ses constructions (niveau 3) sans quitter le château ; le tir sort le canon (`tCanon`) puis lance un boulet toutes les `1 / cadence` s dès 85 s, chacun dans notre cour avec la probabilité `precision`. Trajets : Dijkstra sur une grille de 50 mm (rayon d'enveloppe + marge), lissés, vitesse constante + `v / acceleration` par trajet. Score : barème de la spec (`SCORE.scoreAt` délègue).
+- **Interactions** : ses prises réservent les pierres (« premier engagé »), ses pierres posées sont des obstacles pour nous, son empreinte est portée par sa pose (`GEOM.hullsHit` : `o.fp`, `o.R`) pour notre évitement et nos contacts ; lui planifie autour de notre robot et **s'arrête** si nous sommes devant à moins de `dArret` (bords des enveloppes), abandonne l'action après `attenteMax` s.
+- **Règlement** : empreinte convexe de périmètre ≤ 1200 mm (départ et déployé, mécanismes abstraits dans l'empreinte), hauteur déclarée 340 mm, départ entièrement dans sa salle du trône, hors du Graal ; il construit (pas d'anti-jeu).
+- **Stratégies réactives** (`ADVERSAIRES.agentRegles`) : à chaque décision, gain (barème) / durée estimée de chaque action possible d'après l'état réel (carrières restantes, zones libres, notre position), pondérés par les priorités du profil, aléa ± `bruit` / 2 tiré de la graine ; réserve de temps pour le Graal, le tir (Razzia) et le trône ; ne s'enferme pas dans son château avant `enfermementApres` s s'il peut faire autre chose ; attend 0,5 s si une action échoue sans faire avancer le temps.
+- **Robots « réseau »** : `ENV.brainAgent` sur un `makeSim` bleu avec les caractéristiques tirées (`ADVERSAIRES.plagesReseau`) ; empreinte = la nôtre (mêmes mécanismes). Modèles figés : `.data/adversaires/<id>.json` (chargés par `engine/env_worker.js`, `ICAMLOT_ADVERSAIRES` ; plateau : `GET /api/adversaires/<id>/modele`).
+- **(Ré)entraînement par l'équipe** (aucun modèle n'est versionné ; `.data/adversaires/` est ignoré par git) : `python -m trainer.adversaires --robot champion|intermediaire [--duree s] [--transitions n] [--processus p] [--dossier d]` ou `POST /api/adversaires/<id>/entrainer` (corps `{ duree, transitions, epoques, processus }`) ; sortie `<dossier>/<id>.json` (défaut `.data/adversaires/`, ou `<données de l'API>/adversaires/`, ou `ICAMLOT_ADVERSAIRES`) et bilan `<id>.entrainement.json`. Budgets par défaut : champion = imitation 200 époques (lots de 4, lr 2e-3, 12 scénarios) + PPO lr 1e-4 jusqu'à 200 000 transitions ou 2400 s, évaluation tous les 10 ; intermédiaire = imitation 200 époques (6 scénarios) + PPO 300 s. Pendant son entraînement : 50 % seul, 50 % référence en miroir (hypothèse). Sans modèle : « modèle non entraîné : lancer l'entraînement » (moteur, API `etat`, atelier, plateau) et exclusion du mélange, proportions redistribuées et affichées.
+
+### Plages des adversaires (hypothèses proposées à l'équipe, dans les bornes validées)
+| | Bâtisseur | Razzia | Champion | Intermédiaire |
+|---|---|---|---|---|
+| empreinte | rond, périmètre 1050–1150 mm | rond, 950–1100 mm | la nôtre (1173 mm) | la nôtre |
+| vitesse (mm/s) | 550–750 | 700–800 | 600–800 | 300–400 |
+| rotation (°/s) | 180–360 | 240–360 | 150–300 | 90–120 |
+| prise / pose (s) | 2–3,5 / 1,5–2,5 par pierre | 2–3,5 / 2–3 par pierre | mécanismes × 0,85–1,15 | mécanismes × 1,1–1,4 |
+| montée du Graal (s) | 3–5 | 3–6 | 2–3,5 | 4–6 |
+| distance d'arrêt (mm) | 250–450 | 250–450 | évitement du moteur | évitement du moteur |
+| capacité, tir | 3 pierres, pas de tir | 6 pierres, précision 0,7–0,9 | — | — |
+
+Autres hypothèses du robot abstrait (`ADVERSAIRES.HYPOTHESES`) : grille 50 mm, marge 15 mm, jeu d'approche 25 mm, marge autour de notre robot 120 mm, accélération 1500 mm/s², attente maximale 3 s, porte × 1,5, canon 1 s, 1,5 boulet/s, 10 boulets, hauteur 340 mm, marge de fin 1,5 s.
+
+### 14.3 Scores mesurés
+Mesures sur cette machine (CPU 4 cœurs), graines 1000–1029 (seul) et 1000–1029 (contre `PROGRAMME_REFERENCE`, nos caractéristiques nominales) :
+
+| Robot | Esquisse | Seul (30 matchs) | Contre la référence (30 matchs) : adversaire · nous |
+|---|---|---|---|
+| Bâtisseur | 64 | **97,1 ± 3,3** (min 93), 0 erreur | 93,3 ± 3,6 · 115,5 ± 9,7 ; 0 contact, 0 erreur adverse |
+| Razzia | 54 | **106,9 ± 3,4** (min 99), 0 erreur | 105,7 ± 2,6 · 91,1 ± 21,1 ; 0 contact, 0 erreur adverse |
+| Champion | 116 | non entraîné ici (décision de l'équipe) | — |
+| Intermédiaire | 41 | non entraîné ici (décision de l'équipe) | — |
+
+Nos erreurs moteur contre la référence (28 et 190 sur 30 matchs) viennent du programme figé : pierres prises par l'adversaire. Essai CPU fait avant la décision (modèle non versionné, 2817 s, 3 processus) : champion imité à 100 % → 122,0 ± 0 seul en jaune, mais 85 seul et 53 contre la référence quand il joue en bleu (voir 14.5) ; intermédiaire imité : 79 seul et contre la référence (6 matchs, en jaune).
+
+### 14.4 Mélange d'entraînement de notre réseau
+- `cfg.adversaire.melange` = `{ batisseur, razzia, champion, intermediaire, self, reference, aucun, <id de stratégie> : proportion }` ; défaut (API, atelier) : **20 % de chacun des 4 robots + 20 % de self-play**. `"melange": {}` rétablit l'ancien réglage par intensité. Un robot « réseau » sans modèle figé est retiré du mélange (signalé).
+- **Self-play** : notre réseau courant (JSON web), enregistré comme adversaire `self` et rafraîchi toutes les `reglages.self_play_tous_les` mises à jour (défaut 5) ; au départ, `cfg.adversaire.self_modele` (champion précédent) s'il est donné.
+- **Évaluation de sélection** : matchs répartis selon le mélange (plus forts restes) ; `par_adversaire` donne score, score adverse, taux de victoire et erreurs par adversaire (`robot:<id>`, `self`, `reference`, `sans adversaire`).
+
+### 14.5 Limites et points ouverts
+- **PAMI non simulés** (non demandé) : ni douves ni attaque, pour nous comme pour les adversaires.
+- Robots à règles : mécanismes abstraits (pas de pinces, pas de balistique des boulets ; précision tirée) ; empreinte du champion et de l'intermédiaire = la nôtre (pas le rectangle 300 × 280 de l'esquisse), car ils partagent nos mécanismes.
+- Plages des adversaires et ± 15 % de notre robot : hypothèses proposées à l'équipe.
+- **Réseau entraîné en jaune, joué en bleu** : notre robot n'est pas symétrique (§10) ; l'essai CPU du champion passe de 122 pts (jaune) à 85 pts (bleu, seul). Forcer le bit « équipe » à sa valeur d'entraînement ne change rien (mesuré) : à l'équipe de décider s'il faut entraîner les adversaires côté bleu (l'environnement ne fait jouer que le jaune aujourd'hui).
+- Bâtisseur et Razzia dépassent largement leur esquisse (97 et 107 pts seuls) : à ralentir (plages) si l'équipe les veut moins forts que le champion.
+- 80 décisions par épisode (hypothèse héritée) : un réseau qui attend par pas de 1 s est tronqué (score 0) ; porté à 150 pour l'entraînement des adversaires seulement.
+- Évaluation de sélection du self-play : contre le réseau courant (premières mises à jour : réseau de départ).
+- La neuroévolution (MLP) n'utilise pas le mélange (intensité seule).
+- Un robot à règles qui voit notre robot apparaître brusquement à moins de sa distance d'arrêt s'arrête aussitôt (pas de recul).
