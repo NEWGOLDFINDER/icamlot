@@ -342,3 +342,29 @@ Imitation (`python -m trainer.imitation --exemple --scenarios 4 --epoques 200 --
 - Masque bleu de la tour T8 de la référence : la recherche de secours est plus étroite que celle d'`exec` (asymétrie du planificateur).
 - Embarqué bleu : observation et masque calculés sur la croyance d'équipe (chiralité jaune) alors que le modèle interne exécute avec la chiralité réelle : une action acceptée par le masque peut être refusée par le modèle interne (échec connu, rien n'est envoyé aux ESP32).
 - `esp32_bridge.py` (chantier embarqué) modifié pour la traduction bleue.
+
+## 16. Rotation des nacelles à −90° (chantier rot-90 ; obs `icamlot-obs-3.3`, catalogue `icamlot-catalogue-3.3`)
+
+- **Spec** : `pince_A_et_B.rotation_angles_deg` = [−90, 0, 90, 180] (équipe, `rotation_moins_90`) ; plage des rotations coordonnées [−90, 180], jamais par −180. Lus par `GEOM.GEO.anglesNacelle / rotMin / rotMax`, `GEOM.rotOk`, `embarque.spec.angles_nacelle_deg`.
+- **Géométrie** : à −90°, la pierre tenue est décalée de l'autre côté de la face (u = zc sin rot). Faisabilité sous 350 mm identique à ±a (écart 0 mm, `tools/conception_pince.py`, `conception/pince.md`) : mêmes tables `GEOM.corridor`.
+- **Moteur** : `tourner` et `deposer` acceptent −90 ; `tour` et `porte` prennent un champ `r` ∈ {90, −90} (90 par défaut) ; préconditions et `exec` utilisent cet angle (pose décalée de ±zc, recul et balayage).
+- **Miroir** (remplace « pas d'angle −90 » de §15.4) : +θ dans le repère de l'équipe = −θ réel ; 0 et 180 inchangés (`GEOM.mirrorRot`, `embarque.miroir.rot_miroir`). `ENGINE.mirrorStep` l'applique à `tourner.r`, `deposer.r` (debout = 90) et à `tour.r` / `porte.r` (absents = 90, donc −90 en bleu). `ENV.mirrorBelief` met `rot` et `rotReelle` en miroir.
+- **Observation 3.3** : angle de l'équipe (bleu : `mirrorRot`), codé (angle + 90) / 270 ; l'ancien angle / 180 confondait −90 et 0. Même nombre d'entrées.
+- **Catalogue 3.3** : « Préparer la pince » propose −90 (8 actions au lieu de 6, 157 au total) ; une tour est posée à −90° si la pince de l'équipe y est déjà, sinon à +90°. Les modèles 3.2 sont refusés : à réentraîner.
+- **Embarqué** : le pont rend plans et images bleus avec l'angle de l'équipe ; `traduire` envoie l'angle réel (`ROT B −90` pour « face A à 90° » en bleu) ; `PENDING_ROT` en face et angle réels ; recoupement codeur en angle réel. Firmware simulé : `ROT` hors [−90, 180] -> `NAK RANGE ROT` (`docs/PROTOCOLE_ESP32.md` §5.2).
+- **Correction** : `sim.finish()` ne fait plus une rotation préparée après 100 s (le rejeu de `env.program()` donnait des erreurs absentes de l'environnement).
+
+| Mesure (`tests/mesure_symetrie.js`, `tests/test_engine.js 2000`) | Avant (62055a2) | Après |
+|---|---|---|
+| obs(jaune) = obs(bleu, miroir physique), 200 croyances | 200 / 200 | 200 / 200 |
+| masque identique (états) ; actions différentes | 121 / 200 ; 281 / 31 000 (0,91 %) | 166 / 200 ; **44 / 31 400 (0,14 %)** |
+| dont états avec une nacelle à ±90° | 248 actions, 101 états | 41 actions, 118 états |
+| référence jaune -> catalogue, rejouée en bleu seul | 32 pts, 8 masquées | **122 pts, 0 masquée** |
+| même programme sans masque (`mirrorStep`), bleu seul | 49 pts, 6 erreurs (T6, M8, Graal) | **122 pts, 0 erreur** |
+| masque -> moteur, 2000 décisions, jaune / bleu | 0,55 % / 0,80 % | 0,50 % / 0,90 % (trajet ou pose, tirages différents) |
+
+Les états tirés au hasard ne sont pas les mêmes avant et après (catalogue de 157 actions au lieu de 155).
+
+**Asymétries restantes** : 33 des 44 actions différentes sont « Monter le Graal » (face C : ascenseur à droite, prise décalée de 2 × 57 mm), le reste sur le planificateur (tour, trajets). Rotation 90 -> 180 de l'équipe bleue = −90 -> 180 réel (270°, par 0 et 90) : 2 s de plus (1 s par 90°, spec) et un balayage horizontal différent (180° ne sert qu'au stockage sans pierre en rangée 1 et à « Préparer la pince »).
+
+**Points ouverts** : `plateau/app.js` (chantier web) ne propose que 0, 90 et 180° pour « Tourner la pince » (champ `r` de tour et porte non exposé) ; le matériel de rotation (Q3 de PROTOCOLE_ESP32) doit pouvoir aller à −90°.

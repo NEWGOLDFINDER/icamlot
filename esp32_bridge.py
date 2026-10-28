@@ -32,8 +32,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
 
-from embarque.miroir import face_reelle, pose_miroir
-from embarque.spec import depression_minimale_kpa, table_longueur_mm
+from embarque.miroir import face_reelle, pose_miroir, rot_reelle
+from embarque.spec import angles_nacelle_deg, depression_minimale_kpa, table_longueur_mm
 
 try:
     import serial
@@ -230,7 +230,9 @@ def traduire(plan: dict, equipe: str = "yellow", params: ParamsESP32 = PARAMS) -
         elif g in ("GRIP_A", "GRIP_B"):
             face = face_reelle(g[-1], equipe)            # bleu : la face A de l'équipe est la vraie face B (CONTRATS §15)
             for axe, i, tol in (("Z", 0, params.tol_hc_mm), ("ROT", 1, params.tol_rot_deg)):     # hc -> vérin Z ; rot -> rotation
-                for run in _mouvements_de_l_axe([{"t": p["t"], "v": [p["v"][i]]} for p in pts], params.eps_val):
+                # bleu : angle de l'équipe +θ = angle réel -θ (CONTRATS §16 ; 0 et 180 inchangés)
+                val = (lambda v: rot_reelle(v, equipe)) if axe == "ROT" else float
+                for run in _mouvements_de_l_axe([{"t": p["t"], "v": [val(p["v"][i])]} for p in pts], params.eps_val):
                     run = _simplifier(run, (tol,))
                     for p, q in zip(run[:-1], run[1:]):
                         add("ACT", f"{axe} {face} {q['v'][0]:.1f}{_suffixe_duree(p['t'], q['t'], params)}", p["t"], q["t"], f"{axe}_{face}")
@@ -267,7 +269,8 @@ def traduire(plan: dict, equipe: str = "yellow", params: ParamsESP32 = PARAMS) -
         add("ACT", "TIR", t_debut, fire["t1"], "TIR", None if no_avant is None else no_avant - prep + params.marge_avant_tir_s)
     # « Préparer la pince » : rotation demandée en temps masqué, sans mouvement à cet instant (reportée au prochain trajet).
     if kind == "tourner" and brique.get("tm") and not any(c.groupe.startswith(("Z_", "ROT_")) for c in cmds):
-        cmds.append(Commande(len(cmds), "HOST", f"PENDING_ROT {brique['f']} {brique['r']}", 0.0, 0.0, "HOST"))
+        cmds.append(Commande(len(cmds), "HOST", f"PENDING_ROT {face_reelle(brique['f'], equipe)} {rot_reelle(brique['r'], equipe):g}",
+                             0.0, 0.0, "HOST"))
     # tri puis dépendances
     cmds.sort(key=lambda c: (c.t0, c.t1, c.id))
     for n, c in enumerate(cmds):
@@ -969,6 +972,10 @@ class FirmwareSimule:
             if face not in ("A", "B"):
                 return nak("SYNTAX", "face")
             voie, cib = f"{op}_{face}", (float(args[1]),)
+            # plage des rotations coordonnées : [-90, 180] (spec/robot.json, rotation_angles_deg ; PROTOCOLE_ESP32 §5.2)
+            if op == "ROT" and not (min(angles_nacelle_deg()) - 1e-6 <= cib[0] <= max(angles_nacelle_deg()) + 1e-6):
+                return nak("RANGE", "ROT")
+
         elif op == "ASC":
             voie, cib = "ASC", (float(args[0]), float(args[1]))
         elif op == "PUMP":

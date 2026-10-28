@@ -5,7 +5,8 @@
    - robot : origine au centre, angle 0 = normale de la face A, sens trigonométrique ; faces B et C à +120° et +240° ;
    - face : n = normale sortante (nv), u = droite vue de face (lv), z = hauteur depuis le sol ;
    - nacelle (faces A et B) : plan (u, z) de la face, origine sur l'axe de rotation (hauteur hc, rangée 2).
-     Rotation d'un angle rot (degrés) : (u, z) -> (u cos + z sin, -u sin + z cos). À 90°, la rangée 1 (z = -110) passe en u = -110.
+     Rotation d'un angle rot (degrés) : (u, z) -> (u cos + z sin, -u sin + z cos). À 90°, la rangée 1 (z = -110) passe en u = -110 ;
+     à -90°, en u = +110 (miroir exact de +90°). Angles : spec rotation_angles_deg [-90, 0, 90, 180], plage [-90, 180].
    Toute valeur absente de la spec est une constante nommée ci-dessous, avec sa source ou la mention « hypothèse ». */
 (function (root) {
   var SPEC = root.SPEC;
@@ -39,6 +40,13 @@
   })();
 
   /* ---------------- nacelles A et B (conception/pince.md, tools/conception_pince.py) ---------------- */
+  /* angles de la nacelle (spec rotation_angles_deg ; -90° : décision de l'équipe du 2026-10-28, rotation_moins_90) et plage des
+     rotations coordonnées [min, max] (une rotation va toujours de a0 à a1 dans cette plage : de -90 à 180, par 0 et 90) */
+  var ROT_ANGLES = NAC.rotation_angles_deg.slice(), ROT_MIN = Math.min.apply(null, ROT_ANGLES), ROT_MAX = Math.max.apply(null, ROT_ANGLES);
+  function rotOk(a) { return ROT_ANGLES.indexOf(+a) >= 0; }
+  /* angle réel <-> angle vu dans le miroir de la table (équipe bleue, contrat §16) : u -> -u, donc rot -> -rot ; 0 et 180 sont
+     leur propre miroir (-180 est hors de la plage : même pose, mais balayage par +90 au lieu de -90) */
+  function mirrorRot(a) { a = +a; return Math.abs(Math.abs(a) - 180) < 1e-9 ? 180 : a === 0 ? 0 : -a; }
   var SAILLIE = NAC.saillie_hors_face.recommandation;                      /* 35 : avant des ventouses depuis la face */
   var NAC_DOS = 2;            /* dos de la nacelle à 2 mm de la face (tools/cao_robot.py : xa = FACE + 2) */
   var D_PIERRE = FACE + SAILLIE + PE / 2;                                  /* 200,3 : centre d'une pierre à plat tenue */
@@ -96,7 +104,8 @@
   /* ---- faisabilité des rotations (portage de balayage, tools/conception_pince.py) ----
      Pour une charge (masque de rangées) et un angle, plage de hauteurs d'axe admissibles [lo, hi] :
      actionneurs <= 350 mm, actionneurs et pierres >= GARDE_SOL, pierres <= 350 mm hors château et hors zones de construction,
-     axe dans sa course [HC_MIN, HC_MAX]. Tables au degré, angles 0 à 180 (charge et nacelle symétriques en u). */
+     axe dans sa course [HC_MIN, HC_MAX]. Tables au degré, angles 0 à 180 : la charge et la nacelle sont symétriques en u, si bien
+     que la plage à -a est celle à +a (vérifié par tools/conception_pince.py : écart 0 mm) ; normAng ramène [-180, 180] à [0, 180]. */
   var CORR = [], HC_GEO = [HC_MIN, HC_MAX], MARGE_H = 0, COURSE_V = 0;
   function buildCorr() {
     var HM = H_MAX - MARGE_H;
@@ -315,6 +324,7 @@
     rin: FACE, R: HULL_R, face: FACE, toit: TOIT, faceLong: CH.faces_longueur[0], hull: HULL, hullR: HULL_R,
     saillie: SAILLIE, nacDos: NAC_DOS, dPierre: D_PIERRE, gardeSol: GARDE_SOL, hMax: H_MAX, perDepart: PER_DEPART, perMatch: PER_MATCH,
     bordure: BORDURE, pierre: [PL, PE], rangees: RANGEES, colonne: COL, hcMin: HC_MIN, hcMax: HC_MAX, bordV3: BORD_V3,
+    anglesNacelle: ROT_ANGLES, rotMin: ROT_MIN, rotMax: ROT_MAX,
     canon: { y: CAN_Y, el: CAN_EL, d: CAN_D, course: CAN_COURSE, horsFace: CAN_HF, hauteur: CAN_HZ, z: CAN_Z },
     graal: { base: GR_BASE, h: GR_H, anse: ANSE, xPrise: GX_PRISE, toit: G_TOIT, y: GY },
     fourche: { fxSortie: FX_SORTIE, fxRentree: FX_RENTREE, fzHaut: FZ_HAUT, fzBas: FZ_BAS, dentY: DENT_Y, cao: FO },
@@ -324,6 +334,8 @@
     GEO: GEO, nv: nv, lv: lv, heldFoot: heldFoot, rectPoly: rectPoly, robotPoly: robotPoly, triPoly: triPoly, cannonPoly: cannonPoly, overlap: overlap,
     hullHit: hullHit, hullsHit: hullsHit, convexHull: convexHull, hullPer: hullPer, perimetre: perimetre, robotPtsR: robotPtsR, robotFootprint: robotFootprint,
     actExt: actExt, loadExt: loadExt, actTop: actTop, stoneRect: stoneRect, stoneZc: stoneZc, corridor: corridor, balayage: balayage, normAng: normAng, configurerCourse: configurerCourse, courseVersion: courseVersion,
+    rotOk: rotOk, mirrorRot: mirrorRot,
+
     nacPtsR: nacPtsR, canonPtsR: canonPtsR, canonReach: canonReach, fourchePtsR: fourchePtsR, fourcheZ: fourcheZ, faceToRobot: faceToRobot, toTable: toTable, cState: cState
   };
   root.GEOM = api;

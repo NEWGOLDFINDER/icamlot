@@ -28,7 +28,7 @@ console.log('Moteur ' + ENGINE.VERSION + ', barème ' + ctx.BAREME_VERSION + ', 
 
 console.log('\n1. Catalogue v3');
 var ALL = ACTIONS.ALL;
-check('versions exposées', ACTIONS.CATALOGUE_VERSION === 'icamlot-catalogue-3.2' && ENV.OBS_VERSION === 'icamlot-obs-3.2');
+check('versions exposées', ACTIONS.CATALOGUE_VERSION === 'icamlot-catalogue-3.3' && ENV.OBS_VERSION === 'icamlot-obs-3.3');
 check('familles = catalogue', sum(ACTIONS.FAMILLES.map(function (f) { return f.n; })) === ALL.length, ALL.length + ' actions');
 check('labels uniques', new Set(ALL.map(function (a) { return a.label; })).size === ALL.length);
 check('plus de prendreGraal / poserGraal / staging / repickup', !ALL.some(function (a) { return /Graal$|staging|repickup/.test(a.famille) && a.famille !== 'monterGraal'; }));
@@ -36,7 +36,7 @@ var ATT = ALL.filter(function (a) { return a.famille === 'attenteCourte'; });
 check('attentes courtes (contrat §13) : une action par durée de HYPOTHESES.attentesCourtes, « finir » conservé',
   JSON.stringify(ATT.map(function (a) { return a.sec; })) === JSON.stringify(ACTIONS.HYPOTHESES.attentesCourtes) && ATT.every(function (a) { return a.a === 'attendre'; }) && ALL.some(function (a) { return a.a === 'finir'; }),
   ATT.map(function (a) { return a.sec + ' s'; }).join(', '));
-check('monterGraal et préparer la pince présents', ALL.some(function (a) { return a.a === 'monterGraal'; }) && ALL.filter(function (a) { return a.a === 'preparer'; }).length === 6);
+check('monterGraal et préparer la pince présents', ALL.some(function (a) { return a.a === 'monterGraal'; }) && ALL.filter(function (a) { return a.a === 'preparer'; }).length === 8 && ALL.some(function (a) { return a.a === 'preparer' && a.r === -90; }));
 var env0 = ENV.create({ skipContacts: true }); env0.reset({});
 var b0 = env0.belief();
 var bricks = ALL.map(function (a) { return ACTIONS.toProgramStep(a, b0); }).filter(Boolean);
@@ -129,13 +129,16 @@ check('observation bornée', ob.length === ENV.nInputs() && ob.every(function (v
 console.log('\n5. Miroir bleu');
 /* Miroir physique (chantier symétrie, contrat §15) : le robot n'est pas symétrique (A, B, C à h, h + 120, h + 240). Le vrai robot
    bleu qui reproduit une situation jaune est celui dont la face B joue le rôle de la face A : cap réel 180 - (h + 120) = 60 - h,
-   pinces A et B échangées, face C inchangée. */
+   pinces A et B échangées, face C inchangée. Angles de nacelle : le miroir change u en -u, donc rot en -rot (0 et 180 inchangés,
+   -180 hors de la plage [-90, 180] de la spec : contrat §16). */
+function rotPhys(r) { return r == null ? r : r === 180 || r === 0 ? r : -r; }
 function mirrorBelief(b) {
   var m = JSON.parse(JSON.stringify(b)), mid = function (id) { return id && id.indexOf('.') >= 0 ? ENGINE.mirrorId(id.split('.')[0]) + '.' + id.split('.')[1] : ENGINE.mirrorId(id); };
   m.team = b.team === 'blue' ? 'yellow' : 'blue';
   m.pose.x = 3000 - b.pose.x; m.pose.h = ENGINE.mirrorCap(b.pose.h);
   m.pinces = {};
-  ['A', 'B'].forEach(function (f) { var g = JSON.parse(JSON.stringify(b.pinces[f])); g.slots = b.pinces[f].slots.map(function (id) { return id ? mid(id) : null; }); m.pinces[ENGINE.mirrorFace(f)] = g; });
+  ['A', 'B'].forEach(function (f) { var g = JSON.parse(JSON.stringify(b.pinces[f])); g.slots = b.pinces[f].slots.map(function (id) { return id ? mid(id) : null; }); g.rot = rotPhys(g.rot); g.rotReelle = rotPhys(g.rotReelle); m.pinces[ENGINE.mirrorFace(f)] = g; });
+
   if (b.adversaire) { m.adversaire.x = 3000 - b.adversaire.x; m.adversaire.vx = -(b.adversaire.vx || 0); }
   m.pierres = b.pierres.map(function (s) { var o = JSON.parse(JSON.stringify(s)); o.id = mid(s.id); o.pk = ENGINE.PK.map(function (p) { return p.id; }).indexOf(ENGINE.mirrorId(ENGINE.PK[s.pk].id)); o.foot = s.foot.map(function (v) { return [3000 - v[0], v[1]]; }); return o; });
   m.portes = b.portes.map(mid);

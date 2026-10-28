@@ -116,7 +116,9 @@ Course 100 mm, vitesse retenue 80 mm/s (84 à vide, 75 à 120 N ; équipe, 2026-
 
 | Commande | Réponse | Rôle |
 |---|---|---|
-| `ROT <face> <angle> [T=<ms>] #id` | `ACK`, puis `DONE` | amener la nacelle `A` ou `B` à l'angle `angle` (degrés, 0 / 90 / 180 dans la spec) |
+| `ROT <face> <angle> [T=<ms>] #id` | `ACK`, puis `DONE` | amener la nacelle `A` ou `B` à l'angle `angle` (degrés, −90 / 0 / 90 / 180 dans la spec ; consignes intermédiaires d'une rotation coordonnée comprises dans [−90, 180], `NAK #id RANGE ROT` sinon) |
+
+Sens : angle positif dans le sens du moteur (`engine/geom.js`) ; à −90°, la pierre tenue part de l'autre côté de la face qu'à +90° (`spec/robot.json`, `rotation_moins_90`). Pour l'équipe bleue, le Pi envoie l'angle réel (opposé de celui du repère de l'équipe, `docs/CONTRATS.md` §16) : le firmware ne connaît pas l'équipe.
 
 Matériel et capteur de retour : non décrits (Q3).
 

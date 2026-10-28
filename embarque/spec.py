@@ -40,3 +40,9 @@ def phase_attaque_debut_s() -> float:
 def depression_minimale_kpa() -> float:
     """Dépression minimale (kPa) pour dire qu'une pierre est tenue : robot.json, mecanismes.pince_A_et_B.ventouses (statut « propose »)."""
     return float(robot()["mecanismes"]["pince_A_et_B"]["ventouses"]["depression_minimale_kPa"])
+
+
+def angles_nacelle_deg() -> list:
+    """Angles des nacelles A et B (degrés) : robot.json, mecanismes.pince_A_et_B.rotation_angles_deg ([-90, 0, 90, 180] ; -90 :
+    décision de l'équipe du 2026-10-28). La plage des rotations coordonnées est [min, max]."""
+    return [float(a) for a in robot()["mecanismes"]["pince_A_et_B"]["rotation_angles_deg"]]

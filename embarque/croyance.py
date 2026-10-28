@@ -26,7 +26,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Protocol, Tuple
 
-from embarque.miroir import face_reelle, pose_miroir
+from embarque.miroir import face_reelle, pose_miroir, rot_reelle
 from embarque.spec import table_longueur_mm
 
 logger = logging.getLogger("Croyance")
@@ -169,7 +169,7 @@ class ConstructeurCroyance:
             hc, rot = st.grip[face_reelle(f, self.equipe)]
             if abs(hc - g["hc"]) > tol_hc_mm:
                 out.append(f"hc {f} : modèle {g['hc']:.1f} mm, codeur {hc:.1f} mm")
-            rot_attendue = g["rotReelle"] if g.get("rotReelle") is not None else g["rot"]
+            rot_attendue = rot_reelle(g["rotReelle"] if g.get("rotReelle") is not None else g["rot"], self.equipe)   # §16 : bleu, -θ
             if abs(rot - rot_attendue) > tol_rot_deg:
                 out.append(f"rot {f} : modèle {rot_attendue:.1f}°, codeur {rot:.1f}°")
             tenues += sum(1 for v in st.tenue[face_reelle(f, self.equipe)] if v)
