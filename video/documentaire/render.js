@@ -5,10 +5,13 @@ const { spawn } = require('child_process');
   const [a, b, out, dprArg] = process.argv.slice(2); const FPS = 30, DPR = +(dprArg || 1);
   const ff = spawn('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'image2pipe', '-framerate', String(FPS), '-c:v', 'png', '-i', '-',
     '-c:v', 'libx264', '-preset', 'slow', '-crf', '17', '-pix_fmt', 'yuv420p', '-r', String(FPS), out], { stdio: ['pipe', 'inherit', 'inherit'] });
-  const br = await chromium.launch({ args: ['--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+  // configuration du navigateur : gpu_config.json (écrit par gpucheck.js) sinon rendu logiciel
+  let cfg = { headless: true, args: ['--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] };
+  try { cfg = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, 'gpu_config.json'), 'utf8')); } catch (e) { }
+  const br = await chromium.launch(cfg);
   const p = await br.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: DPR });
   p.on('pageerror', e => console.log('ERR', e.message));
-  await p.goto(`http://localhost:8765/${process.env.PAGE || 'index.html'}?dpr=${DPR}`);
+  await p.goto(`http://localhost:${process.env.PORT || 8765}/${process.env.PAGE || 'index.html'}?dpr=${DPR}`);
   await p.waitForFunction('window.READY === true', null, { timeout: 300000 });
   const t0 = Date.now();
   for (let f = +a; f < +b; f++) {

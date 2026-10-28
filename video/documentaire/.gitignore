@@ -1,0 +1,7 @@
+gpu_config.json
+rendu/
+node_modules/
+voix/voix.mp3
+voix/voix_placee.wav
+*.mp4
+*.wav
