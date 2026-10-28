@@ -22,6 +22,8 @@ from pathlib import Path
 from typing import List, Optional
 
 ROOT = Path(__file__).resolve().parent.parent
+# Hypothèse : période minimale (s) entre deux messages de progression pendant la collecte du 1er rollout.
+MESSAGE_PERIODE_S = 2.0
 TRAINER_DIR = Path(__file__).resolve().parent
 # Éliminer le dossier trainer/ de sys.path pour éviter qu'un module trainer.py masque le package trainer
 while str(TRAINER_DIR) in sys.path:
@@ -398,6 +400,7 @@ def run_ppo(job: Job, pool: JsEnvPool, cfg: dict, strats: List[dict], sampler: S
         tr.update = 0
         job.logline("Reprise des poids du modèle précédent.")
     elif regl.get("pretrain_imitation", True):
+        job.logline("Pré-entraînement par imitation…")
         demos = demos_for(job, pool, cfg, strats, sampler)
         if demos:
             imitation_train(tr.model, demos, epochs=int(regl.get("epoques") or 40),
@@ -429,7 +432,30 @@ def run_ppo(job: Job, pool: JsEnvPool, cfg: dict, strats: List[dict], sampler: S
         job.save()
         return job.wait_if_paused()
 
-    res = tr.run(base, sampler, on_update)
+    # Message de progression pendant la collecte du 1er rollout (aucune mise à jour PPO n'est encore publiée) :
+    # chaque pool.step() = un pas de décision pour chacun des pool.n_envs environnements.
+    per_rollout = pc.rollout * pool.n_envs
+    step_orig, seen = pool.step, [0, 0.0]
+
+    def step_counted(*a, **k):
+        r = step_orig(*a, **k)
+        seen[0] += pool.n_envs
+        if time.time() - seen[1] >= MESSAGE_PERIODE_S or seen[0] >= per_rollout:
+            seen[1] = time.time()
+            job.data.setdefault("progress", {})["message"] = f"Collecte du 1er rollout : {min(seen[0], per_rollout)}/{per_rollout} décisions"
+            job.save()
+        return r
+
+    def on_update_first(st):  # le comptage ne vaut que pour le 1er rollout
+        pool.step = step_orig
+        return on_update(st)
+
+    job.logline(f"Collecte du 1er rollout : 0/{per_rollout} décisions")
+    pool.step = step_counted
+    try:
+        res = tr.run(base, sampler, on_update_first)
+    finally:
+        pool.step = step_orig
     ev = tr.best_eval
     info = tr.state()
     info["evaluation"] = ev

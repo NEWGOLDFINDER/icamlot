@@ -6,6 +6,7 @@ Sans pytest : python3 tests/test_api.py vise un serveur déjà lancé (ICAMLOT_T
 """
 import json
 import os
+import signal
 import socket
 import subprocess
 import sys
@@ -137,6 +138,234 @@ def test_api(tmp_path):
     finally:
         proc.terminate()
         proc.wait(timeout=10)
+
+
+# ───────────── processus : lancement, arrêt, orphelins, authentification ─────────────
+sys.path.insert(0, str(ROOT))
+from api import server as srv  # noqa: E402  (fonctions /proc et arrêt testées directement)
+
+BRAIN = {
+    "name": "Test proc", "entrees": ENTREES, "actions": {"familles": FAMILLES},
+    "reseau": {"couches": [{"neurones": 8, "activation": "relu"}]}, "methode": "evolution",
+    # longue durée pour que la tâche tourne jusqu'à ce que le test l'arrête
+    "reglages": {"population": 4, "generations": 500, "duree_max": 1800, "graine": 1, "processus": 2},
+}
+
+
+def start_api(tmp, port, password="", grace="3"):
+    """API sur tmp/strategies ; les tâches vont dans tmp/trainings (voir jobs_dir)."""
+    env = dict(os.environ, ICAMLOT_PASSWORD=password, ICAMLOT_STOP_GRACE_S=grace)
+    p = subprocess.Popen([sys.executable, str(ROOT / "api" / "server.py"), "--port", str(port),
+                          "--data", str(tmp / "strategies")], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    base = f"http://127.0.0.1:{port}"
+    for _ in range(100):
+        try:
+            urllib.request.urlopen(base + "/api/auth", timeout=1)
+            break
+        except urllib.error.HTTPError:
+            break
+        except Exception:
+            time.sleep(0.1)
+    return p, base
+
+
+def gone(pid):
+    st = srv.proc_stat(pid)
+    return st is None or st[0] in ("Z", "X")
+
+
+def wait_for(cond, what, timeout=120):
+    end = time.time() + timeout
+    while time.time() < end:
+        v = cond()
+        if v:
+            return v
+        time.sleep(0.3)
+    raise AssertionError("délai dépassé : " + what)
+
+
+def launch(base, slug="test-proc"):
+    st, j, _ = req("PUT", f"/api/cerveaux/{slug}", dict(BRAIN, name=slug), base=base)
+    assert st == 200, (st, j)
+    st, j, _ = req("POST", "/api/trainings", {"slug": slug}, base=base)
+    assert st == 200, (st, j)
+    return j["id"]
+
+
+def status_of(base, jid):
+    return req("GET", f"/api/trainings/{jid}", base=base)[1]
+
+
+def procs_of(base, jid):
+    st, j, _ = req("GET", "/api/processus", base=base)
+    assert st == 200, (st, j)
+    return [q for q in j["processus"] if q["tache"] == jid]
+
+
+def running_with_workers(base, jid):
+    """Attend l'entraîneur et au moins un worker Node, renvoie (pid entraîneur, pids workers)."""
+    def cond():
+        ps = procs_of(base, jid)
+        tr = [q["pid"] for q in ps if q["type"] == "entraineur"]
+        wk = [q["pid"] for q in ps if q["type"] == "worker"]
+        return (tr[0], wk) if tr and wk else None
+    return wait_for(cond, "entraîneur et workers Node")
+
+
+def cleanup(base, proc, tmp):
+    try:
+        req("POST", "/api/processus/stop-all", {}, base=base)
+    except Exception:
+        pass
+    proc.terminate()
+    proc.wait(timeout=10)
+    for pid in srv.all_pids():  # filet : tout processus encore rattaché au dossier de test
+        if str(tmp) in " ".join(srv.proc_cmdline(pid)):
+            srv._signal(pid, signal.SIGKILL)
+
+
+def dead_pid():
+    p = subprocess.Popen([sys.executable, "-c", "pass"])
+    p.wait()
+    return p.pid
+
+
+def test_lancement_stop_et_workers(tmp_path):
+    api, base = start_api(tmp_path, _free_port())
+    try:
+        jid = launch(base)
+        tr, wk = running_with_workers(base, jid)
+        j = status_of(base, jid)
+        assert j["status"] == "running" and j["pid"] == tr
+        assert os.getpgid(tr) == tr  # nouveau groupe de processus
+        assert all(os.getpgid(w) == tr for w in wk)
+        q = next(x for x in procs_of(base, jid) if x["pid"] == tr)
+        assert q["duree_s"] >= 0 and q["rss_mo"] and q["nom"]
+        st, r, _ = req("POST", f"/api/trainings/{jid}/stop", {}, base=base)
+        assert st == 200 and r["status"] == "stopped", (st, r)
+        wait_for(lambda: all(gone(p) for p in [tr] + wk), "disparition de l'entraîneur et des workers", 20)
+        time.sleep(1.0)  # le watcher ne doit pas réécrire 'interrupted'
+        j = status_of(base, jid)
+        assert j["status"] == "stopped" and not j.get("error"), j
+        assert procs_of(base, jid) == []
+    finally:
+        cleanup(base, api, tmp_path)
+
+
+def test_stop_processus_et_stop_all(tmp_path):
+    api, base = start_api(tmp_path, _free_port())
+    try:
+        jid = launch(base)
+        tr, wk = running_with_workers(base, jid)
+        jid2 = launch(base, "test-proc2")  # en file d'attente
+        assert status_of(base, jid2)["status"] == "queued"
+        # pid hors liste : refusé (pid de pytest, pid 1, pid inexistant)
+        for bad in (os.getpid(), 1, 99999999):
+            st, r, _ = req("POST", f"/api/processus/{bad}/stop", {}, base=base)
+            assert st == 404, (bad, st, r)
+        assert not gone(os.getpid())
+        # arrêt d'un processus de la liste : un worker arrête tout l'entraîneur ; la file reprend
+        st, r, _ = req("POST", f"/api/processus/{wk[0]}/stop", {}, base=base)
+        assert st == 200 and jid in r["taches"], (st, r)
+        wait_for(lambda: all(gone(p) for p in [tr] + wk), "arrêt via /api/processus/<pid>/stop", 20)
+        assert status_of(base, jid)["status"] == "stopped"
+        tr2, wk2 = running_with_workers(base, jid2)
+        assert status_of(base, jid2)["status"] == "running"
+        # tout arrêter
+        st, r, _ = req("POST", "/api/processus/stop-all", {}, base=base)
+        assert st == 200 and jid2 in r["taches"], (st, r)
+        wait_for(lambda: all(gone(p) for p in [tr2] + wk2), "arrêt de tous les processus", 20)
+        assert status_of(base, jid2)["status"] == "stopped"
+        st, r, _ = req("POST", "/api/processus/stop-all", {}, base=base)
+        assert st == 200 and r["tues"] == []
+    finally:
+        cleanup(base, api, tmp_path)
+
+
+def test_orphelins_interrompus_et_file_reprise(tmp_path):
+    """Au démarrage : running/paused sans pid vivant -> interrupted ; la tâche en file démarre."""
+    api, base = start_api(tmp_path, _free_port())
+    try:
+        jid = launch(base)  # crée le cerveau et la config valide d'une tâche
+        req("POST", f"/api/trainings/{jid}/stop", {}, base=base)
+        jobs = tmp_path / "trainings"
+        modele = json.loads((jobs / (jid + ".json")).read_text())
+        api.terminate()
+        api.wait(timeout=10)
+        mort = dead_pid()
+        ids = {"a": "20260101-000000-aaaaaa", "b": "20260101-000001-bbbbbb", "c": "20260101-000002-cccccc"}
+        for k, st, pid in (("a", "running", mort), ("b", "paused", None)):
+            (jobs / (ids[k] + ".json")).write_text(json.dumps({"id": ids[k], "status": st, "created": 1, "name": k, "pid": pid}))
+        (jobs / (ids["c"] + ".json")).write_text(json.dumps(dict(modele, id=ids["c"], status="queued", created=2,
+                                                                  log=str(jobs / "c.log"), pid=None)))
+        api, base = start_api(tmp_path, _free_port())
+        for k in ("a", "b"):
+            j = status_of(base, ids[k])
+            assert j["status"] == "interrupted" and "ne tourne plus" in j["error"], j
+        if mort:
+            assert str(mort) in status_of(base, ids["a"])["error"]
+        running_with_workers(base, ids["c"])  # la file a repris
+        assert status_of(base, ids["c"])["status"] == "running"
+    finally:
+        cleanup(base, api, tmp_path)
+
+
+def test_stop_apres_redemarrage_de_l_api(tmp_path):
+    port = _free_port()
+    api, base = start_api(tmp_path, port)
+    try:
+        jid = launch(base)
+        tr, wk = running_with_workers(base, jid)
+        api.terminate()  # l'entraîneur est dans son propre groupe : il survit à l'API
+        api.wait(timeout=10)
+        assert not gone(tr)
+        api, base = start_api(tmp_path, port)
+        assert status_of(base, jid)["status"] == "running"  # vivant : pas marqué interrupted
+        assert [q["pid"] for q in procs_of(base, jid) if q["type"] == "entraineur"] == [tr]
+        st, r, _ = req("POST", f"/api/trainings/{jid}/stop", {}, base=base)
+        assert st == 200, (st, r)
+        wait_for(lambda: all(gone(p) for p in [tr] + wk), "arrêt d'un entraîneur d'une instance précédente", 20)
+        assert status_of(base, jid)["status"] == "stopped"
+    finally:
+        cleanup(base, api, tmp_path)
+
+
+def test_processus_exige_authentification(tmp_path):
+    api, base = start_api(tmp_path, _free_port(), password="secret-de-test")
+    try:
+        assert req("GET", "/api/processus", base=base)[0] == 401
+        assert req("POST", f"/api/processus/{os.getpid()}/stop", {}, base=base)[0] == 401
+        assert req("POST", "/api/processus/stop-all", {}, base=base)[0] == 401
+        st, _, h = req("POST", "/api/login", {"password": "secret-de-test"}, base=base)
+        assert st == 200
+        cookie = h["Set-Cookie"].split(";")[0]
+        st, j, _ = req("GET", "/api/processus", cookie=cookie, base=base)
+        assert st == 200 and j["processus"] == []
+        assert req("POST", f"/api/processus/{os.getpid()}/stop", {}, cookie=cookie, base=base)[0] == 404
+    finally:
+        cleanup(base, api, tmp_path)
+
+
+def test_escalade_sigkill():
+    """Un entraîneur qui ignore SIGTERM est tué (SIGKILL) après le délai, avec ses descendants."""
+    code = ("import signal,subprocess,sys,time\n"
+            "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+            "c = subprocess.Popen([sys.executable, '-c', 'import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(300)'])\n"
+            "print(c.pid, flush=True); time.sleep(300)")
+    p = subprocess.Popen([sys.executable, "-c", code, "trainer.trainer"], stdout=subprocess.PIPE, text=True,
+                         start_new_session=True, cwd=str(ROOT))
+    child = int(p.stdout.readline())
+    try:
+        assert srv.proc_kind(p.pid) == "trainer" and not gone(child)
+        t0 = time.time()
+        res = srv.stop_processes([p.pid], grace=1.0)
+        assert res["sigkill"] and res["survivants"] == [], res
+        assert time.time() - t0 >= 1.0
+        p.wait(timeout=5)
+        wait_for(lambda: gone(child), "descendant tué", 5)
+    finally:
+        p.kill()
+        p.wait()
 
 
 def main():
