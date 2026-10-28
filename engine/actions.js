@@ -754,6 +754,8 @@
     /* échec appris : la même brique vient d'échouer à cet instant, le monde n'a pas changé */
     if (b.echecs && b.echecs.t === b.t && (b.echecs.briques || []).some(function (x) { return sameStep(x, st); })) return 'Vient d\'échouer à cet instant.';
     var ap = approaches(act, st, b);
+    /* finir (attendre sur place) : toujours possible avant 100 s, même si l'état courant est déjà fautif */
+    if (HYPOTHESES.planification === 'moteur' && st.a === 'attendreJusqua') return null;
     if (HYPOTHESES.planification === 'moteur') return engineCheck(st, b, ap, cache);
     if (!ap) return pendingOk(b, st, cache);
     if (st.a === 'tir') {
