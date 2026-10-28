@@ -432,30 +432,21 @@ def run_ppo(job: Job, pool: JsEnvPool, cfg: dict, strats: List[dict], sampler: S
         job.save()
         return job.wait_if_paused()
 
-    # Message de progression pendant la collecte du 1er rollout (aucune mise à jour PPO n'est encore publiée) :
-    # chaque pool.step() = un pas de décision pour chacun des pool.n_envs environnements.
-    per_rollout = pc.rollout * pool.n_envs
-    step_orig, seen = pool.step, [0, 0.0]
+    # Message de progression pendant la collecte d'un rollout (sur 1 cœur, des dizaines de minutes sans mise à jour).
+    # Seul le message est publié ici ; la limite de durée est vérifiée par PPOTrainer pendant la collecte.
+    last_msg = [0.0]
 
-    def step_counted(*a, **k):
-        r = step_orig(*a, **k)
-        seen[0] += pool.n_envs
-        if time.time() - seen[1] >= MESSAGE_PERIODE_S or seen[0] >= per_rollout:
-            seen[1] = time.time()
-            job.data.setdefault("progress", {})["message"] = f"Collecte du 1er rollout : {min(seen[0], per_rollout)}/{per_rollout} décisions"
-            job.save()
-        return r
+    def on_collect(done, total, dt):
+        if time.time() - last_msg[0] < MESSAGE_PERIODE_S and done < total:
+            return
+        last_msg[0] = time.time()
+        job.data.setdefault("progress", {})["message"] = (
+            f"Collecte du rollout {tr.update + 1} : {done}/{total} décisions · {done / max(dt, 1e-9):.1f} déc/s")
+        job.save()
 
-    def on_update_first(st):  # le comptage ne vaut que pour le 1er rollout
-        pool.step = step_orig
-        return on_update(st)
-
-    job.logline(f"Collecte du 1er rollout : 0/{per_rollout} décisions")
-    pool.step = step_counted
-    try:
-        res = tr.run(base, sampler, on_update_first)
-    finally:
-        pool.step = step_orig
+    job.logline(f"Collecte du rollout 1 : 0/{pc.rollout * pool.n_envs} décisions")
+    tr.on_collect = on_collect
+    res = tr.run(base, sampler, on_update)
     ev = tr.best_eval
     info = tr.state()
     info["evaluation"] = ev

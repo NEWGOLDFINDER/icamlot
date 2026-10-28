@@ -368,6 +368,92 @@ def test_escalade_sigkill():
         p.wait()
 
 
+def _job_with_log(tmp_path, status, log_lines, pid=None):
+    """Tâche + journal dans tmp_path/trainings (srv.DATA pointe sur tmp_path/strategies, restauré par l'appelant)."""
+    import secrets
+    jobs = tmp_path / "trainings"
+    jobs.mkdir(parents=True, exist_ok=True)
+    jid = "20260101-000009-" + secrets.token_hex(3)
+    log = jobs / (jid + ".log")
+    log.write_text("\n".join(log_lines) + "\n")
+    (jobs / (jid + ".json")).write_text(json.dumps({"id": jid, "status": status, "created": 1, "log": str(log), "pid": pid}))
+    return jid
+
+
+def test_statut_final_selon_le_journal_et_le_code_retour(tmp_path):
+    """Une sortie sur exception donne 'error' avec son message, quel que soit le code retour (cas b99da7)."""
+    old = srv.DATA
+    srv.DATA = str(tmp_path / "strategies")
+    try:
+        fatal = ["[10:00:00] Entraîneur démarré", "Traceback (most recent call last):", '  File "x.py", line 1, in <module>',
+                 "AttributeError: 'FactorizedEncoder' object has no attribute 'geo_mlp'"]
+        ok = ["[10:00:00] Entraîneur démarré", "[10:05:00] Terminé. Poids enregistrés."]
+        cas = [  # (statut écrit par l'entraîneur, journal, code retour, statut attendu)
+            ("done", fatal, 0, "error"),        # 'done' malgré l'exception
+            ("running", fatal, 0, "error"),     # code 0 malgré l'exception
+            ("running", fatal, 1, "error"),
+            ("running", ok, 0, "done"),
+            ("running", ["[10:00:00] x"], -15, "interrupted"),
+            ("running", ["[10:00:00] x"], 143, "interrupted"),
+            ("running", ["[10:00:00] x"], 3, "error"),
+            ("done", ok, 0, "done"),
+        ]
+        for st, lines, rc, attendu in cas:
+            jid = _job_with_log(tmp_path, st, lines)
+            srv.finish_job(jid, rc)
+            j = srv.load_json(srv.job_path(jid))
+            assert j["status"] == attendu, (st, rc, attendu, j)
+            if attendu == "error" and lines is fatal:
+                assert "geo_mlp" in j["error"], j
+        # tâche arrêtée par l'utilisateur : inchangée
+        jid = _job_with_log(tmp_path, "stopped", fatal)
+        srv.finish_job(jid, -15)
+        assert srv.load_json(srv.job_path(jid))["status"] == "stopped"
+        # redémarrage de l'API : pid mort + erreur fatale dans le journal -> 'error' avec le message
+        jid = _job_with_log(tmp_path, "running", fatal, pid=dead_pid())
+        jid2 = _job_with_log(tmp_path, "running", ok[:1], pid=dead_pid())
+        srv.reconcile_jobs()
+        a, b = srv.load_json(srv.job_path(jid)), srv.load_json(srv.job_path(jid2))
+        assert a["status"] == "error" and "geo_mlp" in a["error"], a
+        assert b["status"] == "interrupted" and "ne tourne plus" in b["error"], b
+    finally:
+        srv.DATA = old
+
+
+def test_exception_de_l_entraineur_donne_error(tmp_path):
+    """De bout en bout : un entraîneur qui plante (point de sauvegarde illisible) -> tâche 'error' avec message."""
+    api, base = start_api(tmp_path, _free_port())
+    try:
+        st, j, _ = req("PUT", "/api/cerveaux/test-ppo-ko", {
+            "name": "test-ppo-ko", "entrees": ENTREES, "actions": {"familles": FAMILLES}, "methode": "ppo",
+            "reglages": {"ppo_steps": 5000, "ppo_batch_size": 16, "processus": 1}}, base=base)
+        assert st == 200, (st, j)
+        bad = tmp_path / "weights" / "ancien.pt"
+        bad.parent.mkdir(parents=True, exist_ok=True)
+        bad.write_bytes(b"pas un point de sauvegarde")
+        (tmp_path / "weights" / "test-ppo-ko.json").write_text(json.dumps({"fichiers": {"pt": str(bad)}}))
+        st, j, _ = req("POST", "/api/trainings", {"slug": "test-ppo-ko", "reprendre": True}, base=base)
+        assert st == 200, (st, j)
+        jid = j["id"]
+        j = wait_for(lambda: (lambda x: x if x["status"] not in ("queued", "running") else None)(status_of(base, jid)),
+                     "fin de la tâche", 90)
+        assert j["status"] == "error" and j.get("error"), j
+        wait_for(lambda: req("GET", "/api/processus", base=base)[1]["processus"] == [], "sortie de l'entraîneur", 20)
+    finally:
+        cleanup(base, api, tmp_path)
+
+
+def test_route_trainer_expose_les_coeurs(tmp_path):
+    api, base = start_api(tmp_path, _free_port())
+    try:
+        st, j, _ = req("GET", "/api/trainer", base=base)
+        assert st == 200 and j["cpu_count"] == (os.cpu_count() or 1)
+        assert j["cpu_affinite"] == len(os.sched_getaffinity(0)) and 1 <= j["procs_auto"]
+        assert j["envs_par_coeur_alerte"] > 0
+    finally:
+        cleanup(base, api, tmp_path)
+
+
 def main():
     run_checks()
     print("API ok")

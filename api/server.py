@@ -79,6 +79,9 @@ STOP_GRACE_S = float(os.environ.get("ICAMLOT_STOP_GRACE_S", "10"))
 KILL_WAIT_S = 5.0
 # Hypothèse : période (s) de surveillance d'un entraîneur lancé par une instance précédente de l'API.
 ADOPT_POLL_S = 2.0
+# Hypothèse (aucune valeur dans spec/*.json) : au-delà de ce nombre d'environnements par cœur, l'interface
+# avertit que la collecte d'un rollout sera très longue (mesure d'audit : ~5 décisions/s par cœur).
+ENVS_PAR_COEUR_ALERTE = int(os.environ.get("ICAMLOT_ENVS_PAR_COEUR_ALERTE", "16"))
 # Marqueurs de la ligne de commande des processus de calcul du projet (voir /api/processus).
 MARK_TRAINER = "trainer.trainer"
 MARK_WORKER = "engine/env_worker.js"
@@ -577,11 +580,7 @@ def _adopt_watch(jid, pid):
         while proc_alive(pid) and proc_kind(pid) == "trainer":
             time.sleep(ADOPT_POLL_S)
         with _job_lock:
-            cur = load_json(job_path(jid)) or {}
-            if cur.get("status") in ("running", "paused"):
-                cur["status"] = "interrupted"
-                cur["error"] = f"L'entraîneur (pid {pid}) s'est arrêté sans conclure."
-                atomic_json(job_path(jid), cur)
+            finish_job(jid, None)
             kick_queue()
     threading.Thread(target=watch, daemon=True).start()
 
@@ -597,9 +596,10 @@ def reconcile_jobs():
             if pid and proc_alive(pid) and proc_kind(pid) == "trainer":
                 _adopt_watch(j["id"], int(pid))
                 continue
-            j["status"] = "interrupted"
-            j["error"] = ("Interrompu : l'entraîneur" + (f" (pid {pid})" if pid else "") +
-                          " ne tourne plus (redémarrage du serveur ou de l'API).")
+            fatal = log_failure(j.get("log") or os.path.join(jobs_dir(), j["id"] + ".log"))
+            j["status"] = "error" if fatal else "interrupted"
+            j["error"] = fatal or ("Interrompu : l'entraîneur" + (f" (pid {pid})" if pid else "") +
+                                   " ne tourne plus (redémarrage du serveur ou de l'API).")
             atomic_json(job_path(j["id"]), j)
         kick_queue()
 
@@ -665,6 +665,83 @@ def find_python():
     return sys.executable
 
 
+# Dernière ligne d'erreur fatale d'un journal : exception Python, trace, ou « Erreur fatale » de l'entraîneur.
+FATAL_RE = re.compile(r"(^Traceback \(most recent call last\)|Erreur fatale|^[A-Za-z_][\w.]*(Error|Exception)\b)")
+LOG_TAIL_LINES = 40
+
+
+def log_tail(log, n=LOG_TAIL_LINES):
+    try:
+        with open(log, "r", encoding="utf-8", errors="replace") as f:
+            return [l.strip() for l in f.readlines()[-n:] if l.strip()]
+    except OSError:
+        return []
+
+
+def log_failure(log):
+    """Message de l'erreur fatale qui termine le journal, ou None. Une erreur n'est retenue que si rien d'autre
+    ne suit que sa trace (le journal d'un entraînement réussi finit par « Terminé »)."""
+    lines = log_tail(log)
+    for k in range(len(lines) - 1, -1, -1):
+        if FATAL_RE.search(lines[k]):
+            if any("Terminé" in l for l in lines[k + 1:]):
+                return None
+            cands = [l for l in lines[k:] if re.match(r"^[A-Za-z_][\w.]*(Error|Exception)\b", l)]
+            return cands[-1] if cands else lines[k]
+    return None
+
+
+def finish_job(jid, rc):
+    """Statut final d'une tâche dont l'entraîneur a quitté (rc : code de retour, None si inconnu). Toute sortie sur
+    exception donne 'error' avec son message, quel que soit le code de retour, même si l'entraîneur avait écrit 'done'.
+    Une sortie par signal (arrêt) donne 'interrupted'. À appeler avec _job_lock pris par l'appelant ou seul."""
+    path = job_path(jid)
+    cur = load_json(path) or {}
+    st = cur.get("status")
+    if st == "stopped":
+        return
+    fatal = log_failure(cur.get("log") or os.path.join(jobs_dir(), jid + ".log")) if st in ("running", "paused", "done", "error") else None
+    if fatal and st != "error":
+        cur["status"], cur["error"] = "error", fatal
+    elif st in ("running", "paused"):
+        if rc == 0:
+            cur["status"] = "done"
+        elif rc is not None and (rc < 0 or rc == 143):
+            cur["status"] = "interrupted"
+            cur["error"] = "Entraînement interrompu (signal d'arrêt)."
+        else:
+            cur["status"] = "interrupted" if rc is None else "error"
+            lines = log_tail(cur.get("log") or "")
+            cur["error"] = (f"L'entraîneur s'est arrêté (code {rc})." if rc is not None else
+                            f"L'entraîneur (pid {cur.get('pid')}) s'est arrêté sans conclure.")
+            if lines:
+                cur["error"] = next((l for l in reversed(lines) if any(k in l for k in ("Error", "Exception", "Erreur", "Traceback"))), lines[-1])
+    else:
+        return
+    atomic_json(path, cur)
+
+
+def cpu_info():
+    """Cœurs vus par l'API : os.cpu_count() (machine) et affinité (cœurs réellement utilisables par ce processus,
+    donc par l'entraîneur). Nombre de processus Node 'auto' = celui du trainer (js_env_pool.default_procs)."""
+    n = os.cpu_count() or 1
+    try:
+        aff = len(os.sched_getaffinity(0))
+    except (AttributeError, OSError):
+        aff = n
+    try:
+        sys.path.insert(0, REPO)
+        from trainer.js_env_pool import default_procs
+        auto = default_procs()
+    except Exception:  # numpy absent : même règle que default_procs
+        auto = max(1, n - 1)
+    finally:
+        if sys.path and sys.path[0] == REPO:
+            sys.path.pop(0)
+    return {"cpu_count": n, "cpu_affinite": aff, "procs_auto": auto,
+            "envs_par_coeur_alerte": ENVS_PAR_COEUR_ALERTE}
+
+
 def spawn_job(jid):
     global _job_proc, _job_id
     path = job_path(jid)
@@ -713,26 +790,7 @@ def spawn_job(jid):
             if _job_id == jid:
                 _job_proc = None
                 _job_id = None
-            cur = load_json(path) or {}
-            if cur.get("status") == "running":
-                cur["status"] = "interrupted" if proc.returncode else "done"
-                if proc.returncode:
-                    err_msg = f"L'entraîneur s'est arrêté (code {proc.returncode})."
-                    if os.path.exists(log):
-                        try:
-                            with open(log, "r", encoding="utf-8") as f:
-                                lines = [l.strip() for l in f.readlines() if l.strip()]
-                                if lines:
-                                    for l in reversed(lines):
-                                        if any(k in l for k in ("Error", "Exception", "Erreur", "Traceback")):
-                                            err_msg = l
-                                            break
-                                    else:
-                                        err_msg = lines[-1]
-                        except Exception:
-                            pass
-                    cur["error"] = err_msg
-                atomic_json(path, cur)
+            finish_job(jid, proc.returncode)
             kick_queue()
 
     threading.Thread(target=watch, daemon=True).start()
@@ -982,6 +1040,7 @@ class Handler(SimpleHTTPRequestHandler):
             return self.send_json(200, {"processus": list_processes(), "stop_grace_s": STOP_GRACE_S})
         if kind == "trainer":
             info = {"device": "cpu", "name": "CPU", "vram_mo": 0, "courant": _job_id, "queue": queue_position(_job_id or "")}
+            info.update(cpu_info())
             try:
                 import numpy  # noqa: F401
                 info["numpy"] = True

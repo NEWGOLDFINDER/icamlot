@@ -527,9 +527,26 @@
   }
   procLoop();
 
+  var cpu = null;
   api('GET', API + '/trainer').then(function (j) {
     $('tDev').textContent = (j.name || j.device) + (j.cuda ? ' (CUDA)' : ' (CPU)');
+    cpu = j.cpu_count ? j : null;
+    if (cpu) $('tCores').textContent = cpu.cpu_count + ' vus (os.cpu_count) · ' + cpu.cpu_affinite + ' utilisables (affinité) · processus Node auto : ' + cpu.procs_auto;
+    coresWarn();
   }, function () { $('tDev').textContent = 'injoignable'; });
+  /* PPO : environnements par cœur (le serveur donne le seuil d'alerte) */
+  function coresWarn() {
+    var w = $('tCoresWarn');
+    if (!cpu || cfg.methode !== 'ppo') { w.hidden = true; return; }
+    var envs = parseInt($('rPpoBatch').value, 10) || 0, roll = parseInt($('rPpoRollout').value, 10) || 0;
+    var cores = Math.max(1, cpu.cpu_affinite), par = envs / cores;
+    if (par > cpu.envs_par_coeur_alerte) {
+      w.hidden = false;
+      w.textContent = '⚠️ ' + envs + ' environnements pour ' + cores + ' cœur' + (cores > 1 ? 's' : '') + ' (' + fmt(par, 0) + ' par cœur, alerte au-delà de ' + cpu.envs_par_coeur_alerte + ') : un rollout de ' + envs * roll + ' décisions sera très long. Réduis « Envs parallèles ».';
+    } else w.hidden = true;
+  }
+  ['rPpoBatch', 'rPpoRollout', 'rProc'].forEach(function (id) { var el = $(id); if (el) el.addEventListener('input', coresWarn); });
+  document.addEventListener('click', function () { setTimeout(coresWarn, 0); });
 
   /* ---------- évaluation / rejouer ---------- */
   function pm(st, d) { return st ? fmt(st.moyenne, d) + ' ± ' + fmt(st.ecart_type, d) : '—'; }
