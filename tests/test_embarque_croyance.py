@@ -9,6 +9,7 @@ import pytest
 import embarque_fixtures as F
 from embarque.croyance import ConstructeurCroyance, Mesures, miroir_adversaire, miroir_pose
 from embarque.pont import PontNode
+from embarque.spec import duree_match_s
 from esp32_bridge import DualESP32Orchestrator
 from lidar_tracker import LidarTracker, ParamsLidar
 from pi5_runner import CapteursRobot, Pi5Runner, RobotBackend, ouvrir
@@ -115,11 +116,15 @@ def test_robot_avec_esp32_simules_joue_un_match(tmp_path_factory):
         runner = Pi5Runner(pol, pont, be, max_decisions=60)
         bilan = runner.jouer()
         assert bilan["decisions"] >= 5
-        assert all(r.ok for r in be.rapports)
+        # seule la brique coupée par la fin du match (100 s) peut échouer
+        assert all(r.ok or r.erreur.startswith("fin du match") for r in be.rapports)
         assert be.cons.historique_divergences == [], be.cons.historique_divergences
-        # l'horloge virtuelle a avancé de la durée des plans exécutés, sans dépasser la fin du match de plus d'une brique
-        assert 0 < be.t_match() < 130
+        # le match commence au retrait de la tirette (ESP32 des actionneurs) ; l'horloge virtuelle n'a pas dépassé la fin du match
+        assert be.t_depart == pytest.approx(orch.params.mock_delai_tirette_s)
+        assert 0 < be.t_match() <= duree_match_s() + 1e-6
         assert sum(1 for r in be.rapports if r.commandes) > 3
+        # fin du match : STOP aux deux ESP32
+        assert orch.nav.journal[-1].startswith("STOP") and orch.act.journal[-1].startswith("STOP")
 
 
 def test_robot_equipe_bleue_envoie_des_commandes_en_miroir(tmp_path_factory):
@@ -129,9 +134,9 @@ def test_robot_equipe_bleue_envoie_des_commandes_en_miroir(tmp_path_factory):
         orch = DualESP32Orchestrator(mock=True)
         be = RobotBackend(pont, orch, CapteursRobot(orch), "blue")
         Pi5Runner(pol, pont, be, max_decisions=3).jouer()
-        gotos = [c for c in orch.nav.journal if c.startswith("GOTO")]
-        assert orch.nav.journal[0] == "SET_POSE 2750.0 1000.0 180.0"
-        assert gotos and all(float(g.split()[1]) > 1500 for g in gotos[:1])
+        mouvements = [c for c in orch.nav.journal if c.startswith(("GOTO", "PATH"))]
+        assert [c for c in orch.nav.journal if c.startswith("SET_POSE")][0].startswith("SET_POSE 2750.0 1000.0 180.0 #")
+        assert mouvements and all(float(g.split()[2 if g.startswith("PATH") else 1]) > 1500 for g in mouvements[:1])
 
 
 # ---- lidar -----------------------------------------------------------------------------------------------------------

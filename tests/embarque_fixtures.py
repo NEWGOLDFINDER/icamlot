@@ -14,7 +14,10 @@ if str(ROOT) not in sys.path:
 # Tolérance (s) des comparaisons d'instants : les plans viennent de flottants du moteur sérialisés en JSON (exacts) ; marge numérique.
 EPS_T = 1e-6
 
-GROUPES_MOUVEMENT = ("NAV", "GRIP_A", "GRIP_B", "FORK", "CANON")
+# Axes du moteur, tels que les commandes les pilotent : base (GOTO / PATH), vérins Z (hc), rotations, ascenseur (fx, fz). La sortie du
+# canon (CANON) n'est pas une commande : elle fait partie de la séance de tir (commande TIR).
+GROUPES_MOUVEMENT = ("NAV", "Z_A", "ROT_A", "Z_B", "ROT_B", "ASC")
+GROUPES_VERITE = GROUPES_MOUVEMENT + ("CANON",)
 
 
 def exporter_petit_modele(dossier: Path, nom: str, epoques: int) -> Tuple[Path, Path]:
@@ -30,8 +33,8 @@ def exporter_petit_modele(dossier: Path, nom: str, epoques: int) -> Tuple[Path, 
 
 # ---- vérité tirée des points clés bruts du moteur (indépendante de embarque/bridge.js : extractPlan) -------------------
 def _vals(f: dict) -> Dict[str, Tuple[float, ...]]:
-    return {"NAV": (f["x"], f["y"], f["h"]), "GRIP_A": (f["A"]["hc"], f["A"]["rot"]), "GRIP_B": (f["B"]["hc"], f["B"]["rot"]),
-            "FORK": (f["C"]["fx"], f["C"]["fz"]), "CANON": (f["C"]["can"],)}
+    return {"NAV": (f["x"], f["y"], f["h"]), "Z_A": (f["A"]["hc"],), "ROT_A": (f["A"]["rot"],), "Z_B": (f["B"]["hc"],),
+            "ROT_B": (f["B"]["rot"],), "ASC": (f["C"]["fx"], f["C"]["fz"]), "CANON": (f["C"]["can"],)}
 
 
 def intervalles_verite(frames: List[dict], eps: float = 1e-6) -> List[Tuple[float, float, frozenset]]:
@@ -41,14 +44,14 @@ def intervalles_verite(frames: List[dict], eps: float = 1e-6) -> List[Tuple[floa
         if q["t"] - p["t"] <= 1e-9:
             continue
         vp, vq = _vals(p), _vals(q)
-        bouge = frozenset(g for g in GROUPES_MOUVEMENT if any(abs(a - b) > eps for a, b in zip(vp[g], vq[g])))
+        bouge = frozenset(g for g in GROUPES_VERITE if any(abs(a - b) > eps for a, b in zip(vp[g], vq[g])))
         out.append((p["t"], q["t"], bouge))
     return out
 
 
 def union_par_groupe(intervalles: List[Tuple[float, float, frozenset]]) -> Dict[str, List[Tuple[float, float]]]:
     """Intervalles de mouvement fusionnés par groupe."""
-    res: Dict[str, List[Tuple[float, float]]] = {g: [] for g in GROUPES_MOUVEMENT}
+    res: Dict[str, List[Tuple[float, float]]] = {g: [] for g in GROUPES_VERITE}
     for t0, t1, gs in intervalles:
         for g in gs:
             L = res[g]
