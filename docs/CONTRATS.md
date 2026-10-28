@@ -151,6 +151,35 @@ Règle absolue de l'équipe : **ne rien inventer**. Une valeur absente de la spe
 - **Entraînement** : faire jouer le réseau contre plusieurs adversaires (référence miroir, stratégies enregistrées, réseaux en self-play), et non seul sur la table.
 - **Collisions** : l'évitement est obligatoire (`regles.robot.systeme_evitement_obligatoire` ; pénalité `evitement_non_fonctionnel` −30). Le moteur le modélise déjà (`oppBlocks` : le robot s'arrête, attend, et l'étape échoue). Deux réseaux face à face ne peuvent donc pas se percuter. Un adversaire scripté qui « fonce dessus » est hors règlement et n'est pas un cas d'entraînement visé.
 
+## 10. Moteur, vague 2 (chantier moteur-2)
+- **Monde depuis la croyance** : `ENGINE.makeSim(P, { etat: croyance })` (format §4 : pose, pinces avec `slots` et `rotReelle`, `meca`, `graal`, `paquets`, `pierres`, `etrangeres`, `portes`, `tir`). Pas de contrôles de départ.
+- **Planification à blanc (pure)** :
+  - `sim.planifier(depart|null, { x, y, h }, { excl, pince: { f, seq }, mode })` -> `null` ou `{ points: [{ x, y, h, t }], duree, mode }` ;
+  - `sim.planifierEtape(brique, { mode, verifier })` -> `{ ok, raison, trajet }` : l'étape est jouée à blanc jusqu'à son premier trajet (même choix de pose qu'`exec`) ; sans trajet, elle est jouée entièrement, à blanc ;
+  - `mode` : `'disque'` (planificateur certifié seul), `'rapide'` (début de la recherche d'origine), `'ancien'` (recherche d'origine seule), absent (comme `exec`).
+- **Trajets d'`exec`** : d'abord le planificateur certifié (cases à cap fixe avec marge, région libre au disque, rotation sur place), vérifié finement ; sinon la recherche d'origine.
+- **Masque** : `ACTIONS.HYPOTHESES.planification = 'moteur'` (défaut). Chaque action est jouée à blanc sur le monde de la croyance (`planifierEtape`, mode `'disque'`). Une action acceptée réussit dans `exec` (même pose, même planificateur). `'grille'` rétablit l'ancien masque.
+- **Signatures inchangées** : `observeBelief`, `maskBelief`, `toProgramStep`, `realStep`.
+- **Nouveautés de `sim`** :
+  - `pendantes()` : rotations préparées encore à faire ; la croyance en tire `rotReelle` ;
+  - `lastPlan()` : `{ t0, t1, err, K }`, points clés de la dernière étape (format stable : `t, x, y, h, A{hc,rot,vac}, B, C{can,fx,fz}, lin`) ;
+  - `recaler({ x, y, h, t })` : recale la pose et l'horloge sur la mesure (horloge en avant seulement).
+- **Corrections** :
+  - `ENGINE.mirrorStep` met en miroir `deposer.x/ang` et les points de `traj` ; `ACTIONS.realStep` s'y appuie ;
+  - `PRE.deposer` évalue le stockage avec les empreintes de la pose réelle (grand axe selon `ang`) ;
+  - `attendre` et `attendreJusqua` ne font plus la rotation préparée : « finir » est toujours valide ;
+  - une rotation de pince faisable seulement dans le château (pierres au-dessus de 350 mm) se fait sur place à l'arrivée, jamais en route ;
+  - le canon sort juste à temps pour 85 s.
+- **Paramètres** :
+  - `tourner` accepte `hc` (optionnel, borné par la course). Il n'est pas ajouté au catalogue : le gain mesuré sur les prises de la référence est nul, le mouvement est déjà fait en temps masqué ;
+  - `DEF.trz` : rampes des vérins Z (1,25 − 100/84 = 0,06 s par mouvement, spec) ;
+  - `GEOM.configurerCourse({ hcBas, course, margeHauteur })` : course de l'axe (défaut : géométrique [135, 273], sans marge). `hcBas` et `margeHauteur` restent à trancher par l'équipe.
+- **Caméras et lidar (`ENV.VISION`)** :
+  - une carrière n'est vue qu'à la pose d'approche de prise, face à elle (hypothèses : 400 mm, 15°) ;
+  - `ENV.create({ cameras: false })` ou `VISION.actif = false` coupe le modèle ;
+  - le lidar ne voit que les robots ; les rayons d'observation viennent des obstacles connus, pas du lidar.
+- **Miroir** : le robot n'est pas symétrique (face B à h + 120 dans les deux équipes). Un programme jaune ne se transpose donc pas par simple miroir pour le bleu. L'observation et le masque bleus restent ceux du jaune en miroir (tests §5 de `tests/test_engine.js`).
+
 ## 11. Embarqué livré (fusion 0e06319)
 - **Pont Node** `embarque/bridge.js`, utilisé par `embarque/pont.py`. Échange en JSON-lignes. Commandes : `hello`, `observe`, `mask`, `observe_mask`, `step`, `reference`, `sim_*`, `track_*`.
 - **`pi5_runner.py`** : refuse un modèle dont l'observation, le catalogue ou les dimensions ne correspondent pas au moteur (code de sortie 2). Modes `--simulation`, `--robot [--mock-esp]`, `--benchmark`.
