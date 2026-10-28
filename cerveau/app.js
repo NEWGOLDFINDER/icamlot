@@ -242,6 +242,7 @@
   document.querySelectorAll('.tab').forEach(function (t) {
     t.addEventListener('click', function () {
       document.querySelectorAll('.tab').forEach(function (x) { var on = x === t; x.setAttribute('aria-selected', String(on)); $('pane-' + x.dataset.pane).hidden = !on; });
+      if (t.dataset.pane === 'train') loadProcs();
     });
   });
 
@@ -425,9 +426,12 @@
       $('tProg').textContent = pct + '% (' + (p.generation || 1) + '/' + (p.generations || 1) + ')';
     } else if (p.generation) {
       $('tProg').textContent = p.generation + ' / ' + p.generations;
+    } else if (p.message && (j.status === 'running' || j.status === 'paused')) {
+      $('tProg').textContent = p.message;  // pas encore de génération (pré-entraînement, 1er rollout…)
     } else {
       $('tProg').textContent = j.status === 'queued' ? 'file' : '—';
     }
+    $('tProg').className = $('tProg').textContent.length > 12 ? 'msg' : '';
     $('tEta').textContent = p.eta_s != null ? Math.round(p.eta_s) + ' s' : '—';
     $('tMps').textContent = p.matches_per_s != null ? p.matches_per_s : '—';
     if (p.device) $('tDev').textContent = (p.name || p.device) + (p.vram_mo ? ' · ' + p.vram_mo + ' Mo' : '');
@@ -469,8 +473,59 @@
   });
   $('bStop').addEventListener('click', function () {
     if (!jobId) return;
-    api('POST', API + '/trainings/' + jobId + '/stop').then(function () { toast('Arrêt demandé.'); poll(); }, function (e) { toast(e.message, 'bad'); });
+    $('bStop').disabled = true;
+    api('POST', API + '/trainings/' + jobId + '/stop').then(function (r) {
+      toast(r && r.sigkill ? 'Tâche arrêtée (SIGKILL après ' + fmt(r.grace_s, 0) + ' s).' : 'Tâche arrêtée.', 'ok');
+      poll(); loadProcs();
+    }, function (e) { toast(e.message, 'bad'); poll(); });
   });
+
+  /* ---------- processus de calcul (panneau Serveur) ---------- */
+  var procTimer = null;
+  function fmtDur(s) {
+    s = Math.max(0, Math.round(s || 0));
+    var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+    return h ? h + ' h ' + (m < 10 ? '0' : '') + m + ' min' : m ? m + ' min ' + (s % 60) + ' s' : s + ' s';
+  }
+  function procError(msg) { var e = $('procErr'); e.hidden = !msg; e.textContent = msg ? '⚠️ ' + msg : ''; }
+  function renderProcs(list) {
+    var body = $('procBody');
+    $('bProcAll').disabled = !list.length;
+    if (!list.length) { body.innerHTML = '<li class="muted">Aucun processus de calcul.</li>'; return; }
+    body.innerHTML = list.map(function (q) {
+      return '<li><div><b>' + q.pid + '</b> · ' + (q.type === 'entraineur' ? 'entraîneur' : 'worker Node') + ' · ' +
+        (q.tache ? '<span title="' + esc(q.tache) + '">' + esc(q.nom || q.tache) + '</span>' : '<span class="muted">tâche inconnue</span>') +
+        '<small>' + fmtDur(q.duree_s) + ' · ' + (q.rss_mo != null ? fmt(q.rss_mo, 0) + ' Mo' : '—') + '</small></div>' +
+        '<button type="button" class="danger" data-stop="' + q.pid + '"><i class="fa-solid fa-stop"></i> Arrêter</button></li>';
+    }).join('');
+  }
+  function loadProcs() {
+    return api('GET', API + '/processus').then(function (j) { procError(''); renderProcs(j.processus || []); },
+      function (e) { procError('Liste des processus indisponible : ' + e.message); });
+  }
+  $('procBody').addEventListener('click', function (ev) {
+    var b = ev.target.closest('button[data-stop]'); if (!b) return;
+    b.disabled = true;
+    api('POST', API + '/processus/' + b.dataset.stop + '/stop').then(function (r) {
+      procError(r.survivants && r.survivants.length ? 'Encore actifs après SIGKILL : ' + r.survivants.join(', ') : '');
+      toast('Processus ' + b.dataset.stop + ' arrêté.', 'ok'); loadProcs(); poll();
+    }, function (e) { procError('Arrêt du processus ' + b.dataset.stop + ' impossible : ' + e.message); toast(e.message, 'bad'); loadProcs(); });
+  });
+  $('bProcAll').addEventListener('click', function () {
+    toast('Arrêter tous les processus de calcul ? Les tâches en attente démarreront ensuite.', 'bad', [['Tout arrêter', function () {
+      $('bProcAll').disabled = true;
+      api('POST', API + '/processus/stop-all').then(function (r) {
+        procError(r.survivants && r.survivants.length ? 'Encore actifs après SIGKILL : ' + r.survivants.join(', ') : '');
+        toast((r.tues || []).length + ' processus arrêtés.', 'ok'); loadProcs(); poll();
+      }, function (e) { procError('Arrêt de tous les processus impossible : ' + e.message); toast(e.message, 'bad'); loadProcs(); });
+    }], ['Annuler']]);
+  });
+  function procLoop() {
+    clearTimeout(procTimer);
+    if (!$('pane-train').hidden) loadProcs();
+    procTimer = setTimeout(procLoop, 3000);
+  }
+  procLoop();
 
   api('GET', API + '/trainer').then(function (j) {
     $('tDev').textContent = (j.name || j.device) + (j.cuda ? ' (CUDA)' : ' (CPU)');
