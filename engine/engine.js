@@ -567,7 +567,7 @@
        au cap d'arrivée, les pinces bougent, le robot attend la fin de leur mouvement), cases libres au cap d'arrivée, case de
        sortie -> arrivée (segment vérifié finement). Sans rotation ni mouvement de pince : cases libres au cap de départ seulement.
        Tout trajet ainsi construit est sans contact par construction ; exec l'essaie avant la recherche d'origine.
-       Paramètres (hypothèses, pas dans la spec) : marge 35 mm, rayon maximal 450 mm, 10 essais d'entrée et de sortie,
+       Paramètres (hypothèses, pas dans la spec) : marge 35 mm, rayon maximal 450 mm, 6 essais d'entrée et de sortie,
        cases d'entrée et de sortie à 12 cases (480 mm) au plus. */
     /* distance d'un point au bord d'un polygone */
     function ptPolyBordD(q, P) { var d = 1e9; for (var i = 0; i < P.length; i++) d = Math.min(d, ptSegD(q, P[i], P[(i + 1) % P.length])); return d; }
@@ -576,7 +576,7 @@
     /* marge des cases à cap fixe (hypothèse) : plus petite que la demi-diagonale d'une case, le tracé n'est plus sans contact par
        construction ; exec le vérifie alors finement (comme la recherche d'origine) avant de l'exécuter */
     var MARGE_GRILLE = 10;
-    var DISQUE_MARGE = 35, DISQUE_PORTEE = 450, DISQUE_ESSAIS = 10, DISQUE_RAYON_CASES = 12;
+    var DISQUE_MARGE = 35, DISQUE_PORTEE = 450, DISQUE_ESSAIS = 6, DISQUE_RAYON_CASES = 12;
     var clrCache = new Map();
     /* obstacle rectangulaire (pierres) : axes et demi-côtés, pour une distance exacte rapide ; null sinon */
     function rectOf(o) {
