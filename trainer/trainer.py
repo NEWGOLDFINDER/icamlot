@@ -422,7 +422,7 @@ def run_ppo(job: Job, pool: JsEnvPool, cfg: dict, strats: List[dict], sampler: S
         job.data["progress"] = {
             "methode": "ppo", "generation": st["mise_a_jour"], "generations": pc.mises_a_jour,
             "step": tr.global_step, "steps": pc.transitions_max, "loss": round(st["perte_politique"], 4),
-            "history": history[-200:], "eta_s": round(elapsed / max(frac, 1e-9) * (1 - frac)) if frac > 0 else None,
+            "history": history[-200:], "eta_s": (round(min(elapsed / max(frac, 1e-9) * (1 - frac), max(0.0, pc.duree_max_s - elapsed)) if pc.duree_max_s else elapsed / max(frac, 1e-9) * (1 - frac)) if frac > 0 else None),
             "elapsed_s": round(elapsed), "matches": len(tr.episodes),
             "matches_per_s": round(len(tr.episodes) / max(elapsed, 1e-9), 3),
             "decisions_per_s": round(st["decisions_par_s"], 1), "processus": pool.n_procs, "envs": pool.n_envs,
