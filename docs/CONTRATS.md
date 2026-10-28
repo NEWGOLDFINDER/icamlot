@@ -154,5 +154,5 @@ Règle absolue de l'équipe : **ne rien inventer**. Une valeur absente de la spe
 ## 11. Embarqué livré (fusion 0e06319)
 - **Pont Node** `embarque/bridge.js`, utilisé par `embarque/pont.py`. Échange en JSON-lignes. Commandes : `hello`, `observe`, `mask`, `observe_mask`, `step`, `reference`, `sim_*`, `track_*`.
 - **`pi5_runner.py`** : refuse un modèle dont l'observation, le catalogue ou les dimensions ne correspondent pas au moteur (code de sortie 2). Modes `--simulation`, `--robot [--mock-esp]`, `--benchmark`.
-- **Protocole ESP32** : à fournir par l'équipe. Les hypothèses H1 à H7 et les commandes provisoires sont listées dans le rapport du chantier et dans le code de `esp32_bridge.py`.
+- **Protocole ESP32** : proposition dans `docs/PROTOCOLE_ESP32.md` (statut « proposé, à valider par l'équipe »), appliquée par `esp32_bridge.py` et le firmware simulé. NAV = base roulante, ACT = tous les actionneurs.
 - **Paramètres `.meta.json`** : la clé `env_config` y manque (embarqué et entraînement). Par défaut : `{skipContacts: true}`.

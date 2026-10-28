@@ -110,7 +110,7 @@ Les consignes sont celles du moteur (`sim.pose()`, points clés `A.hc`, `A.rot`,
 | `Z <face> <hc> [T=<ms>] #id` | `ACK`, puis `DONE` | amener l'axe Z de la nacelle `A` ou `B` à la hauteur d'axe `hc` (mm). Recopie par le potentiomètre (GPIO1 / GPIO2). |
 
 `T=<ms>` (**proposé**, facultatif) : durée voulue du mouvement, en millisecondes, décimales admises (`T=716.667`) ; absent pour un saut instantané du moteur. Le firmware cherche à arriver au bout de `T` ms (vitesse constante). Sans `T`, il va à sa vitesse nominale. Le moteur coordonne certains axes (rotation de nacelle avec montée du chariot pour rester sous 350 mm) : sans durée, le firmware ne peut pas reproduire cette coordination. Si la durée est inférieure à ce que l'axe peut faire, `NAK #id SPEED`.
-Course (mm) et vitesse (mm/s) du vérin : à définir (`spec/robot.json`, `actionneurs_carte.verins`) ; la relation entre `hc` et la course du vérin aussi (Q2). Les consignes hors de la plage du firmware sont refusées (`NAK #id RANGE`). Surveillance du courant (sortie CS du VNH5019, environ 0,14 V par ampère d'après le guide) : `FAIL #id OVERCURRENT`.
+Course 100 mm, vitesse retenue 80 mm/s (84 à vide, 75 à 120 N ; équipe, 2026-10-28, `spec/robot.json` `actionneurs_carte.verins`). La relation entre `hc` et la course du vérin (hauteur de montage) reste à définir (Q2) : la conception utilise 110 mm de course (axe de 160 à 270 mm), voir le chantier moteur. Les consignes hors de la plage du firmware sont refusées (`NAK #id RANGE`). Surveillance du courant (sortie CS du VNH5019, environ 0,14 V par ampère d'après le guide) : `FAIL #id OVERCURRENT`.
 
 ### 5.2 Rotation des nacelles
 
