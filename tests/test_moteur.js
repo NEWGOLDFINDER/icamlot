@@ -224,5 +224,21 @@ ok(mD.x === 2700 && mD.ang === 150 && mD.y === 620 && mT.pts[0].x === 2500 && mT
   ok(!incoh.length, 'PRE.deposer : stockage prédit = stockage après la pose réelle', n + ' dépôts' + (incoh.length ? ' ; ' + incoh.join(' ; ') : ''));
 })();
 
+/* planification à blanc : pure, et monde reconstruit depuis un état */
+(function () {
+  var r = run(ref.slice(0, 4)), sim = r.sim, avant = JSON.stringify([sim.time(), sim.pose(), sim.errors().length, sim.result(false).K.length, sim.stockage()]);
+  var pe = sim.planifierEtape(ref[4]), pl = sim.planifier(null, { x: 1500, y: 1000, h: sim.pose().h }), dans = sim.planifier(null, { x: E.PK[4].x, y: E.PK[4].y, h: 0 });
+  var apres = JSON.stringify([sim.time(), sim.pose(), sim.errors().length, sim.result(false).K.length, sim.stockage()]);
+  ok(avant === apres, 'planifier / planifierEtape sans effet sur la simulation');
+  ok(pe.ok && pe.trajet && pe.trajet.points.length > 0, 'planifierEtape : trajet trouvé pour l\'étape suivante du programme de référence', pe.raison || (pe.trajet.points.length + ' points, ' + pe.trajet.duree.toFixed(2) + ' s'));
+  ok(pl && pl.points.length > 0 && dans === null, 'planifier : trajet vers le centre, aucun vers une carrière occupée');
+  var e1 = sim.exec(ref[4]);
+  ok(!e1.err && Math.abs(e1.t1 - e1.t0) > 0, 'exec après planifierEtape : même étape réussie', e1.err || '');
+  var b = { t: 12, team: 'yellow', pose: { x: 800, y: 1000, h: 30 }, pinces: { A: { hc: 180, rot: 0, slots: ['P1.1', 'P1.2', 'P1.3'] }, B: { hc: 165, rot: 0, slots: [null, null, null] } },
+    meca: { can: 0, fx: GE.fourche.fxRentree, fz: GE.fourche.fzHaut }, graal: 'home', paquets: { P1: { n: 0 } }, pierres: [], etrangeres: [] };
+  var W = E.makeSim({ x0: 800, y0: 1000, h0: 30 }, { skipContacts: true, etat: b }), wp = W.pose();
+  ok(wp.x === 800 && wp.h === 30 && W.time() === 12 && W.held().A && W.held().A.stack.length === 3 && !W.errors().length, 'monde reconstruit (opts.etat) : pose, horloge, pierres tenues, sans erreur de départ');
+})();
+
 console.log('\n' + nOk + ' réussis, ' + nKo + ' échoués.');
 process.exit(nKo ? 1 : 0);
