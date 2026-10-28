@@ -486,3 +486,36 @@ def test_protocole_etat():
     for mauvais in ("ERR", "STATUS Z_A 1.0", "STATUS ZZ 1"):
         with pytest.raises(ValueError):
             parse_status(mauvais)
+
+
+def test_rotation_moins_90_miroir_bleu():
+    """Rotation à −90° (CONTRATS §16) : une rotation de +90° dans le repère de l'équipe bleue est une rotation de −90° de la vraie
+    face B ; la croyance rendue reste à +90° (repère de l'équipe). rot_miroir est involutif sur [−90, 180]."""
+    from embarque.miroir import rot_miroir
+    assert [rot_miroir(a) for a in (-90, 0, 90, 180)] == [90.0, 0.0, -90.0, 180.0]
+    assert all(rot_miroir(rot_miroir(a)) == a for a in (-90.0, -45.0, 0.0, 45.0, 90.0, 135.0, 180.0))
+    with PontNode() as pj, PontNode() as pb:
+        pj.hello(), pb.hello()
+        pj.track_start(vision=False), pb.track_start(vision=False, equipe="blue")
+        brique = {"a": "tourner", "f": "A", "r": 90}
+        rj, rb = pj.track_exec(brique), pb.track_exec(brique)
+        assert not rj["info"].get("err") and not rb["info"].get("err")
+        assert rj["belief"]["pinces"]["A"]["rot"] == rb["belief"]["pinces"]["A"]["rot"] == 90
+        rotj = [c.texte.split(" T=")[0] for c in traduire(rj["plan"], "yellow") if c.groupe.startswith("ROT_")]
+        rotb = [c.texte.split(" T=")[0] for c in traduire(rb["plan"], "blue") if c.groupe.startswith("ROT_")]
+        # rotation coordonnée (plusieurs consignes) : mêmes consignes, angles opposés, vraie face B
+        assert rotj and rotj[-1] == "ROT A 90.0" and rotb[-1] == "ROT B -90.0"
+        assert rotb == [f"ROT B {rot_miroir(float(t.split()[2])):.1f}" for t in rotj]
+
+
+
+def test_act_rotation_moins_90_acceptee_hors_plage_refusee():
+    hz, fw, dev = banc("ACT")
+    assert dev.connect()
+    assert echange(dev, "ROT A -90.0 T=1000.000", 1) == [("ACK", 1, ())]
+    assert echange(dev, "ROT B 270.0", 2) == [("NAK", 2, ("RANGE", "ROT"))]
+    assert echange(dev, "ROT B -120.0", 3) == [("NAK", 3, ("RANGE", "ROT"))]
+    hz.sleep(1.1)
+    dev.sonder()
+    st = dev.interroger("STATUS?", "STATUS")
+    assert st.grip["A"][1] == -90.0

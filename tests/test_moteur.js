@@ -267,5 +267,47 @@ ok(['A', 'B', 'C'].every(function (f) { return E.mirrorFace(E.mirrorFace(f)) ===
   ok(wp.x === 800 && wp.h === 30 && W.time() === 12 && W.held().A && W.held().A.stack.length === 3 && !W.errors().length, 'monde reconstruit (opts.etat) : pose, horloge, pierres tenues, sans erreur de départ');
 })();
 
+
+/* ------------------------------------------------------------------ */
+titre('Rotation à −90° (décision de l\'équipe, contrat §16)');
+ok(JSON.stringify(GE.anglesNacelle) === JSON.stringify(NACs.rotation_angles_deg) && GE.rotMin === -90 && GE.rotMax === 180 && G.rotOk(-90) && !G.rotOk(45) && !G.rotOk(270),
+  'angles de nacelle lus dans la spec, plage [-90, 180]', JSON.stringify(GE.anglesNacelle));
+(function () {
+  var ecart = 0;
+  for (var m = 0; m < 8; m++) [false, true].forEach(function (ch) { ecart = Math.max(ecart, Math.abs(G.balayage(m, ch, 0, 90).marge - G.balayage(m, ch, 0, -90).marge), Math.abs(G.balayage(m, ch, 90, 180).marge - G.balayage(m, ch, -90, -180).marge)); });
+  var b1 = G.balayage(7, true, 0, -90), b2 = G.balayage(7, false, 0, -90), b3 = G.balayage(4, false, 0, -90), b4 = G.balayage(1, false, 0, -90);
+  ok(ecart < 1e-9 && b1.ok && proche(b1.marge, 4.1, 0.05) && !b2.ok && !b3.ok && b4.ok, 'balayage : ±90° mêmes marges (pile dans le château 4,1 mm ; pile et rangée 3 impossibles hors château ; rangée 1 possible)', 'écart ' + ecart + ' mm');
+  var q = { x: 0, y: 0, h: 0, A: { hc: 160, rot: 90 }, B: { hc: 160, rot: 0 } }, f90 = G.heldFoot(q, 0, 0); q.A.rot = -90; var f_90 = G.heldFoot(q, 0, 0);
+  ok(proche(f90.cy, -110, 1e-9) && proche(f_90.cy, 110, 1e-9) && proche(f90.cx, f_90.cx, 1e-9), 'pierre de la rangée 1 debout : décalée de -110 mm à 90°, de +110 mm à -90°');
+})();
+(function () {
+  var t = E.mirrorStep({ a: 'tourner', f: 'A', r: 90, tm: true }), t2 = E.mirrorStep({ a: 'tourner', f: 'B', r: 180 }), t3 = E.mirrorStep({ a: 'tourner', f: 'B', r: 0 });
+  var to = E.mirrorStep({ a: 'tour', f: 'A', z: 'T2', s: 'P1.3' }), to2 = E.mirrorStep({ a: 'tour', f: 'A', z: 'T2', s: 'P1.3', r: -90 }), po = E.mirrorStep({ a: 'porte', f: 'A', z: 'M3' });
+  var de = E.mirrorStep({ a: 'deposer', f: 'A', q: 'pile', x: 1, y: 2, o: 'debout' }), de0 = E.mirrorStep({ a: 'deposer', f: 'A', q: 'pile', x: 1, y: 2, r: 0 });
+  ok(t.r === -90 && t.f === 'B' && t2.r === 180 && t3.r === 0 && to.r === -90 && to2.r === 90 && po.r === -90 && de.r === -90 && de0.r === 0 && E.mirrorStep(t).r === 90,
+    'mirrorStep : angles de nacelle en miroir (+θ <-> -θ ; 0 et 180 inchangés ; tour et porte à -90° par défaut en bleu)');
+})();
+(function () {
+  var sim = E.makeSim({}, { skipContacts: true });
+  ok(sim.preconditions({ a: 'tourner', f: 'A', r: -90 }) === null && /Angle de pince/.test(sim.preconditions({ a: 'tourner', f: 'A', r: 45 }) || '') && /Angle de pince/.test(sim.preconditions({ a: 'tourner', f: 'A', r: 270 }) || ''),
+    'tourner : -90 accepté, 45 et 270 refusés');
+  var r = run([{ a: 'tourner', f: 'A', r: -90 }]);
+  ok(!r.sim.errors().length && r.sim.pose().A.rot === -90, 'tourner à -90° exécuté', msgs(r.sim.result(false)));
+  var cases = [];
+  /* tour à -90 et à +90 : même zone, pierre décalée de l'autre côté de la face ; la pierre finit au centre du cercle dans les deux cas */
+  [90, -90].forEach(function (rt) {
+    var rr = run([{ a: 'prendre', f: 'A', p: 'P1' }, { a: 'tour', f: 'A', z: 'T1', s: 'P1.1', r: rt }]), R = rr.sim.result(false);
+    var st = rr.sim.stones().filter(function (x) { return x.id === 'P1.1'; })[0], g = st && st.cur.geo, z = E.zoneById('T1'), c = g ? g.foot.reduce(function (a, v) { return [a[0] + v[0] / 4, a[1] + v[1] / 4]; }, [0, 0]) : null;
+    cases.push({ rt: rt, err: msgs(R), d: c ? Math.hypot(c[0] - z.c[0], c[1] - z.c[1]) : null, vert: g && g.vertical });
+  });
+  ok(cases.every(function (c) { return !c.err && c.d != null && c.d < 1 && c.vert; }), 'tour T1 avec la pierre de la rangée 1 à +90 et à -90° : pierre debout au centre, sans erreur', JSON.stringify(cases));
+})();
+(function () {
+  var Pb = E.blueParams({}), ry = run(ref, {}), rb = run(ref.map(E.mirrorStep), Pb), Ry = ry.sim.result(true), Rb = rb.sim.result(true);
+  var sy = S.scoreAt(Ry, Ry.params, 100).total, sb = S.scoreAt(Rb, Rb.params, 100).total;
+  ok(sy === sb && !Rb.errors.length, 'programme de référence en miroir (mirrorStep) joué en bleu : même score qu\'en jaune, sans erreur', 'jaune ' + sy + ', bleu ' + sb + (Rb.errors.length ? ' ; ' + msgs(Rb) : ''));
+})();
+
 console.log('\n' + nOk + ' réussis, ' + nKo + ' échoués.');
+
 process.exit(nKo ? 1 : 0);
