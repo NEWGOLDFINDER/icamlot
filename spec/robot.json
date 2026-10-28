@@ -51,6 +51,11 @@
       "40": 1208.7,
       "50": 1243.8,
       "80": 1382.0
+    },
+    "toit_cible": {
+      "statut": "declare",
+      "valeur": 311.2,
+      "note": "tubes de 290 mm au lieu de 320 ; CAO à mettre à jour par l'équipe"
     }
   },
   "entrainement": {
@@ -120,8 +125,11 @@
       "prise_vide_s": 0.5,
       "relache_s": 0.4,
       "saillie_hors_face": {
-        "statut": "a_definir",
-        "contrainte": "<= 30 mm environ au départ, mécanismes repliés, pour rester sous 1200 mm de périmètre"
+        "statut": "declare",
+        "valeur": "petite, non déployée",
+        "recommandation": 35,
+        "perimetre_depart_a_35mm": 1187.2,
+        "perimetre_depart_a_40mm": 1196.3
       },
       "ventouses_par_pierre": 2,
       "pierres_par_face": 3,
@@ -131,9 +139,24 @@
         "diametre": 20,
         "position": "près du bord bas de la pierre 3, pour pouvoir lever le linteau au-dessus de 2 pierres debout (porte) sans dépasser 350 mm",
         "contrainte_calculee": "centre de la ventouse <= 15 mm au-dessus du bord bas de la pierre 3 (linteau levé à 320 + 5 mm, ventouse Ø20 sous 350 mm) ; 12 mm recommandé pour garder 3 mm de marge",
-        "modele_simulateur": "barre à +70 mm du chariot (score.js BARS), soit 15 mm au-dessus du bord bas : cohérent avec la contrainte, sans marge"
+        "modele_simulateur": "barre à +70 mm du chariot (score.js BARS), soit 15 mm au-dessus du bord bas : cohérent avec la contrainte, sans marge",
+        "position_retenue": 12
       },
-      "durees": "paramètres programmables ; valeurs par défaut = valeurs actuelles du simulateur"
+      "durees": "paramètres programmables ; valeurs par défaut = valeurs actuelles du simulateur",
+      "rotation_180": {
+        "statut": "propose",
+        "conclusion": "faisable nacelle vide ; impossible avec une pierre tenue (−61,9 mm sous 350 mm), voir conception/pince.md"
+      },
+      "ventouses_rangee_3_demi_ecartement_max": {
+        "statut": "propose",
+        "valeur": 70,
+        "raison": "rotation 90° de la pile de 3 sous 350 mm (marge 7,8 mm)"
+      },
+      "nacelle_au_dessus_ventouse_3_max": {
+        "statut": "propose",
+        "valeur": 13,
+        "raison": "linteau posé à 325 mm, actionneurs <= 350 mm"
+      }
     },
     "canon_C": {
       "statut": "herite",
@@ -149,6 +172,10 @@
       "position_sur_face": {
         "statut": "declare",
         "valeur": "face C, à gauche de l'ascenseur (vue de face) ; largeur disponible ~120 mm"
+      },
+      "depart": {
+        "statut": "declare",
+        "valeur": "complètement rentré"
       }
     },
     "ascenseur_graal": {
@@ -169,7 +196,11 @@
       },
       "course_coulisse_horizontale": 87.0,
       "dessus_des_dents_en_position_haute": 337.2,
-      "condition_bloquante": "toit <= 324 mm pour ces anses ; toit actuel 341.2 mm -> dents à 367 mm, interdit. Proposition : tubes de 290 mm au lieu de 320 (toit à 311.2 mm)"
+      "condition_bloquante": "toit <= 324 mm ; proposition retenue par l'équipe (« Ok ») : tubes de 290 mm, toit à 311.2 mm",
+      "mat_balise": {
+        "statut": "declare",
+        "valeur": "centré"
+      }
     },
     "graal": {
       "statut": "propose",

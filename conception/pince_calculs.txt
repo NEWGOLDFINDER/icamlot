@@ -1,0 +1,42 @@
+Rangée 3 à +67 mm de l'axe (ventouse Ø20 à 12 mm du bord bas de la pierre 3)
+
+— Hauteurs à 0° —
+prise d'une pile au sol : axe à 165 mm -> ventouses de 30 à 242 mm
+linteau (porte) : bas de la pierre 3 à 325 mm -> axe à 270 mm -> haut des ventouses à 347 mm (limite 350)
+  -> la nacelle ne doit pas dépasser 13 mm au-dessus du centre de la ventouse 3
+linteau tenu par la ventouse 1 (pierre prise en bas, sans retournement) : axe à 490 mm -> ventouses à 567 mm : IMPOSSIBLE
+
+— Rotations (mouvement coordonné du chariot) —
+nacelle vide 0 -> 180°                                             FAISABLE   marge mini    46.7 mm
+retournement 180 -> 0° avec 1 pierre (ventouse 3), hors château    IMPOSSIBLE marge mini   -61.9 mm
+retournement 180 -> 0° avec 1 pierre (ventouse 3), dans le château IMPOSSIBLE marge mini   -61.9 mm
+retournement 180 -> 360° (autre sens), dans le château             IMPOSSIBLE marge mini   -61.9 mm
+1 pierre (ventouse 1) 0 -> 90° (tour), hors château                IMPOSSIBLE marge mini    -6.1 mm
+1 pierre (ventouse 3) 0 -> 90° (tour), hors château                FAISABLE   marge mini     3.2 mm
+pile de 3 pierres 0 -> 90° (piliers de porte), hors château        IMPOSSIBLE marge mini    -6.1 mm
+pile de 3 pierres 0 -> 90° (piliers de porte), dans le château     IMPOSSIBLE marge mini    -6.1 mm
+1 pierre (ventouse 1) 0 -> 90° (tour), dans le château             IMPOSSIBLE marge mini    -6.1 mm
+1 pierre (ventouse 2) 0 -> 180°, dans le château                   FAISABLE   marge mini     7.8 mm
+
+— Sensibilité : demi-largeur des rangées 1 et 2 (axe des ventouses extrêmes + rayon) —
+  demi-longueur 105 + rayon 25 : pile 0->90° (château) marge   -6.1 | retournement avec pierre marge  -61.9
+  demi-longueur  90 + rayon 25 : pile 0->90° (château) marge   -6.1 | retournement avec pierre marge  -51.6
+  demi-longueur  80 + rayon 25 : pile 0->90° (château) marge   -6.1 | retournement avec pierre marge  -45.0
+  demi-longueur  70 + rayon 25 : pile 0->90° (château) marge   -6.1 | retournement avec pierre marge  -38.5
+  demi-longueur  60 + rayon 25 : pile 0->90° (château) marge   -6.1 | retournement avec pierre marge  -32.2
+
+— Sensibilité : demi-écartement des 2 ventouses Ø20 de la rangée 3 —
+  ventouses 3 à ± 90 mm : pile 0->90° (château) marge   -6.1 | 1 pierre ventouse 1 0->90° (château)   -6.1 | retournement avec pierre  -61.9
+  ventouses 3 à ± 80 mm : pile 0->90° (château) marge    1.2 | 1 pierre ventouse 1 0->90° (château)    1.2 | retournement avec pierre  -61.9
+  ventouses 3 à ± 70 mm : pile 0->90° (château) marge    7.8 | 1 pierre ventouse 1 0->90° (château)    7.8 | retournement avec pierre  -61.9
+  ventouses 3 à ± 60 mm : pile 0->90° (château) marge    7.8 | 1 pierre ventouse 1 0->90° (château)    7.8 | retournement avec pierre  -61.9
+  ventouses 3 à ± 50 mm : pile 0->90° (château) marge    7.8 | 1 pierre ventouse 1 0->90° (château)    7.8 | retournement avec pierre  -61.9
+
+— Périmètre (châssis seul : 1173.1 mm) —
+largeur de la nacelle à 0° : ±130 mm ; au pire pendant une rotation : ±177 mm
+  saillie 10 mm : départ (nacelles à 0°)  1173.1 mm | match, 2 nacelles au pire angle  1174.7 mm
+  saillie 20 mm : départ (nacelles à 0°)  1173.2 mm | match, 2 nacelles au pire angle  1197.7 mm
+  saillie 25 mm : départ (nacelles à 0°)  1175.3 mm | match, 2 nacelles au pire angle  1215.8 mm
+  saillie 30 mm : départ (nacelles à 0°)  1180.1 mm | match, 2 nacelles au pire angle  1233.9 mm
+  saillie 35 mm : départ (nacelles à 0°)  1187.2 mm | match, 2 nacelles au pire angle  1252.1 mm
+  saillie 40 mm : départ (nacelles à 0°)  1196.3 mm | match, 2 nacelles au pire angle  1270.3 mm
