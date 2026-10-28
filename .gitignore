@@ -17,3 +17,6 @@ trainer/__pycache__/
 conception/chassis_tubes_290.step
 conception/robot_depart.step
 conception/robot_fin.step
+
+# copies de travail des agents (worktrees)
+.claude/
