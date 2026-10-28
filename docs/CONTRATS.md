@@ -88,3 +88,25 @@ Règle absolue de l'équipe : **ne rien inventer**. Une valeur absente de la spe
   - un fichier `<modèle>.meta.json` à côté : `{ n_in, n_out, hidden, obs_version, catalogue_version }`.
 - **Export pour le web** : un JSON de poids décrit dans `trainer/FORMAT_MODELE.md`.
 - **Sélection du champion** : uniquement sur une évaluation dans le moteur JS contre des adversaires (stratégie enregistrée ou réseau), avec moyenne, écart-type, nombre de matchs et taux de victoire.
+
+## 6. Points transmis par le chantier entraînement (fusionné le 2026-10-28)
+
+### À traiter par actions-env
+- Exposer `ENV.OBS_VERSION` et `ACTIONS.CATALOGUE_VERSION`. En attendant, l'entraînement utilise des empreintes sha256.
+- `env.imitate` doit renvoyer la récompense et l'instant de chaque paire. Le worker les obtient aujourd'hui en enveloppant `ENGINE.makeDuel` et `ACTIONS.indexOfStep`.
+- Appliquer les pénalités de `cfg.recompense` dans l'environnement. Aujourd'hui elles sont ignorées, donc `penalite_erreur` reste sans effet en PPO.
+- Une action exécutée par `ENV.step` doit avoir exactement le même effet que la brique de programme correspondante. `toProgramStep` ajoute `pm: 'proche'`, ce qui fait diverger l'imitation (mur M1 : 13 pts au lieu de 8).
+- Permettre un adversaire récurrent (modèle `icamlot-modele-recurrent`), et pas seulement un MLP `layers`, pour le self-play.
+
+### Contrat effectif du modèle
+- **ONNX** : `obs` brute (la normalisation est dans le graphe), sorties `logits` non masqués et `next_hidden`, état caché à zéro au début du match. Le masque est appliqué côté runtime.
+- **Fichiers** : `<modèle>.meta.json` (avec le catalogue complet) et JSON web `icamlot-modele-recurrent`, décrit dans `trainer/FORMAT_MODELE.md` (implémentation de référence : `web_forward`).
+- **Poids exposés par l'API** pour l'imitation et le PPO : `{format: camelot-poids, version: 2, architecture: recurrent, modele, fichiers, evaluation}`, sans `layers`.
+
+### Chemins déplacés
+- `.data/brains` et `.data/weights` sont maintenant dans `.data/legacy/`.
+- À mettre à jour :
+  - `pi5_runner.py` (qui importait aussi `trainer.torch_engine`, supprimé) ;
+  - `benchmark_duels.py` ;
+  - `tests/test_champion_js.js` ;
+  - `deploy/install.sh`.
