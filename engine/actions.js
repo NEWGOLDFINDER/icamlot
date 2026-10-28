@@ -725,6 +725,8 @@
     var why = preBelief(st, b); if (why) return why;
     /* actions sans effet (aucun mouvement) */
     if (st.a === 'tourner' && Math.abs(b.pinces[st.f].rot - st.r) <= 0.5) return 'La pince est déjà à cet angle.';
+    /* une préparation de cette face attend déjà le prochain trajet : la changer ne prend aucun temps (boucle sans fin possible) */
+    if (st.a === 'tourner' && b.pinces[st.f].rotReelle != null) return 'Préparation déjà en attente sur la pince ' + st.f + ' (faite au prochain trajet).';
     if (st.a === 'attendreJusqua' && b.t >= st.sec - 0.05) return 'Déjà l\'heure.';
     /* échec appris : la même brique vient d'échouer à cet instant, le monde n'a pas changé */
     if (b.echecs && b.echecs.t === b.t && (b.echecs.briques || []).some(function (x) { return sameStep(x, st); })) return 'Vient d\'échouer à cet instant.';
