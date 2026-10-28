@@ -1,0 +1,23 @@
+VOIX OFF — « Construire le cerveau d'ICAMLOT » (1 min 56)
+Un fichier par ligne, nommé comme le plan (S01.mp3, S02.mp3…). Temps = début du plan dans la vidéo, durée = place disponible.
+
+S01  0:00  (4,5 s)  Comment construire le cerveau d'un robot ? Voici notre méthode.
+S02  0:04  (6 s)    Un match dure cent secondes. Sur la table, trente pierres, dans dix carrières.
+S03  0:10  (7,5 s)  Avec ces pierres, on bâtit son château : murs, tours, porte. Chaque construction rapporte des points.
+S04  0:18  (5 s)    Voici notre robot, en version simulée. Ses mécanismes restent secrets.
+S05  0:23  (9 s)    Ici, il suit un programme écrit à la main : quinze étapes fixées d'avance. Résultat : cent seize points.
+S06  0:32  (7 s)    Mais si l'adversaire vide une carrière, la liste ne s'adapte pas : cent huit points.
+S07  0:39  (5 s)    Notre objectif : un cerveau qui choisit lui-même sa prochaine action.
+S08  0:44  (8 s)    D'abord, recréer le monde : la table, les pierres, les règles. Chaque trajet est calculé sans contact.
+S09  0:52  (4,5 s)  Si l'adversaire peut croiser sa route, notre robot attend.
+S10  0:56  (5,5 s)  Un match de cent secondes s'y joue en cinq à six secondes.
+S11  1:02  (9 s)    Ce que perçoit le cerveau : pas une image, mais cinquante-six nombres. Le temps, sa position, l'adversaire, l'espace libre.
+S12  1:11  (5,5 s)  Pour lui, une carrière reste pleine tant qu'il n'a pas tenté de la prendre.
+S13  1:16  (8,5 s)  À l'intérieur, un réseau de neurones. Chaque neurone additionne les entrées, pondérées par des coefficients : environ cent quarante mille.
+S14  1:25  (6,5 s)  Une mémoire garde le fil du match ; un filtre écarte l'impossible ; la meilleure note gagne.
+S15  1:31  (7,5 s)  L'entraînement prévu : imiter d'abord un programme écrit à la main, puis jouer seul, guidé par le score.
+S16  1:39  (4,5 s)  La meilleure version deviendra un petit fichier, destiné au robot.
+S17  1:43  (5,5 s)  Le simulateur fonctionne. Le cerveau reste à entraîner : c'est prévu cet hiver.
+FIN  1:49  (7 s)    Nous sommes ICAMLOT, de Roboticam Vendée. Pour aller au bout, nous recherchons un apport financier.
+
+Réglages ElevenLabs conseillés : modèle multilingue, voix française « narration », stabilité 40 à 50 %, similarité 75 %, style 0 %, vitesse normale.
