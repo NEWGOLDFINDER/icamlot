@@ -2141,7 +2141,10 @@
       res.collisions = doContacts === false || opts.skipContacts ? [] : contactsOf(res);
       return res;
     }
-    function finish() { try { flushPend(); } catch (e) { if (e !== ABORT) throw e; } adv(0.5, 'Fin du programme'); return result(true); }
+    /* une rotation préparée (tourner en temps masqué) encore en attente est faite à la fin du programme, sauf si le match est fini :
+       après 100 s, plus rien ne bouge (comme ENV : le dernier « finir » n'exécute pas la préparation, contrat §10) */
+    function finish() { try { if (s.t < MATCH - 1e-9) flushPend(); } catch (e) { if (e !== ABORT) throw e; } adv(0.5, 'Fin du programme'); return result(true); }
+
     function clone(o) { return JSON.parse(JSON.stringify(o)); }
     function snapshot() {
       return { s: clone(s), stones: clone(stones), graal: clone(graal), balls: clone(balls), K: clone(K), segs: clone(segs), errors: clone(errors), stepInfo: clone(stepInfo), stepNo: stepNo, program: clone(program), oppApplied: clone(oppApplied), pend: clone(pend), held: serializeHeld(), doors: clone(doors), stock: stock, ctlPrev: clone(ctlPrev), ctlSeen: clone(ctlSeen) };
