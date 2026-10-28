@@ -56,6 +56,15 @@
       "statut": "declare",
       "valeur": 311.2,
       "note": "tubes de 290 mm au lieu de 320 ; CAO à mettre à jour par l'équipe"
+    },
+    "perimetre_depart_robot_complet": {
+      "statut": "mesure",
+      "valeur": 1190.0,
+      "source": "tools/cao_robot.py sur l'assemblage de principe"
+    },
+    "hauteur_max_depart_robot_complet": {
+      "statut": "mesure",
+      "valeur": 347.2
     }
   },
   "entrainement": {
@@ -111,7 +120,7 @@
   "mecanismes": {
     "pince_A_et_B": {
       "statut": "propose",
-      "cao": "absente : seuls les actionneurs seront ajoutés à la CAO",
+      "cao": "conception/nacelle_A.step, conception/nacelle_B.step (tools/cao_robot.py)",
       "ventouses_par_face": 6,
       "hauteur_chariot_min": 140,
       "hauteur_chariot_max": "non bornée dans le simulateur actuel",
@@ -187,15 +196,13 @@
       }
     },
     "canon_C": {
-      "statut": "herite",
-      "cao": "absente (à ajouter par l'équipe)",
-      "longueur_hors_face": 80,
+      "statut": "propose",
+      "cao": "conception/canon.step",
       "largeur": 60,
       "deploiement_s": 1.0,
       "mise_en_route_s": 0.5,
       "cadence_boulets_s": 2,
       "elevation_deg": 35,
-      "hauteur_bouche": 250,
       "position_de_tir_imposee_dans_le_simulateur": "salle du trône (choix de conception, pas une règle)",
       "position_sur_face": {
         "statut": "declare",
@@ -204,11 +211,19 @@
       "depart": {
         "statut": "declare",
         "valeur": "complètement rentré"
-      }
+      },
+      "diametre_tube": 50,
+      "course_sortie": 90,
+      "bouche_deployee": {
+        "hors_face": 57,
+        "hauteur": 189
+      },
+      "chargeur": "4 colonnes de 3 places au centre du robot, 10 boulets",
+      "lanceur": "2 volants (principe)"
     },
     "ascenseur_graal": {
       "statut": "propose",
-      "conception": "conception/ascenseur_graal.md, tools/conception_graal.py, conception/*.step",
+      "conception": "conception/ascenseur_graal.md, tools/cao_robot.py",
       "position": {
         "statut": "declare",
         "valeur": "face C, bord droit vu de face"
@@ -222,23 +237,31 @@
           4
         ]
       },
-      "course_coulisse_horizontale": 87.0,
+      "course_coulisse_horizontale": 79.0,
       "dessus_des_dents_en_position_haute": 337.2,
       "condition_bloquante": "toit <= 324 mm ; proposition retenue par l'équipe (« Ok ») : tubes de 290 mm, toit à 311.2 mm",
       "mat_balise": {
         "statut": "declare",
         "valeur": "centré"
+      },
+      "haut_de_la_traverse_en_transfert": 347.2,
+      "position_graal_sur_toit": {
+        "repere_face_C": [
+          76.3,
+          57.0
+        ],
+        "note": "centre du Graal à 76,3 mm du centre le long de la normale de C, 57 mm à droite"
       }
     },
     "graal": {
       "statut": "propose",
-      "conception": "conception/graal.step",
+      "conception": "conception/graal.step (tools/cao_robot.py)",
       "base": [
-        70,
-        70
+        62,
+        62
       ],
       "hauteur": 100,
-      "anses": "2 anses latérales basses (dessous à 22 mm du fond), lèvre de retenue extérieure",
+      "anses": "2 anses latérales basses : dessous à 22 mm du fond, débord 20 mm, lèvre 4 x 14 mm",
       "regles": [
         "> cube de 60 mm (jeu E.2.b)",
         "contraintes de construction d'un PAMI : périmètre <= 600 mm, altitude <= 175 mm, masse <= 1,5 kg",

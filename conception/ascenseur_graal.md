@@ -1,63 +1,53 @@
-# Graal à anses et ascenseur de la face C — note de conception
+# Robot complet (concept) : nacelles, canon, ascenseur à Graal et Graal
 
-Générée et vérifiée par `tools/conception_graal.py` (cotes dans `DESIGN`). Les fichiers produits sont :
-- `graal.step` et `ascenseur_graal.step` : mêmes origine et axes que `Structure_robot_p.STEP`, à insérer en « coïncidence d'origine » dans SolidWorks ;
-- `vues_graal.png` : vue de dessus et vue de profil.
+Le tout est généré par `tools/cao_robot.py`, à partir de `Structure_robot_p.STEP`.
 
-Statut : **proposition**, à valider par l'équipe.
+Les fichiers STEP sont dans le repère de la CAO de l'équipe : on les insère dans SolidWorks en faisant coïncider les origines.
 
-## 1. Pourquoi une anse en haut du Graal est impossible
+| Fichier | Contenu |
+|---|---|
+| `chassis_tubes_290.step` | châssis avec les 6 tubes ramenés à 290 mm (toit à 311,2 mm) |
+| `nacelle_A.step`, `nacelle_B.step` | guidage vertical, chariot, moteur de rotation, nacelle à 6 ventouses |
+| `canon.step` | lanceur à 2 volants, canon Ø 50 incliné à 35° (rentré), chargeur et 10 boulets |
+| `ascenseur_graal.step` | rail vertical, chariot, coulisse, fourche à 2 dents (position basse) |
+| `graal.step` | Graal à 2 anses basses, posé au sol devant la face C |
+| `robot_depart.step`, `robot_fin.step` | assemblages complets (départ / Graal sur le toit) |
+| `rendu_prise.png`, `rendu_fin.png` | vues |
 
-- Le niveau 4 exige un Graal posé sur le toit (> 300 mm), libre de tout actionneur.
-- Les actionneurs ne doivent jamais dépasser 350 mm (règlement général F.3).
-- Tout organe qui soulève le Graal le touche à une hauteur `h` au-dessus de son fond. Pour faire passer le Graal au-dessus du toit, il faut donc :
+Statut : **volumes de principe** (pas de visserie, pas de choix de composants du commerce), à reprendre en CAO détaillée.
 
-  `toit + garde + h ≤ 350`
+## Contrôles automatiques sur l'assemblage (sortie de `cao_robot.py`)
+- **Périmètre au départ : 1190,0 mm**, pour une limite de 1200. Configuration : nacelles à 0° avec 35 mm de saillie, canon rentré, fourche rangée au-dessus du toit.
+- **Hauteur maximale : 347,2 mm** pour une limite de 350, mât de balise exclu. Le Graal atteint 411,2 mm une fois sur le toit, ce qui est autorisé dans le château et reste sous la balise adverse à 430 mm.
+- **Collisions : aucune**, entre modules, avec le châssis et avec le mât de balise (Ø 70, centré).
+- **Nacelles vérifiées sur leur course** : axe à 140, 205 et 270 mm, rotations de 0, 90 et 180°.
+- **Graal** : dents engagées dans les anses sans interférence ; une fois sur le toit, il ne touche ni le mât ni la fourche.
 
-- Une anse au sommet (h ≥ 60 mm) est donc exclue. **Les anses doivent être en bas du Graal.**
+## Graal (modifié par rapport à la première proposition)
+- **Base de 62 × 62 mm** (règlement : plus grand qu'un cube de 60 mm), au lieu de 70 mm. Hauteur 100 mm.
+- **Anses** : dessous à 22 mm du fond, débord de 20 mm (au lieu de 22), lèvre de retenue de 4 × 14 mm, longueur 50 mm.
+- **Raison** : en position rentrée, la traverse de la fourche passe entre le Graal et le mât de balise centré. Avec 70 mm de base, elle touchait le mât, ou bien le Graal débordait du toit.
 
-## 2. Le toit actuel est trop haut
+## Ascenseur (face C, bord droit vu de face)
+- **Rail vertical** : y = 113 à 128 mm de l'axe de la face, z = 15 à 335 mm.
+- **Chariot**, plus un **bras coulissant horizontal** de 110 mm, course **79 mm**.
+- **Traverse et 2 dents** de 8 × 5 × 72 mm.
+- **Hauteurs** : en transfert, dents à 337,2 mm et haut de la traverse à 347,2 mm ; Graal posé, traverse à 343,2 mm.
 
-| Toit | Dessus des dents en position haute (anses à 22 mm, garde 4 mm) | Verdict |
-|---|---|---|
-| 341,2 mm (actuel) | 367,2 mm | **interdit** (+17 mm) |
-| 321,2 mm | 347,2 mm | possible, marge de 2,8 mm |
-| **311,2 mm (tubes de 290 mm)** | **337,2 mm** | **marge de 12,8 mm, recommandé** |
+### Séquence
+1. Au départ, la fourche est rangée en haut, au-dessus du toit.
+2. Sortie de la fourche, puis descente : dents à 9 mm du sol.
+3. Le robot recule la face C, et les dents glissent sous les anses.
+4. Montée en 3,5 s (durée annoncée de 3 à 4 s).
+5. Rentrée de 79 mm : le Graal se place à 76 mm du centre, contre le mât.
+6. Pose (descente de 4 mm), puis sortie de la fourche : le Graal est libre de tout actionneur.
 
-Avec ces anses, le toit doit être à 324 mm au plus. Même avec des dents très fines, il ne pourrait pas dépasser environ 333 mm.
+## Canon (face C, partie gauche)
+- **Lanceur à 2 volants** au centre du robot. Il est placé là parce que les tubes du châssis, en y = ±101 mm derrière chaque face, et les moteurs des roues occupent les coins.
+- **Canon Ø 50 incliné à 35°**, entièrement rentré au départ. Il sort de 90 mm : bouche à environ 57 mm de la face et 189 mm de hauteur.
+- **Chargeur** : 4 colonnes de 3 places, au-dessus du lanceur, pour 10 boulets Ø 45.
 
-**Proposition : remplacer les 6 tubes de 320 mm par des tubes de 290 mm**, ce qui met le toit à 311,2 mm. On garde 11 mm au-dessus de la limite de 300 mm du niveau 4.
-
-## 3. Le Graal proposé
-
-- **Base** de 70 × 70 mm. Le règlement exige plus grand qu'un cube de 60 mm.
-- **Hauteur de 100 mm.** Une fois sur le toit, son sommet est à 411 mm, sous la balise adverse placée à 430 mm sur notre mât. Le règlement interdit de la masquer (jeu E.2.b).
-- **Silhouette** : pied Ø 30 mm, puis coupe conique jusqu'à Ø 70 mm.
-- **Deux anses basses**, à gauche et à droite :
-  - dessous à 22 mm du fond, épaisseur 6 mm, débord 22 mm, longueur 50 mm ;
-  - lèvre de retenue extérieure de 4 × 14 mm ;
-  - la dent de la fourche glisse dans le canal formé entre la paroi et la lèvre.
-- **Contraintes « PAMI » respectées** (jeu E.2.b) : périmètre d'environ 370 mm (≤ 600), hauteur ≤ 175 mm, masse très inférieure à 1,5 kg en PLA.
-
-## 4. L'ascenseur proposé (face C, bord droit vu de face)
-
-- **Rail vertical** de 15 × 10 mm, placé à 120,5 mm à droite du centre de la face, de z = 15 à 335 mm.
-- **Chariot** portant une **coulisse horizontale** de 87 mm de course, perpendiculaire à la face.
-- **Fourche** : 2 dents de 8 × 5 × 72 mm, espacées de 88 mm entre axes, reliées par une traverse.
-- **Canon** : il garde la partie gauche de la face C, soit environ 120 mm de largeur libre.
-
-### Séquence (fin de match, dans la salle du trône)
-1. **Au départ**, la fourche est rangée en haut, coulisse rentrée au-dessus du toit. Elle n'ajoute rien au périmètre de départ.
-2. **Sortie et descente** : la coulisse sort, puis le chariot descend. Les dents se retrouvent à 9–14 mm du sol, soit 8 mm sous les anses. Cela peut se faire en temps masqué pendant le trajet.
-3. **Engagement** : le robot recule la face C vers le Graal et les dents glissent dans les canaux des anses. La tolérance latérale est de ± 5 mm ; un chanfrein d'entrée sur les lèvres est recommandé.
-4. **Montée** (3,5 s, valeur annoncée de 3 à 4 s) jusqu'à un fond du Graal à 315,2 mm, dents à 337,2 mm.
-5. **Transfert** : la coulisse rentre de 87 mm. Le Graal passe 4 mm au-dessus du bord du toit et se place à 70 mm du centre, contre le mât de balise (supposé au centre, au minimum réglementaire de Ø 70 mm).
-6. **Pose** : le chariot descend de 8 mm et le Graal repose sur le toit.
-7. **Dégagement** : la coulisse ressort, les dents quittent les canaux et le Graal est libre de tout actionneur.
-
-À aucun moment le Graal ne quitte le château, puisque le robot est dans la salle du trône. Le Graal ne dépasse 350 mm que dans le château, ce qui est autorisé. Les actionneurs restent à 337,2 mm au plus.
-
-## 5. Points à valider
-- Raccourcir les tubes à 290 mm (ou toute autre hauteur de toit ≤ 324 mm).
-- Mât de balise centré de Ø 70 mm. S'il est plus gros ou décalé vers la face C, relancer le script.
-- Le Graal est placé dans la salle du trône pendant la préparation, hors de l'emprise de départ du robot.
+## Nacelles (faces A et B) : voir `pince.md`
+- **Guidage vertical** : 2 rails à l'intérieur, derrière la face.
+- **Chariot** de 120 mm de large, **moteur de rotation plat** (Ø 42 mm).
+- **Nacelle tournante** : 3 barres arrondies, une colonne centrale, 6 ventouses (4 × Ø 40 et 2 ovales 40 × 20). L'avant des ventouses est à 35 mm de la face.

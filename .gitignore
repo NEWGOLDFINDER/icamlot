@@ -12,3 +12,8 @@ __pycache__/
 *.pyc
 trainer/__pycache__/
 
+
+# assemblages STEP lourds, régénérés par tools/cao_robot.py
+conception/chassis_tubes_290.step
+conception/robot_depart.step
+conception/robot_fin.step
