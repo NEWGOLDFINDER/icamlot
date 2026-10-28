@@ -110,3 +110,8 @@ Règle absolue de l'équipe : **ne rien inventer**. Une valeur absente de la spe
   - `benchmark_duels.py` ;
   - `tests/test_champion_js.js` ;
   - `deploy/install.sh`.
+
+## 7. Temps masqué (décision validée par l'équipe, à traiter par actions-env)
+1. **Temps masqué automatique** dans chaque macro-action, dès qu'il est faisable sans collision ni dépassement de 350 mm. Le moteur choisit le moment : pendant le trajet, en fin de trajet, ou à l'arrêt.
+2. **Action « préparer la pince »** (angle et hauteur) d'une face, exécutée pendant le trajet suivant.
+3. **Test de cohérence avec `esp32_bridge.py`** : les mouvements réalisés en parallèle doivent être les mêmes en simulation et sur le robot.
