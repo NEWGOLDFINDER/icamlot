@@ -308,8 +308,9 @@
       "note": "vitesse mesurée annoncée par l'équipe"
     },
     "vitesse_approche_mm_s": {
-      "statut": "herite",
-      "valeur": 200
+      "statut": "declare",
+      "valeur": 200,
+      "source": "équipe, 2026-10-28"
     },
     "vitesse_rotation_deg_s": {
       "statut": "declare",
@@ -419,8 +420,8 @@
         90,
         180
       ],
-      "rotation_duree_s_pour_90deg": 1.5,
-      "prise_vide_s": 0.5,
+      "rotation_duree_s_pour_90deg": 1.0,
+      "prise_vide_s": 0.35,
       "relache_s": 0.4,
       "saillie_hors_face": {
         "statut": "declare",
@@ -512,9 +513,9 @@
       "statut": "propose",
       "cao": "conception/canon.step",
       "largeur": 60,
-      "deploiement_s": 1.0,
-      "mise_en_route_s": 0.5,
-      "cadence_boulets_s": 2,
+      "deploiement_s": 2.0,
+      "mise_en_route_s": 0.0,
+      "cadence_boulets_s": 0.8,
       "elevation_deg": 35,
       "position_de_tir_imposee_dans_le_simulateur": "salle du trône (choix de conception, pas une règle)",
       "position_sur_face": {
@@ -657,5 +658,21 @@
     "statut": "declare",
     "source": "équipe, 2026-10-28 ; docs/sources/ICAMELOT_2027_guide_de_la_carte.pdf (version du 25/10/2026) §5",
     "tirette": "microrupteur sur J14, lu par l'ESP32 n°2 (GPIO14), contact vers la masse"
+  },
+  "_declarations_equipe": {
+    "2026-10-28_durees": {
+      "source": "équipe, 2026-10-28",
+      "statut": "declare",
+      "parametrable": true,
+      "valeurs": {
+        "rotation_90deg_nacelle_s": 1.0,
+        "prise_vide_s": 0.35,
+        "vitesse_approche_mm_s": 200,
+        "sortie_canon_s": 2.0,
+        "mise_en_route_canon_s": 0.0,
+        "cadence_tir": "1,25 tir/s → 0,8 s entre deux boulets"
+      },
+      "non_fourni": "temps de lâcher (relache_s = 0,4 s, hérité)"
+    }
   }
 }
