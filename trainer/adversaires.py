@@ -33,10 +33,16 @@ from trainer.js_env_pool import JsEnvPool, default_procs  # noqa: E402
 
 DOSSIER = ROOT / ".data" / "adversaires"
 # Budgets par défaut (hypothèses, réglables) : (durée max s, transitions PPO, époques d'imitation, matchs d'évaluation)
+# Imitation : 200 époques, lots de 4 démonstrations, lr 2e-3 (mesuré : précision 100 % sur les démonstrations de
+# l'intermédiaire, 79 pts seul et contre la référence ; 20 époques en lots de 16 : 68 %, 30 pts).
 BUDGETS = {
-    "champion": {"duree": 2400, "transitions": 200_000, "epoques": 80, "eval": 30, "imitation_scenarios": 16, "ppo_lr": 1e-4, "eval_tous_les": 10},
-    "intermediaire": {"duree": 300, "transitions": 15_000, "epoques": 20, "eval": 30, "imitation_scenarios": 6, "ppo_lr": 3e-4, "eval_tous_les": 0},
+    "champion": {"duree": 2400, "transitions": 200_000, "epoques": 200, "eval": 30, "imitation_scenarios": 12, "ppo_lr": 1e-4,
+                 "eval_tous_les": 10, "lot": 4, "imitation_lr": 2e-3},
+    "intermediaire": {"duree": 300, "transitions": 15_000, "epoques": 200, "eval": 30, "imitation_scenarios": 6, "ppo_lr": 3e-4,
+                      "eval_tous_les": 0, "lot": 4, "imitation_lr": 2e-3},
 }
+# Décisions par épisode (hypothèse) : 150 au lieu de 80, pour qu'un réseau qui attend par pas de 1 s finisse le match
+MAX_DECISIONS = 150
 MELANGE_ENTRAINEMENT = {"aucun": 0.5, "reference": 0.5}
 
 
@@ -55,6 +61,7 @@ def config_robot(robot: str, n_procs: int, duree: float, transitions: int, epoqu
             "pretrain_imitation": True, "imitation_exemple": False, "epoques": epoques, "imitation_scenarios": BUDGETS[robot]["imitation_scenarios"],
             "eval_apres_imitation": True, "eval_tous_les": BUDGETS[robot]["eval_tous_les"], "ppo_lr": BUDGETS[robot]["ppo_lr"],
             "eval_matchs": eval_matchs, "ppo_batch_size": 2 * n_procs, "hidden": 128,
+            "lot": BUDGETS[robot]["lot"], "imitation_lr": BUDGETS[robot]["imitation_lr"],
         },
         "_robot": robot, "_profil": info["profil"],
     }
@@ -76,7 +83,7 @@ def entrainer(robot: str, n_procs: int = 0, duree: float = None, transitions: in
     t0 = time.time()
     per = max(1, round(int(cfg["reglages"]["ppo_batch_size"]) / n_procs))
     job.logline(f"Entraînement de l'adversaire {robot} : {n_procs} processus × {per} environnement(s).")
-    with JsEnvPool(n_procs, per, T.env_config_of(cfg)) as pool:
+    with JsEnvPool(n_procs, per, T.env_config_of(cfg), max_decisions=MAX_DECISIONS) as pool:
         sampler = T.sampler_of(cfg, [], pool, job.logline)
         out = work / f"{modele}-poids.json"
         doc, best, _ = T.run_ppo(job, pool, cfg, [], sampler, out)

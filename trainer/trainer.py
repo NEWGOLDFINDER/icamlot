@@ -455,7 +455,7 @@ def run_ppo(job: Job, pool: JsEnvPool, cfg: dict, strats: List[dict], sampler: S
         job.logline("Pré-entraînement par imitation…")
         demos = demos_for(job, pool, cfg, strats, sampler)
         if demos:
-            imitation_train(tr.model, demos, epochs=int(regl.get("epoques") or 40),
+            imitation_train(tr.model, demos, epochs=int(regl.get("epoques") or 40), batch_demos=int(regl.get("lot") or 16),
                             lr=float(regl.get("imitation_lr") or 1e-3), device=device,
                             obs_rms=tr.obs_rms, ret_rms=tr.ret_rms, log=job.logline)
             # le réseau imité est candidat à la sélection (le PPO ne garde un modèle que s'il fait mieux)
