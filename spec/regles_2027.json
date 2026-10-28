@@ -339,7 +339,11 @@
       "4": "sur le toit du robot (> 300 mm), libre de tout actionneur et de tout moyen de fixation"
     },
     "niveau_sur_porte": "non défini par le règlement : à faire préciser (FAQ / referee@planete-sciences.org)",
-    "depassement_hauteur": "autorisé seulement dans les zones de construction et les limites du château"
+    "depassement_hauteur": "autorisé seulement dans les zones de construction et les limites du château",
+    "condition_points": {
+      "_ref": "jeu E.2.b",
+      "valeur": "le robot doit prendre le Graal et le déposer sur un support ; un Graal jamais déplacé ne rapporte rien (équipe, 2026-10-28) ; un Graal encore contrôlé par un actionneur en fin de match n'est pas comptabilisé"
+    }
   },
   "retour_du_roi": {
     "_ref": "jeu E.3",

@@ -116,11 +116,14 @@
     else {
       gIn = o.gIn;
       if (!gIn) gNote = 'hors du château';
-      else if (k === 'home') gNote = 'à son départ (dans la salle du trône)';
-      else if (k === 'ascenseur') gNote = 'encore tenu par l\'ascenseur';
+      /* E.2.b : « le robot devra prendre le Graal et le déposer sur un support » ; « un Graal toujours contrôlé par un
+         actionneur à l'issue du match ne sera pas comptabilisé » : jamais déplacé ou encore tenu = 0 pt (équipe, 2026-10-28) */
+      else if (k === 'home') { gIn = false; gNote = 'jamais déplacé (à son départ) : non compté'; }
+      else if (k === 'ascenseur') { gIn = false; gNote = 'encore tenu par l\'ascenseur : non compté'; }
       else if (k === 'toit') {
         if (o.fourcheDegagee && o.robotInCastle) { lvl = 4; gNote = 'sur le toit du robot, libre de tout actionneur'; }
-        else gNote = 'sur le toit, mais ' + (!o.fourcheDegagee ? 'fourche non dégagée' : 'robot hors de son château');
+        else if (!o.fourcheDegagee) { gIn = false; gNote = 'sur le toit, mais fourche non dégagée (contrôlé par un actionneur) : non compté'; }
+        else gNote = 'sur le toit, mais robot hors de son château';
       } else {
         var zone = g.zone || zoneAtXY(g.c), bottom = g.bottom;
         lvl = bottom >= 300 ? 3 : bottom >= 200 ? 2 : bottom >= 100 ? 1 : 0;

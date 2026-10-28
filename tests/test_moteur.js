@@ -118,7 +118,8 @@ var rl = run([{ a: 'prendre', f: 'A', p: 'P1' }, { a: 'deposer', f: 'A', q: 'pil
 ok(/Stockage/.test(rl.infos[4].err || ''), 'lâcher une 4e pierre dans la cour : erreur moteur', rl.infos[4].err);
 var rt = run([]), Rt = rt.sim.finish();
 ok(S.scoreAt(Rt, Rt.params, 50).detail.roi === 0 && S.scoreAt(Rt, Rt.params).detail.roi === 10, 'trône compté seulement à T = 100 s', 'à 50 s : ' + S.scoreAt(Rt, Rt.params, 50).detail.roi + ', à 100 s : ' + S.scoreAt(Rt, Rt.params).detail.roi);
-ok(S.scoreAt(Rt, Rt.params, 50).detail.graal === 0 && S.scoreAt(Rt, Rt.params).detail.graal === 5, 'Graal (présence 5 pts) compté seulement à T = 100 s');
+ok(S.scoreAt(Rt, Rt.params).detail.graal === 0, 'Graal jamais déplacé : 0 pt (E.2.b : le robot doit le prendre et le déposer)', 'graal ' + S.scoreAt(Rt, Rt.params).detail.graal);
+ok(S.scoreAt(Rref, Rref.params, 89).detail.graal === 0 && S.scoreAt(Rref, Rref.params).detail.graal === 25, 'Graal compté seulement à T = 100 s');
 ok(S.scoreAt(Rref, Rref.params, 89).detail.boulets === 0 && S.scoreAt(Rref, Rref.params).detail.boulets === 20, 'boulets comptés seulement à T = 100 s');
 var rc = run([{ a: 'tir' }]), bl = rc.sim.balls();
 ok(bl.shots.length === 10 && bl.shots.every(function (b) { return b.t >= 85 - 1e-9 && b.t <= 100; }) && !rc.infos[0].err, '10 boulets tirés dans la fenêtre [85, 100] s', 'premier à ' + bl.shots[0].t.toFixed(2) + ' s, dernier à ' + bl.shots[9].t.toFixed(2) + ' s');
