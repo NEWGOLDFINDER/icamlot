@@ -350,7 +350,12 @@
         "source": "équipe, 2026-10-28 ; règles générales F.3 et F.6",
         "valeur": "centré, intégré dans la colonne du support de balise, au-dessus de 350 mm (autorisé : la limite de 350 mm exclut le mât et les capteurs intégrés sous le mât)",
         "contraintes": "ouverture du mât < 20 mm de haut, enveloppe Ø70 à carré 100, sommet du support à 430 ± 5 mm",
-        "hauteur_exacte_plan_de_scan_mm": "a_definir"
+        "hauteur_exacte_plan_de_scan_mm": {
+          "statut": "declare",
+          "source": "équipe, 2026-10-28",
+          "valeur": "au-dessus de 411,2 mm (sommet du Graal sur le toit) et sous le plateau du support de balise (430 ± 5 mm) : aucun masquage par le Graal",
+          "valeur_exacte": "a_definir"
+        }
       }
     },
     "cameras": {
