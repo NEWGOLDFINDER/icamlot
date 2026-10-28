@@ -328,6 +328,8 @@ class PPOTrainer:
         from trainer.export_onnx import export_all
         c = self.cfg
         scs = eval_sampler.fixed(c.eval_matchs, c.eval_graine)
+        self.log(f"Évaluation de sélection : {len(scs)} matchs (graine {c.eval_graine}, politique gloutonne) — "
+                 "durée proportionnelle au nombre de matchs, hors durée maximale.")
         ev = evaluate(self.model, self.pool, scs, self.device, deterministic=True, log=self.log)
         # le pool d'entraînement doit repartir de zéro (les environnements ont servi à l'évaluation)
         self._obs = None
