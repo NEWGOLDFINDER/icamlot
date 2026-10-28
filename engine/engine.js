@@ -1871,8 +1871,9 @@
         var pd = pend[f]; pend[f] = { from: pd ? pd.from : cp(s[f]), seq: (pd ? pd.seq : []).concat(seq) };
         s[f].rot = r;
       },
-      attendre: function (st) { flushPend(); adv(Math.max(0, +st.sec || 0), 'Attente de ' + (+st.sec || 0) + ' s'); },
-      attendreJusqua: function (st) { flushPend(); var tt = +st.sec || 0; if (s.t < tt) adv(tt - s.t, 'Attente jusqu\'à ' + tt + ' s'); },
+      /* attendre : rien ne bouge ; une rotation de pince préparée reste en attente du prochain trajet */
+      attendre: function (st) { adv(Math.max(0, +st.sec || 0), 'Attente de ' + (+st.sec || 0) + ' s'); },
+      attendreJusqua: function (st) { var tt = +st.sec || 0; if (s.t < tt) adv(tt - s.t, 'Attente jusqu\'à ' + tt + ' s'); },
       /* retour dans la salle du trône : centre du trône, cap le plus proche du cap actuel qui met toute la projection du robot dans le trône */
       trone: function () {
         var O = [tx(250, P.team), 1000], TRn = throneOf(P.team), h = s.h;
@@ -2119,7 +2120,9 @@
       return into;
     }
     function claimed(id) { return stones.some(function (x) { return x.id === id && isClaimed(x); }); }
-    return { exec: exec, finish: finish, result: result, preconditions: preconditions, planifier: planifier, planifierEtape: planifierEtape, poseAtT: poseAtT, claimed: claimed, covered: function (st, excl) { return covered(st, excl); }, foreign: foreign, freeFeet: freeFeet, leftHome: leftHome, snapshot: snapshot, restore: restore, pose: pose, held: getHeld, stones: getStones, graal: getGraal, balls: getBalls, errors: function () { return errors; }, time: time, params: params, hullRadius: hullRadius, stockage: stockCount, portes: function () { return Object.assign({}, doors); }, program: function () { return program.slice(); } };
+    /* rotations de pince préparées encore à faire : angle réel de départ par face (null si rien en attente) */
+    function pendantes() { return { A: pend.A ? pend.A.from.rot : null, B: pend.B ? pend.B.from.rot : null }; }
+    return { exec: exec, finish: finish, result: result, preconditions: preconditions, planifier: planifier, planifierEtape: planifierEtape, pendantes: pendantes, poseAtT: poseAtT, claimed: claimed, covered: function (st, excl) { return covered(st, excl); }, foreign: foreign, freeFeet: freeFeet, leftHome: leftHome, snapshot: snapshot, restore: restore, pose: pose, held: getHeld, stones: getStones, graal: getGraal, balls: getBalls, errors: function () { return errors; }, time: time, params: params, hullRadius: hullRadius, stockage: stockCount, portes: function () { return Object.assign({}, doors); }, program: function () { return program.slice(); } };
   }
   function simulate(prog, P, opts) {
     var sim = makeSim(P, opts);

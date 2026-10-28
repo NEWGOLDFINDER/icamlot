@@ -134,10 +134,11 @@ var PATH = /aucun passage|aucune position|Aucune position|pas de place|pas de po
 /* causes liées à l'adversaire (non masquées, décision §9) ou à la croyance (pierres prises sans être vues) */
 var OPP = /n'est plus là|absente|robot adverse/;
 function serie(withOpp, seed) {
-  var r = rng(seed), o = { dec: 0, fail: 0, path: 0, opp: 0, other: {}, eps: 0, t: Date.now() };
+  var r = rng(seed), o = { dec: 0, fail: 0, path: 0, opp: 0, other: {}, eps: 0, t: Date.now(), sansFinir: 0 }, iFin = ENV.create({}).catalogue.map(function (a) { return a.a; }).indexOf('finir');
   while (o.dec < N_DEC) {
     var envR = ENV.create({ skipContacts: true }), sr = envR.reset({ seed: seed * 1000 + o.eps, intensite: withOpp ? 'realiste' : 'aucun' }), kk = 0; o.eps++;
     while (!sr.done && kk < 80 && o.dec < N_DEC) {
+      if (!sr.mask[iFin] && sr.t < ENV.MATCH - 0.05) o.sansFinir++;
       sr = envR.step(randomPick(r, envR, sr.mask)); kk++; o.dec++;
       if (!sr.err) continue;
       o.fail++;
@@ -157,6 +158,7 @@ check('sans adversaire : échecs hors trajet < 2 %', S0.nOther / S0.dec < 0.02, 
 check('avec adversaire : échecs hors trajet et hors adversaire < 2 %', S1.nOther / S1.dec < 0.02, (100 * S1.nOther / S1.dec).toFixed(2) + ' %');
 /* cohérence masque -> moteur (chantier moteur-2 : le masque joue l'étape à blanc avec le planificateur du moteur) */
 check('sans adversaire : échecs toutes causes < 2 %', S0.fail / S0.dec < 0.02, (100 * S0.fail / S0.dec).toFixed(2) + ' %');
+check('« finir » toujours valide avant 100 s (le masque n\'est jamais vide)', !S0.sansFinir && !S1.sansFinir, S0.sansFinir + ' / ' + S1.sansFinir);
 
 console.log('\n7. Adversaires : stratégie, MLP « layers », modèle récurrent');
 function randMat(r, n, m, s) { var w = []; for (var i = 0; i < n; i++) { var row = []; for (var j = 0; j < m; j++) row.push((r() * 2 - 1) * s); w.push(row); } return w; }
@@ -186,6 +188,17 @@ var envD = ENV.create({ skipContacts: true }); envD.reset({ seed: 1, intensite: 
 check('adversaire par défaut = programme de référence en miroir', JSON.stringify(envD.opponentProgram()) === JSON.stringify(ENGINE.PROGRAMME_REFERENCE));
 var bad = false; try { ENV.brainSpec(Object.assign({}, rec, { catalogue_version: 'autre' })); } catch (e) { bad = true; }
 check('modèle de version différente refusé', bad);
+
+console.log('\n7 bis. Caméras (chantier moteur-2)');
+(function () {
+  /* l'adversaire (référence en miroir) prend P4 et P8 ; caméras coupées : la croyance n'en sait rien */
+  var envC = ENV.create({ skipContacts: true, cameras: false }), sC = envC.reset({ seed: 2, intensite: 'realiste' }), envV = ENV.create({ skipContacts: true }), sV = envV.reset({ seed: 2, intensite: 'realiste' });
+  var iTr = envC.catalogue.map(function (a) { return a.a + (a.w || ''); }).indexOf('trajW4');
+  for (var k = 0; k < 3; k++) { sC = envC.step(iTr); sV = envV.step(iTr); }
+  var bC = envC.belief(), changed = Object.keys(bC.paquets).filter(function (id) { return bC.paquets[id].n !== 3; });
+  check('caméras coupées (ENV.create({ cameras: false })) : carrières jamais mises à jour par la vue', changed.length === 0, JSON.stringify(changed));
+  check('modèle de caméras : prise seulement (portée et demi-angle réduits)', ENV.VISION.portee <= 500 && ENV.VISION.demiAngle <= 20, ENV.VISION.portee + ' mm, ' + ENV.VISION.demiAngle + '°');
+})();
 
 console.log('\n8. duel_bridge.js');
 var out = cp.spawnSync('node', [path.join(ROOT, 'engine/duel_bridge.js')], { input: '{"cmd":"ping"}\n{"cmd":"init","config":{"blue":"realiste"}}\n', encoding: 'utf8' });

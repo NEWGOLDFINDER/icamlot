@@ -30,11 +30,15 @@
   var MATCH = 100;
   var OBS_VERSION = 'icamlot-obs-3.0';
 
-  /* Modèle de visibilité des caméras des faces A et B : HYPOTHÈSES (spec/robot.json : modele_cameras_et_champ = « a_definir »).
-     Une carrière est vue si son centre est à moins de portee mm de la caméra et à moins de demiAngle degrés de l'axe de la face.
-     Pas d'occultation. Les instants de vue sont échantillonnés tous les pas secondes pendant chaque action. */
-  var VISION = { demiAngle: 35, portee: 1500, pas: 0.5, masqueeParCharge: false,
-    /* lidar : l'adversaire est toujours vu (pas d'occultation) ; vitesse estimée sur periodeLidar s (HYPOTHÈSES) */
+  /* Caméras des faces A et B (décision d'équipe, 2026-10-28) : elles ne servent qu'à lire les étiquettes ArUco des pierres pour
+     l'ajustement (x, y, ω) de la préhension. Une carrière (et une pierre posée par l'adversaire) n'est donc mise à jour que
+     lorsque le robot est à une pose d'approche de prise face à elle : centre à moins de portee mm du centre du robot et à moins
+     de demiAngle degrés de la normale de la face. HYPOTHÈSES (aucune valeur dans la spec) : portee 400 mm (pierre à 200,3 mm
+     du centre au contact, recul de 80 mm, marge), demiAngle 15°. Pas d'occultation ; instants échantillonnés tous les pas s.
+     actif = false (ou ENV.create({ cameras: false })) coupe le modèle : la croyance ne change alors que par les pierres prises
+     par le robot et les prises refusées. Lidar : centré, à hauteur réglementaire (au-dessus des pierres) : il ne voit que les
+     robots ; l'adversaire est toujours vu (pas d'occultation) ; vitesse estimée sur periodeLidar s (HYPOTHÈSE). */
+  var VISION = { actif: true, demiAngle: 15, portee: 400, pas: 0.5, masqueeParCharge: false,
     periodeLidar: 0.1 };
   /* Normalisations : bornes documentées, toutes les entrées sont dans [0, 1] (ou [-1, 1] pour cos/sin). */
   var NORM = { age: 100, rayonEnveloppe: 500, rayon: 1000, pasRayon: 25, rayonAdversaire: 212.35, ageAdversaire: 5 };
@@ -77,7 +81,7 @@
   function updateMemory(mem, sim, t0, t1, brick, info) {
     var held = sim.held(), foreign = sim.foreign ? sim.foreign() : [];
     mem.etr = mem.etr || {};
-    var times = []; for (var tt = Math.max(0, t0); tt < t1; tt += VISION.pas) times.push(tt); times.push(t1);
+    var times = []; if (VISION.actif && !mem.sansCameras && VISION.portee > 0) { for (var tt = Math.max(0, t0); tt < t1; tt += VISION.pas) times.push(tt); times.push(t1); }
     times.forEach(function (tt) {
       var p = sim.poseAtT(tt);
       ['A', 'B'].forEach(function (f, k) {
@@ -103,10 +107,8 @@
       var pid = brick.p || (brick.s ? String(brick.s).split('.')[0] : null);
       if (pid && mem.paquets[pid]) mem.paquets[pid] = { n: 0, t: t1 };
     }
-    /* rotation préparée (tourner en temps masqué) : faite au prochain trajet ou à la prochaine action sur place */
-    mem.pend = mem.pend || {};
-    if (brick && brick.a === 'tourner' && brick.tm && !(info && info.err)) { if (mem.pend[brick.f] == null && mem.lastRot) mem.pend[brick.f] = mem.lastRot[brick.f]; }
-    else if (brick) mem.pend = {};
+    /* rotation préparée (tourner en temps masqué) encore à faire : lue dans le moteur (le robot connaît ses consignes) */
+    mem.pend = sim.pendantes ? sim.pendantes() : {};
     mem.echec = !!(info && info.err);
     /* briques qui viennent d'échouer sans faire avancer le temps : le monde n'a pas changé, elles échoueraient encore */
     if (!mem.echecs || mem.echecs.t !== t1) mem.echecs = { t: t1, briques: [] };
@@ -392,6 +394,8 @@
     var onError = opts.onError || rec.sur_erreur || 'penalite';
     var PEN = { erreur: +rec.penalite_erreur || 0, contact: +rec.penalite_contact || 0, invalide: +rec.penalite_invalide || 0 };
     var duel = null, sim = null, mem = null, opp = null, lastScore = 0, done = false, history = [], penalties = 0, cur = null;
+    /* opts.cameras === false : modèle de caméras coupé (croyance sans vue des carrières), demandé par l'embarqué */
+    var sansCameras = opts.cameras === false;
 
     /* adversaire du match (décision §9) : scenario.opponent, sinon un de opts.adversaires (choisi par la graine ou
        scenario.adversaire = index), sinon opts.opponent, sinon le programme de référence en miroir */
@@ -433,7 +437,7 @@
       opp = opponentSetup(opponentSpecOf(scenario), P, scenario.intensite || intensity);
       duel = ENGINE.makeDuel({ params: P, skipContacts: skipContacts, blue: opp ? { params: opp.params } : null });
       sim = duel.sims.yellow;
-      mem = newMemory();
+      mem = newMemory(); mem.sansCameras = sansCameras;
       done = false; history = []; penalties = 0;
       lastScore = scoreNow();
       var s = state(); s.reset = true;
