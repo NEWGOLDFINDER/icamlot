@@ -34,8 +34,8 @@ from trainer.js_env_pool import JsEnvPool, default_procs  # noqa: E402
 DOSSIER = ROOT / ".data" / "adversaires"
 # Budgets par défaut (hypothèses, réglables) : (durée max s, transitions PPO, époques d'imitation, matchs d'évaluation)
 BUDGETS = {
-    "champion": {"duree": 1800, "transitions": 200_000, "epoques": 60, "eval": 30},
-    "intermediaire": {"duree": 300, "transitions": 15_000, "epoques": 20, "eval": 30},
+    "champion": {"duree": 2400, "transitions": 200_000, "epoques": 80, "eval": 30, "imitation_scenarios": 16, "ppo_lr": 1e-4, "eval_tous_les": 10},
+    "intermediaire": {"duree": 300, "transitions": 15_000, "epoques": 20, "eval": 30, "imitation_scenarios": 6, "ppo_lr": 3e-4, "eval_tous_les": 0},
 }
 MELANGE_ENTRAINEMENT = {"aucun": 0.5, "reference": 0.5}
 
@@ -52,7 +52,8 @@ def config_robot(robot: str, n_procs: int, duree: float, transitions: int, epoqu
         "adversaire": {"melange": MELANGE_ENTRAINEMENT},
         "reglages": {
             "mode": "rapide", "processus": n_procs, "graine": graine, "duree_max": duree, "ppo_steps": transitions,
-            "pretrain_imitation": True, "imitation_exemple": False, "epoques": epoques, "imitation_scenarios": 8,
+            "pretrain_imitation": True, "imitation_exemple": False, "epoques": epoques, "imitation_scenarios": BUDGETS[robot]["imitation_scenarios"],
+            "eval_apres_imitation": True, "eval_tous_les": BUDGETS[robot]["eval_tous_les"], "ppo_lr": BUDGETS[robot]["ppo_lr"],
             "eval_matchs": eval_matchs, "ppo_batch_size": 2 * n_procs, "hidden": 128,
         },
         "_robot": robot, "_profil": info["profil"],

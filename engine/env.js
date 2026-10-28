@@ -557,6 +557,8 @@
             if (budget < -1) break;
             var ia = att.filter(function (i) { return catalogue[i].sec <= budget; })[0];
             if (ia == null) ia = att[att.length - 1];
+            /* même chemin que les autres briques (ACTIONS.indexOfStep), suivi par le traçage du worker (imitate_trace) */
+            var ib = ACTIONS.indexOfStep({ a: 'attendre', sec: catalogue[ia].sec }, cur.belief, catalogue); if (ib >= 0) ia = ib;
             var s0w = { obs: observeBelief(cur.belief, groups), mask: cur.mask.slice(), t: sim.time() }, rw = doAction(ia, true);
             prev = { obs: s0w.obs, action: ia, mask: s0w.mask, reward: rw.reward, t: s0w.t, err: rw.err || null };
             pairs.push(prev);

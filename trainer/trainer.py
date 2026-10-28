@@ -433,6 +433,9 @@ def run_ppo(job: Job, pool: JsEnvPool, cfg: dict, strats: List[dict], sampler: S
         penalite_erreur=float(regl.get("ppo_penalite_erreur") or 0), hidden=int(regl.get("hidden") or 128),
         intensites=list(sampler.intensites), graine=int(regl.get("graine") or 1),
         eval_matchs=int(regl.get("eval_matchs") if regl.get("eval_matchs") is not None else PPOConfig.eval_matchs),
+        eval_tous_les=int(regl.get("eval_tous_les") or 0),
+        entropie=float(regl.get("ppo_entropie") if regl.get("ppo_entropie") is not None else PPOConfig.entropie),
+        entropie_fin=float(regl.get("ppo_entropie") if regl.get("ppo_entropie") is not None else PPOConfig.entropie_fin),
     )
     device = torch_device()
     base = model_base(out)
@@ -455,6 +458,9 @@ def run_ppo(job: Job, pool: JsEnvPool, cfg: dict, strats: List[dict], sampler: S
             imitation_train(tr.model, demos, epochs=int(regl.get("epoques") or 40),
                             lr=float(regl.get("imitation_lr") or 1e-3), device=device,
                             obs_rms=tr.obs_rms, ret_rms=tr.ret_rms, log=job.logline)
+            # le réseau imité est candidat à la sélection (le PPO ne garde un modèle que s'il fait mieux)
+            if regl.get("eval_apres_imitation") and pc.eval_matchs:
+                tr.evaluate_and_select(model_base(out), sampler)
     t0 = time.time()
     history = []
     best_mean = [None]
