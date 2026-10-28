@@ -308,7 +308,10 @@ def evaluate_and_export(job: Job, pool: JsEnvPool, model, cfg: dict, sampler: Sc
     save_checkpoint(Path(str(base) + ".pt"), model, info)
     exp = export_all(model, base, info)
     v = exp.get("verification") or {}
-    job.logline(f"Export ONNX : {exp['onnx']} (vérification ONNX Runtime : écart {v.get('ecart_max', float('nan')):.1e}).")
+    if exp.get("onnx_erreur"):
+        job.logline(f"Export ONNX ignoré ({exp['onnx_erreur']}) : poids web et .pt enregistrés ; installer onnx et onnxscript pour le Pi 5.")
+    else:
+        job.logline(f"Export ONNX : {exp['onnx']} (vérification ONNX Runtime : écart {v.get('ecart_max', float('nan')):.1e}).")
     return ev, exp
 
 

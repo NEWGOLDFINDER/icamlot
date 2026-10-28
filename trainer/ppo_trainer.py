@@ -355,7 +355,9 @@ class PPOTrainer:
             self.save(champion_pt, extra)
             info = self.state()
             info["evaluation"] = ev
-            export_all(self.model, base, info)
+            exp = export_all(self.model, base, info)
+            if exp.get("onnx_erreur"):
+                self.log(f"Export ONNX ignoré ({exp['onnx_erreur']}) : poids web et .pt enregistrés ; installer onnx et onnxscript pour le Pi 5.")
             Path(str(base) + ".eval.json").write_text(json.dumps(ev, ensure_ascii=False, indent=2), encoding="utf-8")
             self.log(f"Nouveau champion : {champion_pt}")
         else:
