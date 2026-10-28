@@ -1,0 +1,589 @@
+{
+ "plans_anciens": [
+  [
+   "S01",
+   4.5
+  ],
+  [
+   "S02",
+   6.0
+  ],
+  [
+   "S03",
+   7.5
+  ],
+  [
+   "S04",
+   5.0
+  ],
+  [
+   "S05",
+   9.0
+  ],
+  [
+   "S06",
+   7.0
+  ],
+  [
+   "S07",
+   5.0
+  ],
+  [
+   "CH1",
+   1.4
+  ],
+  [
+   "S08",
+   6.5
+  ],
+  [
+   "S09",
+   4.5
+  ],
+  [
+   "S10",
+   5.5
+  ],
+  [
+   "CH2",
+   1.4
+  ],
+  [
+   "S11",
+   7.5
+  ],
+  [
+   "S12",
+   5.5
+  ],
+  [
+   "CH3",
+   1.4
+  ],
+  [
+   "S13",
+   7.0
+  ],
+  [
+   "S14",
+   6.5
+  ],
+  [
+   "CH4",
+   1.4
+  ],
+  [
+   "S15",
+   6.0
+  ],
+  [
+   "S16",
+   4.5
+  ],
+  [
+   "S17",
+   5.5
+  ],
+  [
+   "END",
+   7.0
+  ]
+ ],
+ "plans": [
+  [
+   "S01",
+   4.5
+  ],
+  [
+   "S02",
+   5.6
+  ],
+  [
+   "S03",
+   7.8
+  ],
+  [
+   "S04",
+   5.7
+  ],
+  [
+   "S05",
+   8.6
+  ],
+  [
+   "S06",
+   6.0
+  ],
+  [
+   "S07",
+   5.3
+  ],
+  [
+   "CH1",
+   1.4
+  ],
+  [
+   "S08",
+   6.6
+  ],
+  [
+   "S09",
+   4.0
+  ],
+  [
+   "S10",
+   4.6
+  ],
+  [
+   "CH2",
+   1.4
+  ],
+  [
+   "S11",
+   8.1
+  ],
+  [
+   "S12",
+   5.5
+  ],
+  [
+   "CH3",
+   1.4
+  ],
+  [
+   "S13",
+   8.0
+  ],
+  [
+   "S14",
+   7.3
+  ],
+  [
+   "CH4",
+   1.4
+  ],
+  [
+   "S15",
+   6.0
+  ],
+  [
+   "S16",
+   4.4
+  ],
+  [
+   "S17",
+   6.2
+  ],
+  [
+   "END",
+   7.5
+  ]
+ ],
+ "duree": 117.30000000000001,
+ "lignes": [
+  {
+   "i": 1,
+   "plan": "S01",
+   "debut": 0.3,
+   "fin": 3.6,
+   "src": [
+    0.0,
+    3.3
+   ],
+   "marge": 0.9,
+   "sous_titres": [
+    {
+     "texte": "Comment construire le cerveau d'un robot ?",
+     "debut": 0.3,
+     "fin": 2.199
+    },
+    {
+     "texte": "Voici notre méthode.",
+     "debut": 2.523,
+     "fin": 3.6
+    }
+   ]
+  },
+  {
+   "i": 2,
+   "plan": "S02",
+   "debut": 4.8,
+   "fin": 9.32,
+   "src": [
+    4.512,
+    9.032
+   ],
+   "marge": 0.78,
+   "sous_titres": [
+    {
+     "texte": "Un match dure cent secondes.",
+     "debut": 4.8,
+     "fin": 6.155
+    },
+    {
+     "texte": "Sur la table, trente pierres, dans dix carrières.",
+     "debut": 6.542,
+     "fin": 9.32
+    }
+   ]
+  },
+  {
+   "i": 3,
+   "plan": "S03",
+   "debut": 10.4,
+   "fin": 17.443,
+   "src": [
+    9.704,
+    16.747
+   ],
+   "marge": 0.46,
+   "sous_titres": [
+    {
+     "texte": "Avec ces pierres, on bâtit son château : murs, tours, porte.",
+     "debut": 10.4,
+     "fin": 14.89
+    },
+    {
+     "texte": "Chaque construction rapporte des points.",
+     "debut": 15.599,
+     "fin": 17.443
+    }
+   ]
+  },
+  {
+   "i": 4,
+   "plan": "S04",
+   "debut": 18.2,
+   "fin": 23.149,
+   "src": [
+    17.58,
+    22.529
+   ],
+   "marge": 0.45,
+   "sous_titres": [
+    {
+     "texte": "Voici notre robot, en version simulée.",
+     "debut": 18.2,
+     "fin": 20.366
+    },
+    {
+     "texte": "Ses mécanismes restent secrets.",
+     "debut": 21.558,
+     "fin": 23.149
+    }
+   ]
+  },
+  {
+   "i": 5,
+   "plan": "S05",
+   "debut": 23.9,
+   "fin": 31.09,
+   "src": [
+    23.395,
+    30.585
+   ],
+   "marge": 1.11,
+   "sous_titres": [
+    {
+     "texte": "Ici, il suit un programme écrit à la main : quinze étapes, fixées d'avance.",
+     "debut": 23.9,
+     "fin": 28.619
+    },
+    {
+     "texte": "Résultat : cent seize points.",
+     "debut": 29.336,
+     "fin": 31.09
+    }
+   ]
+  },
+  {
+   "i": 6,
+   "plan": "S06",
+   "debut": 32.5,
+   "fin": 37.147,
+   "src": [
+    31.391,
+    36.038
+   ],
+   "marge": 1.05,
+   "sous_titres": [
+    {
+     "texte": "Mais si l'adversaire vide une carrière, la liste ne s'adapte pas.",
+     "debut": 32.5,
+     "fin": 35.979
+    },
+    {
+     "texte": "Cent huit points.",
+     "debut": 36.429,
+     "fin": 37.147
+    }
+   ]
+  },
+  {
+   "i": 7,
+   "plan": "S07",
+   "debut": 38.5,
+   "fin": 43.08,
+   "src": [
+    36.892,
+    41.472
+   ],
+   "marge": 0.42,
+   "sous_titres": [
+    {
+     "texte": "Notre objectif : un cerveau qui choisit, lui-même, sa prochaine action.",
+     "debut": 38.5,
+     "fin": 43.08
+    }
+   ]
+  },
+  {
+   "i": 8,
+   "plan": "CH1",
+   "debut": 43.8,
+   "fin": 51.068,
+   "src": [
+    42.262,
+    49.529
+   ],
+   "marge": 0.43,
+   "sous_titres": [
+    {
+     "texte": "D'abord, recréer le monde : la table, les pierres, les règles.",
+     "debut": 43.8,
+     "fin": 47.99
+    },
+    {
+     "texte": "Chaque trajet est calculé, sans contact.",
+     "debut": 48.781,
+     "fin": 51.067
+    }
+   ]
+  },
+  {
+   "i": 9,
+   "plan": "S09",
+   "debut": 51.8,
+   "fin": 54.835,
+   "src": [
+    50.348,
+    53.383
+   ],
+   "marge": 0.66,
+   "sous_titres": [
+    {
+     "texte": "Si l'adversaire peut croiser sa route, notre robot attend.",
+     "debut": 51.8,
+     "fin": 54.835
+    }
+   ]
+  },
+  {
+   "i": 10,
+   "plan": "S10",
+   "debut": 55.8,
+   "fin": 59.012,
+   "src": [
+    54.128,
+    57.34
+   ],
+   "marge": 1.09,
+   "sous_titres": [
+    {
+     "texte": "Un match de cent secondes s'y joue en cinq à six secondes.",
+     "debut": 55.8,
+     "fin": 59.012
+    }
+   ]
+  },
+  {
+   "i": 11,
+   "plan": "CH2",
+   "debut": 60.4,
+   "fin": 69.156,
+   "src": [
+    58.909,
+    67.665
+   ],
+   "marge": 0.44,
+   "sous_titres": [
+    {
+     "texte": "Ce que perçoit le cerveau ?",
+     "debut": 60.4,
+     "fin": 61.582
+    },
+    {
+     "texte": "Pas une image, mais cinquante-six nombres.",
+     "debut": 62.312,
+     "fin": 64.554
+    },
+    {
+     "texte": "Le temps, sa position, l'adversaire, l'espace libre.",
+     "debut": 65.256,
+     "fin": 69.156
+    }
+   ]
+  },
+  {
+   "i": 12,
+   "plan": "S12",
+   "debut": 69.9,
+   "fin": 74.049,
+   "src": [
+    68.113,
+    72.262
+   ],
+   "marge": 1.05,
+   "sous_titres": [
+    {
+     "texte": "Pour lui, une carrière reste pleine, tant qu'il n'a pas tenté de la prendre.",
+     "debut": 69.9,
+     "fin": 74.049
+    }
+   ]
+  },
+  {
+   "i": 13,
+   "plan": "CH3",
+   "debut": 75.4,
+   "fin": 84.062,
+   "src": [
+    73.302,
+    81.965
+   ],
+   "marge": 0.44,
+   "sous_titres": [
+    {
+     "texte": "À l'intérieur, un réseau de neurones.",
+     "debut": 75.4,
+     "fin": 77.502
+    },
+    {
+     "texte": "Chaque neurone additionne les entrées, pondérées par des coefficients.",
+     "debut": 78.399,
+     "fin": 81.894
+    },
+    {
+     "texte": "Environ cent quarante mille.",
+     "debut": 82.707,
+     "fin": 84.063
+    }
+   ]
+  },
+  {
+   "i": 14,
+   "plan": "S14",
+   "debut": 84.8,
+   "fin": 91.402,
+   "src": [
+    82.927,
+    89.529
+   ],
+   "marge": 0.4,
+   "sous_titres": [
+    {
+     "texte": "Une mémoire garde le fil du match.",
+     "debut": 84.8,
+     "fin": 86.514
+    },
+    {
+     "texte": "Un filtre écarte l'impossible.",
+     "debut": 87.24,
+     "fin": 89.09
+    },
+    {
+     "texte": "Et la meilleure note gagne.",
+     "debut": 90.048,
+     "fin": 91.402
+    }
+   ]
+  },
+  {
+   "i": 15,
+   "plan": "CH4",
+   "debut": 92.1,
+   "fin": 98.043,
+   "src": [
+    90.455,
+    96.398
+   ],
+   "marge": 1.16,
+   "sous_titres": [
+    {
+     "texte": "L'entraînement prévu : imiter d'abord un programme écrit à la main…",
+     "debut": 92.1,
+     "fin": 95.344
+    },
+    {
+     "texte": "puis jouer seul, guidé par le score.",
+     "debut": 95.711,
+     "fin": 98.043
+    }
+   ]
+  },
+  {
+   "i": 16,
+   "plan": "S16",
+   "debut": 99.5,
+   "fin": 103.18,
+   "src": [
+    97.427,
+    101.107
+   ],
+   "marge": 0.42,
+   "sous_titres": [
+    {
+     "texte": "La meilleure version deviendra un petit fichier, destiné au robot.",
+     "debut": 99.5,
+     "fin": 103.18
+    }
+   ]
+  },
+  {
+   "i": 17,
+   "plan": "S17",
+   "debut": 103.9,
+   "fin": 109.374,
+   "src": [
+    102.448,
+    107.922
+   ],
+   "marge": 0.43,
+   "sous_titres": [
+    {
+     "texte": "Le simulateur fonctionne.",
+     "debut": 103.9,
+     "fin": 105.258
+    },
+    {
+     "texte": "Le cerveau, lui, reste à entraîner : c'est prévu cet hiver.",
+     "debut": 105.81,
+     "fin": 109.374
+    }
+   ]
+  },
+  {
+   "i": 18,
+   "plan": "END",
+   "debut": 110.1,
+   "fin": 116.015,
+   "src": [
+    108.525,
+    114.44
+   ],
+   "marge": 1.28,
+   "sous_titres": [
+    {
+     "texte": "Nous sommes ICAMLOT, de Roboticam Vendée.",
+     "debut": 110.1,
+     "fin": 112.321
+    },
+    {
+     "texte": "Pour aller au bout, nous recherchons un apport financier.",
+     "debut": 113.399,
+     "fin": 116.015
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,164 @@
+[
+ {
+  "i": 1,
+  "debut": 0.0,
+  "fin": 3.3,
+  "duree": 3.3,
+  "texte": "Comment construire le cerveau d'un robot ? Voici notre méthode.",
+  "poids": 67,
+  "debit": 20.3
+ },
+ {
+  "i": 2,
+  "debut": 4.512,
+  "fin": 9.032,
+  "duree": 4.52,
+  "texte": "Un match dure cent secondes. Sur la table, trente pierres, dans dix carrières.",
+  "poids": 94,
+  "debit": 20.8
+ },
+ {
+  "i": 3,
+  "debut": 9.704,
+  "fin": 16.747,
+  "duree": 7.043,
+  "texte": "Avec ces pierres, on bâtit son château : murs, tours, porte. Chaque construction rapporte des points.",
+  "poids": 128,
+  "debit": 18.2
+ },
+ {
+  "i": 4,
+  "debut": 17.58,
+  "fin": 22.529,
+  "duree": 4.949,
+  "texte": "Voici notre robot, en version simulée. Ses mécanismes restent secrets.",
+  "poids": 82,
+  "debit": 16.6
+ },
+ {
+  "i": 5,
+  "debut": 23.395,
+  "fin": 30.585,
+  "duree": 7.19,
+  "texte": "Ici, il suit un programme écrit à la main : quinze étapes, fixées d'avance. Résultat : cent seize points.",
+  "poids": 128,
+  "debit": 17.8
+ },
+ {
+  "i": 6,
+  "debut": 31.391,
+  "fin": 36.038,
+  "duree": 4.647,
+  "texte": "Mais si l'adversaire vide une carrière, la liste ne s'adapte pas. Cent huit points.",
+  "poids": 89,
+  "debit": 19.2
+ },
+ {
+  "i": 7,
+  "debut": 36.892,
+  "fin": 41.472,
+  "duree": 4.58,
+  "texte": "Notre objectif : un cerveau qui choisit, lui-même, sa prochaine action.",
+  "poids": 88,
+  "debit": 19.2
+ },
+ {
+  "i": 8,
+  "debut": 42.262,
+  "fin": 49.529,
+  "duree": 7.268,
+  "texte": "D'abord, recréer le monde : la table, les pierres, les règles. Chaque trajet est calculé, sans contact.",
+  "poids": 135,
+  "debit": 18.6
+ },
+ {
+  "i": 9,
+  "debut": 50.348,
+  "fin": 53.383,
+  "duree": 3.035,
+  "texte": "Si l'adversaire peut croiser sa route, notre robot attend.",
+  "poids": 63,
+  "debit": 20.8
+ },
+ {
+  "i": 10,
+  "debut": 54.128,
+  "fin": 57.34,
+  "duree": 3.212,
+  "texte": "Un match de cent secondes s'y joue en cinq à six secondes.",
+  "poids": 53,
+  "debit": 16.5
+ },
+ {
+  "i": 11,
+  "debut": 58.909,
+  "fin": 67.665,
+  "duree": 8.756,
+  "texte": "Ce que perçoit le cerveau ? Pas une image, mais cinquante-six nombres. Le temps, sa position, l'adversaire, l'espace libre.",
+  "poids": 151,
+  "debit": 17.2
+ },
+ {
+  "i": 12,
+  "debut": 68.113,
+  "fin": 72.262,
+  "duree": 4.149,
+  "texte": "Pour lui, une carrière reste pleine, tant qu'il n'a pas tenté de la prendre.",
+  "poids": 82,
+  "debit": 19.8
+ },
+ {
+  "i": 13,
+  "debut": 73.302,
+  "fin": 81.965,
+  "duree": 8.662,
+  "texte": "À l'intérieur, un réseau de neurones. Chaque neurone additionne les entrées, pondérées par des coefficients. Environ cent quarante mille.",
+  "poids": 153,
+  "debit": 17.7
+ },
+ {
+  "i": 14,
+  "debut": 82.927,
+  "fin": 89.529,
+  "duree": 6.602,
+  "texte": "Une mémoire garde le fil du match. Un filtre écarte l'impossible. Et la meilleure note gagne.",
+  "poids": 98,
+  "debit": 14.8
+ },
+ {
+  "i": 15,
+  "debut": 90.455,
+  "fin": 96.398,
+  "duree": 5.943,
+  "texte": "L'entraînement prévu : imiter d'abord un programme écrit à la main… puis jouer seul, guidé par le score.",
+  "poids": 113,
+  "debit": 19.0
+ },
+ {
+  "i": 16,
+  "debut": 97.427,
+  "fin": 101.107,
+  "duree": 3.68,
+  "texte": "La meilleure version deviendra un petit fichier, destiné au robot.",
+  "poids": 71,
+  "debit": 19.3
+ },
+ {
+  "i": 17,
+  "debut": 102.448,
+  "fin": 107.922,
+  "duree": 5.474,
+  "texte": "Le simulateur fonctionne. Le cerveau, lui, reste à entraîner : c'est prévu cet hiver.",
+  "poids": 106,
+  "debit": 19.4
+ },
+ {
+  "i": 18,
+  "debut": 108.525,
+  "fin": 114.44,
+  "duree": 5.915,
+  "texte": "Nous sommes ICAMLOT, de Roboticam Vendée. Pour aller au bout, nous recherchons un apport financier.",
+  "poids": 113,
+  "debit": 19.1
+ }
+]

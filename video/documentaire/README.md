@@ -64,3 +64,18 @@ ffmpeg -f concat -i parts.txt -i musique_doc.wav -c:v copy -c:a aac -b:a 192k -s
 - Le dernier argument de `render.js` fixe la résolution : `1` pour du 1080p, `2` pour du 4K.
 - `scene.js` est la concaténation, dans l'ordre, de `partA.js`, `partHud.js`, `partHull.js`, `partMatch.js`, `partNet2.js`, `partComp.js` et `partDoc.js`.
 - Pour contrôler une image sans tout rendre : `node docshot.js 0.5 12.0 48.5`, qui écrit dans `prev/`. Il faut adapter la page chargée dans le script.
+
+## Version avec voix off (ElevenLabs)
+
+La voix est générée par l'équipe dans ElevenLabs à partir de `voix_off_elevenlabs.txt`. Le fichier audio n'est pas versionné.
+
+1. **Découpage** : `voix/aligner.py` fait un alignement forcé texte → silences et trouve les 18 phrases. Contrôle : dans chaque phrase, le nombre de pauses internes doit correspondre à sa ponctuation.
+2. **Placement** : `voix/plan_voix.py` fixe les nouvelles durées de plans pour qu'aucune phrase ne déborde. Il place chaque phrase 0,3 s après le début de son plan, découpe les sous-titres aux pauses et écrit `voix_plan.json` ainsi que `voix_placee.wav`.
+3. **Image** : `partDoc.js` lit `voix_plan.json`. Chaque plan est étiré ou resserré pour suivre la voix, sans figer l'animation. Les sous-titres affichent le texte exact prononcé. Les apparitions à l'écran sont calées sur les mots (murs, tours, porte ; 116 points ; chaque entrée nommée ; filtre ; choix ; apport financier).
+4. **Son** : `audio_voix.py` produit la musique aux nouvelles durées. Le mixage baisse la musique sous la voix et normalise à −15 LUFS :
+
+```bash
+ffmpeg -i voix_placee.wav -i musique_voix.wav -filter_complex "[0:a]aformat=channel_layouts=mono,highpass=f=70,acompressor=threshold=-20dB:ratio=3:attack=5:release=120,volume=1.6,asplit=2[v1][vkey];[1:a]volume=0.55[m];[m][vkey]sidechaincompress=threshold=0.03:ratio=8:attack=20:release=350[md];[v1]pan=stereo|c0=c0|c1=c0[vs];[md][vs]amix=inputs=2:normalize=0:duration=first,loudnorm=I=-15:TP=-1.5:LRA=11[out]" -map "[out]" -ar 48000 mix_voix.wav
+```
+
+Résultat : 117,3 s. Pendant les phrases, la voix est 9,4 dB au-dessus de la musique.

@@ -8,6 +8,7 @@ function wrapLines(str, size, maxW, weight = 600, fam = 'Inter Display') {
 }
 // grand sous-titre pédagogique (remplace la voix off)
 function caption(str, t, t0, t1, o = {}) {
+  if (typeof SUBS_OFF !== 'undefined' && SUBS_OFF) return;
   if (!str || t < t0 || t > t1) return;
   const a = fadeIO(t, t0, t1, 0.25, 0.25), size = o.size || 40, y0 = o.y || (H - 150), lines = wrapLines(str, size, o.maxW || 1500, 650);
   const hh = lines.length * size * 1.25 + 40;

@@ -25,8 +25,12 @@ const PLANS = [
   ['CH3', 1.4], ['S13', 7.0], ['S14', 6.5],
   ['CH4', 1.4], ['S15', 6.0], ['S16', 4.5], ['S17', 5.5], ['END', 7.0]];
 let acc = 0; const PL = {}; for (const [id, d] of PLANS) { PL[id] = [acc, acc + d]; acc += d; }
-const DUREE = acc; window.DUREE = DUREE;
-function cur(t) { for (const [id] of PLANS) if (t < PL[id][1]) return id; return 'END'; }
+const VOIX = await (await fetch('voix_plan.json')).json();
+let accN = 0; const PLN = {}; for (const [id, dn] of VOIX.plans) { PLN[id] = [accN, accN + dn]; accN += dn; }
+const DUREE = accN; window.DUREE = DUREE;
+function cur(t) { for (const [id] of PLANS) if (t < PLN[id][1]) return id; return 'END'; }
+let SUBS_OFF = true;   // les anciennes légendes sont remplacées par les sous-titres de la voix
+const SUBS = VOIX.lignes.flatMap(l => l.sous_titres).map((c, i, A) => ({ texte: c.texte, a: c.debut - 0.08, b: Math.min(c.fin + 0.3, i + 1 < A.length ? A[i + 1].debut - 0.12 : 1e9) }));
 const CHAP = { S01: '', S02: 'LE JEU', S03: 'LE JEU', S04: 'NOTRE ROBOT', S05: 'NOTRE ROBOT', S06: 'NOTRE ROBOT', S07: 'NOTRE OBJECTIF', S08: '1 · RECRÉER LE MONDE', S09: '1 · RECRÉER LE MONDE', S10: '1 · RECRÉER LE MONDE',
   S11: '2 · CE QU\'IL PERÇOIT', S12: '2 · CE QU\'IL PERÇOIT', S13: '3 · LE RÉSEAU', S14: '3 · LE RÉSEAU', S15: '4 · APPRENDRE (PRÉVU)', S16: '4 · APPRENDRE (PRÉVU)', S17: 'OÙ NOUS EN SOMMES', END: '' };
 
@@ -56,9 +60,10 @@ function renderNet(full = true) { renderer.setScissorTest(false); renderer.setVi
 renderer.autoClear = false; netScene.background = null;
 
 // ------------------------------------------------------------------ image
-function renderFrame(t) {
+function renderFrame(tn) {
   g.clearRect(0, 0, hud.width, hud.height); resetWorld();
-  const id = cur(t), [t0, t1] = PL[id], tl = t - t0, d = t1 - t0, q = tl / d;
+  const id = cur(tn), [n0, n1] = PLN[id], [t0, t1] = PL[id], d = t1 - t0, k = (n1 - n0) / d;
+  const tl = (tn - n0) / k, t = t0 + tl, q = tl / d;   // temps interne du plan, étiré ou resserré pour suivre la voix
   VP.x0 = 0; VP.w = W;
   const R = SHOTS[id](t, tl, d, q) || {};
   // habillage commun
@@ -69,8 +74,10 @@ function renderFrame(t) {
   }
   if (R.bandeau) tag('SIMULATION · PROGRAMME ÉCRIT À LA MAIN (PAS LE RÉSEAU)', 70, 92, R.bandeau, CSS.yellow);
   vignette(0.55);
+  // sous-titres = texte exact de la voix off (sauf plans où le texte est déjà affiché en grand)
+  if (!['S01', 'S07', 'END'].includes(id)) for (const s of SUBS) { SUBS_OFF = false; caption(s.texte, tn, s.a, s.b, { size: 40 }); SUBS_OFF = true; }
   // transitions : fondu au noir court entre plans
-  const fin = 1 - seg(t, t1 - 0.18, t1), deb = seg(t, t0, t0 + 0.18);
+  const fin = 1 - seg(tn, n1 - 0.18, n1), deb = seg(tn, n0, n0 + 0.18);
   if (!id.startsWith('CH')) flash((1 - Math.min(fin, deb)) * 0.9, '2,4,10');
 }
 
@@ -99,7 +106,7 @@ const SHOTS = {
     renderWorld();
     cote(tab(0, 2080, 80), tab(3000, 2080, 80), '3 000 mm', seg(tl, 1.0, 2.0));
     cote(tab(3080, 2000, 80), tab(3080, 0, 80), '2 000 mm', seg(tl, 1.6, 2.6));
-    const lk = seg(tl, 2.6, 3.2); for (const p of SPEC.carrieres) label3(tab(p.c[0], p.c[1], 420), p.id, lk, CSS.yellow, 18);
+    const lk = seg(tl, 4.0, 4.5); for (const p of SPEC.carrieres) label3(tab(p.c[0], p.c[1], 420), p.id, lk, CSS.yellow, 18);
     caption('Un match dure 100 secondes. Sur la table : 30 pierres de 320 × 110 × 110 mm, rangées par trois dans 10 carrières.', t, PL.S02[0] + 0.3, PL.S02[1]);
     return {};
   },
@@ -109,11 +116,11 @@ const SHOTS = {
     look(orbit(700, 1000, lerp(1900, 1650, eio(q)), lerp(1.2, 0.55, eio(q)), lerp(1500, 1250, q)).add(drift(t, 1)), tab(620, 950, 80), 44);
     renderWorld();
     const it = [
-      [tab(679.3, 570.8, 340), 'Mur', '3 pierres à plat · +5 (+1 par pierre)', 0.4, -260, -110, CSS.yellow],
-      [tab(850, 750, 340), 'Tour', '1 pierre debout · +5', 1.2, 230, -150, '#ff8a3d'],
-      [tab(850, 1000, 440), 'Porte', '2 debout + 1 à plat · +20', 2.0, 250, -40, '#2f9bff'],
-      [tab(326, 1057, 420), 'Graal', 'sur le toit du robot · +25', 2.8, -280, -120, '#e2a72e'],
-      [tab(60, 1230, 5), 'Retour au trône', 'robot dans la salle du trône en fin de match · +10', 3.6, -60, 140, '#7cf3c0'],
+      [tab(679.3, 570.8, 340), 'Mur', '3 pierres à plat · +5 (+1 par pierre)', 2.75, -260, -110, CSS.yellow],
+      [tab(850, 750, 340), 'Tour', '1 pierre debout · +5', 3.45, 230, -150, '#ff8a3d'],
+      [tab(850, 1000, 440), 'Porte', '2 debout + 1 à plat · +20', 4.2, 250, -40, '#2f9bff'],
+      [tab(326, 1057, 420), 'Graal', 'sur le toit du robot · +25', 4.9, -280, -120, '#e2a72e'],
+      [tab(60, 1230, 5), 'Retour au trône', 'robot dans la salle du trône en fin de match · +10', 5.6, -60, 140, '#7cf3c0'],
     ];
     for (const [p, a, b, s, dx, dy, col] of it) callout(p, dx, dy, a, b, seg(tl, s, s + 0.8), col);
     caption('Chaque construction rapporte des points : il faut bâtir son château.', t, PL.S03[0] + 0.3, PL.S03[1]);
@@ -130,15 +137,15 @@ const SHOTS = {
   },
   // --- le match complet en accéléré
   S05(t, tl, d, q) {
-    const mt = clamp(tl / (d - 0.8)) * 100, p = robotPose(SOLO, 'jaune', mt);
+    const mt = clamp(tl / 7.5) * 100, p = robotPose(SOLO, 'jaune', mt);
     placeMatch(SOLO, mt);
     look(orbit(lerp(900, 800, q), 1000, 2500, lerp(1.25, 1.75, eio(q)), 2200).add(drift(t, 1.5)), tab(lerp(p.x, 800, 0.6), lerp(p.y, 1000, 0.6), 0), 44);
     renderWorld();
     const sc = mt >= 100 ? 116 : liveScore(SOLO, 'jaune', mt);
     info(['CHRONO', fmt(100 - mt, 1) + ' s'], 70, 150, seg(tl, 0.2, 0.5), CSS.cyan, 240);
     info(['SCORE', String(sc) + ' pts'], 330, 150, seg(tl, 0.2, 0.5), CSS.yellow, 240);
-    tag('ACCÉLÉRÉ ×' + fmt(100 / (d - 0.8), 0), W - 70, 110, seg(tl, 0.2, 0.5), CSS.cyan, 'right');
-    if (mt >= 100) { const k = seg(tl, d - 0.8, d - 0.4); text('+55 en fin de match : Graal, trône, boulets', 330, 270, { size: 20, weight: 700, color: CSS.yellow, alpha: k, fam: 'Inter' }); }
+    tag('ACCÉLÉRÉ ×' + fmt(100 / (7.5 * 8.6 / 9), 0), W - 70, 110, seg(tl, 0.2, 0.5), CSS.cyan, 'right');
+    if (mt >= 100) { const k = seg(tl, 7.5, 7.9); text('+55 en fin de match : Graal, trône, boulets', 330, 270, { size: 20, weight: 700, color: CSS.yellow, alpha: k, fam: 'Inter' }); }
     caption('Il suit ici un programme écrit à la main : 15 étapes fixées avant le match.', t, PL.S05[0] + 0.3, PL.S05[0] + 8.1);
     caption('Résultat en simulation : 116 points.', t, PL.S05[0] + 8.15, PL.S05[1] + 0.2);
     return { bandeau: 1 };
@@ -225,8 +232,8 @@ const SHOTS = {
   S11(t, tl, d, q) {
     placeMatch(DUEL, T_D6); const py = robotPose(DUEL, 'jaune', T_D6), pb = robotPose(DUEL, 'bleu', T_D6);
     look(orbit(1300, 1000, lerp(2500, 2300, q), lerp(1.3, 1.65, eio(q)), lerp(2700, 2500, q)).add(drift(t, 0.8)), tab(1150, 1050, 0), 44);
-    const seq = [[0, 1.2], [1, 2.3], [7, 3.4], [9, 4.5], [2, 5.6]], hiIdx = seq.reduce((a, [gi, s]) => tl >= s ? gi : a, -1);
-    RAYS.visible = hiIdx === 9 || tl > 4.5; if (RAYS.visible) setRays(py, D6.obs.slice(48, 56).map(v => v * 1000), eout(seg(tl, 4.5, 5.0)));
+    const seq = [[2, 1.0], [0, 3.45], [1, 4.2], [7, 5.2], [9, 6.3]], hiIdx = seq.reduce((a, [gi, s]) => tl >= s ? gi : a, -1);
+    RAYS.visible = tl > 6.3; if (RAYS.visible) setRays(py, D6.obs.slice(48, 56).map(v => v * 1000), eout(seg(tl, 6.3, 6.8)));
     renderWorld();
     tag('ARRÊT SUR IMAGE · DUEL SIMULÉ · t = 16,3 s', 70, 140, seg(tl, 0.2, 0.6), CSS.yellow);
     inputColumn(1430, 220, D6.obs, seg(tl, 0.3, 0.8), hiIdx);
@@ -262,7 +269,7 @@ const SHOTS = {
     lab(V(-600, 520, 0), '128 neurones', 'somme pondérée, puis transformation', ap[1], CSS.cyan);
     lab(V(300, 470, 0), 'mémoire : 128', 'garde le fil du match', ap[2], '#7cf3c0');
     lab(V(1300, 470, 0), '130 notes', 'une par action', ap[3], CSS.white);
-    info(['RÉGLAGES DU RÉSEAU', '≈ 140 000 coefficients (140 035)'], 70, 140, seg(tl, 4.6, 5.0), CSS.cyan, 470);
+    info(['RÉGLAGES DU RÉSEAU', '≈ 140 000 coefficients (140 035)'], 70, 140, seg(tl, 5.35, 5.75), CSS.cyan, 470);
     text('activations internes : illustration', 70, H - 40, { size: 15, weight: 500, color: CSS.dim, alpha: 0.9, fam: 'Inter' });
     caption('Chaque neurone additionne les entrées, chacune multipliée par un coefficient, puis transforme ce total. Ce sont ces coefficients que l\'entraînement ajustera.', t, PL.S13[0] + 0.3, PL.S13[1], { size: 34 });
     return {};
@@ -270,13 +277,13 @@ const SHOTS = {
   // --- sorties, filtre (masque réel à t = 0), choix
   S14(t, tl, d, q) {
     const dec = DEC_SOLO[0];
-    netState(t, { appear: [1, 1, 1, 1], inputs: dec.obs, flow: 1, memory: 1, mask: tl > 3.2 ? dec.mask : null, win: tl > 4.6 ? dec.action : -1 });
+    netState(t, { appear: [1, 1, 1, 1], inputs: dec.obs, flow: 1, memory: 1, mask: tl > 2.45 ? dec.mask : null, win: tl > 4.95 ? dec.action : -1 });
     look(V(2000, 250, 3600).add(drift(t, 2)), V(0, 0, 0), 40, 0, netCam); netCam.setViewOffset(W, H, 0, 230, W, H); netCam.updateProjectionMatrix(); renderNet();
     g.fillStyle = 'rgba(2,6,13,0.55)'; g.fillRect(0, 560 * DPR, W * DPR, 520 * DPR);
-    outputBars(160, 900, 1600, 230, { mask: dec.mask, maskOn: tl > 3.2, win: dec.action, showWin: tl > 4.6, seed: 9 }, seg(tl, 0.4, 1.0));
+    outputBars(160, 900, 1600, 230, { mask: dec.mask, maskOn: tl > 2.45, win: dec.action, showWin: tl > 4.95, seed: 9 }, seg(tl, 0.4, 1.0));
     text('130 NOTES · UNE PAR ACTION (prendre, mur, tour, porte, Graal, boulets, trône, trajets…)', 160, 620, { size: 18, weight: 700, track: 2, color: CSS.white, alpha: seg(tl, 0.5, 0.9), fam: 'Inter' });
-    tag('À t = 0 S : 29 ACTIONS PERMISES SUR 130 (MESURÉ)', 160, 940, seg(tl, 3.3, 3.7), '#ff9aa5');
-    tag('CHOIX : « ' + dec.label.toUpperCase() + ' »', W - 160, 940, seg(tl, 4.7, 5.1), '#ffd84d', 'right');
+    tag('À t = 0 S : 29 ACTIONS PERMISES SUR 130 (MESURÉ)', 160, 940, seg(tl, 2.5, 2.9), '#ff9aa5');
+    tag('CHOIX : « ' + dec.label.toUpperCase() + ' »', W - 160, 940, seg(tl, 5.0, 5.4), '#ffd84d', 'right');
     text('hauteurs des notes : illustration · filtre encore à fiabiliser', W - 160, 1000, { size: 15, weight: 500, align: 'right', color: CSS.dim, alpha: 0.9, fam: 'Inter' });
     caption('Une mémoire garde le fil du match. En sortie : 130 notes, une par action possible.', t, PL.S14[0] + 0.2, PL.S14[0] + 3.2, { y: 520, size: 34 });
     caption('Un filtre écarte les actions impossibles ; la mieux notée est jouée.', t, PL.S14[0] + 3.2, PL.S14[1], { y: 520, size: 34 });
@@ -292,7 +299,7 @@ const SHOTS = {
     renderer.setViewport(0, 0, 1000, H); renderer.setScissor(0, 0, 1000, H); renderer.render(world, camera);
     renderer.setScissorTest(false); renderer.setViewport(0, 0, W, H); VP.w = 1000;
     line(1000, 0, 1000, H, CSS.cyan, 0.8, 2);
-    const imit = tl < 3.0, k = DEC_SOLO.reduce((a, dd, i) => (SOLO.briques.jaune[i] && SOLO.briques.jaune[i].t0 <= mt ? i : a), 0), dec = DEC_SOLO[Math.min(k, DEC_SOLO.length - 1)];
+    const imit = tl < 2.5, k = DEC_SOLO.reduce((a, dd, i) => (SOLO.briques.jaune[i] && SOLO.briques.jaune[i].t0 <= mt ? i : a), 0), dec = DEC_SOLO[Math.min(k, DEC_SOLO.length - 1)];
     text(imit ? 'LE PROFESSEUR : PROGRAMME ÉCRIT À LA MAIN' : 'SEUL : LE SCORE COMME GUIDE', 70, 150, { size: 20, weight: 800, track: 3, color: imit ? CSS.white : CSS.yellow, alpha: 1, fam: 'Inter' });
     text('LE RÉSEAU (ILLUSTRATION)', 1060, 150, { size: 20, weight: 800, track: 3, color: CSS.cyan, alpha: 1, fam: 'Inter' });
     outputBars(1060, 700, 780, 360, { win: dec.action, showWin: true, flat: tl < 0.8, seed: 3 + k }, 1);
@@ -344,7 +351,7 @@ const SHOTS = {
     glitchTitle('ICAMLOT', W / 2, 330, 120, seg(tl, 0.4, 1.0), Math.floor(t * 30), { color: CSS.yellow });
     text(TEAM.asso, W / 2, 395, { size: 28, weight: 700, track: 8, align: 'center', alpha: seg(tl, 0.8, 1.2), fam: 'Inter' });
     TEAM.membres.forEach((n, i) => text(n, W / 2 + (i % 2 ? 260 : -260), 480 + Math.floor(i / 2) * 46, { size: 26, weight: 600, align: 'center', color: CSS.white, alpha: seg(tl, 1.2 + i * 0.15, 1.6 + i * 0.15), fam: 'Inter' }));
-    const k = seg(tl, 2.4, 3.0);
+    const k = seg(tl, 3.1, 3.6);
     rect(W / 2 - 520, 640, 1040, 120, 'rgba(242,183,5,0.12)', k, CSS.yellow);
     text('NOUS RECHERCHONS UN APPORT FINANCIER', W / 2, 700, { size: 40, weight: 800, align: 'center', color: CSS.yellow, alpha: k, glow: 8 });
     text('Devenez partenaire d\'ICAMLOT pour l\'Eurobot 2027', W / 2, 742, { size: 24, weight: 600, align: 'center', alpha: k, fam: 'Inter' });
