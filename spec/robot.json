@@ -583,7 +583,7 @@
       "ecart_avec_la_conception": {
         "statut": "declare",
         "source": "équipe, 2026-10-28",
-        "valeur": "rotations des nacelles, ascenseur du Graal et canon pilotés par un des 2 ESP32 (lequel : a_definir)"
+        "valeur": "ESP32 n°1 = base roulante uniquement (moteurs, capteurs) ; ESP32 n°2 = tous les actionneurs (vérins Z, rotations des nacelles, ascenseur du Graal, canon, pompes)"
       }
     }
   },
