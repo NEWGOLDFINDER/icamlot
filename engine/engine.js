@@ -756,7 +756,9 @@
     /* rapide : seulement le début de la recherche (tracé direct, modes de rotation, tracé au cap de départ), sans les replis coûteux ;
        un trajet trouvé ainsi est celui que la recherche complète choisirait (elle s'arrête au premier trajet valable) */
     function travelSearch(O, h, excl, speed, grip, mode) {
-      var rapide = mode === 'rapide', discMode = mode === 'disque' ? 'seul' : mode === 'ancien' ? 'non' : 'oui';
+      /* secours : la recherche d'origine seule, sans ses replis coûteux (début de la recherche d'exec quand le plan certifié échoue) ;
+         le masque l'essaie après un refus du plan certifié (docs/CONTRATS.md §14) */
+      var rapide = mode === 'rapide' || mode === 'secours', discMode = mode === 'disque' ? 'seul' : (mode === 'ancien' || mode === 'secours') ? 'non' : 'oui';
       var Gl = [], pendTxt = [], pendBackup = { A: pend.A, B: pend.B }, after = {};
       var pEnd = { x: O[0], y: O[1], h: h, A: s.A, B: s.B };
       ['A', 'B'].forEach(function (f) {
@@ -2213,18 +2215,24 @@
     cfg = cfg || {};
     var Py = Object.assign({}, DEF, cfg.params || {}, { team: 'yellow' });
     var hasBlue = !!cfg.blue;
-    var Pb = hasBlue ? Object.assign({}, DEF, cfg.blue.params || {}, { team: 'blue' }) : null;
+    var Pb = hasBlue && !cfg.blue.make ? Object.assign({}, DEF, cfg.blue.params || {}, { team: 'blue' }) : null;
     var tk = { yellow: {}, blue: {} }, sims = {}, programs = { yellow: [], blue: [] };
     sims.yellow = makeSim(Object.assign({}, Py, { oppTaken: tk.blue }), {
       skipContacts: !!cfg.skipContacts,
       oppPoseAt: hasBlue ? function (tt) { return sims.blue.poseAtT(tt); } : null,
       foreignFeet: hasBlue ? function () { return sims.blue.freeFeet(); } : null
     });
-    if (hasBlue) sims.blue = makeSim(Object.assign({}, Pb, { oppTaken: tk.yellow }), {
-      skipContacts: !cfg.blue.contacts,
-      oppPoseAt: function (tt) { return sims.yellow.poseAtT(tt); },
-      foreignFeet: function () { return sims.yellow.freeFeet(); }
-    });
+    /* cfg.blue.make(opts) : autre modèle de robot (robot abstrait d'engine/adversaires.js, contrat §14), même interface que makeSim
+       pour le duel (exec, time, poseAtT, freeFeet, leftHome, finish, result, snapshot, restore, errors, program) */
+    if (hasBlue) {
+      var oBlue = {
+        skipContacts: !cfg.blue.contacts, team: 'blue', oppTaken: tk.yellow,
+        oppPoseAt: function (tt) { return sims.yellow.poseAtT(tt); },
+        oppRadius: function () { return sims.yellow.hullRadius(); },
+        foreignFeet: function () { return sims.yellow.freeFeet(); }
+      };
+      sims.blue = cfg.blue.make ? cfg.blue.make(oBlue) : makeSim(Object.assign({}, Pb, { oppTaken: tk.yellow }), oBlue);
+    }
     function exec(team, brick) {
       var info = sims[team].exec(brick);
       sims[team].leftHome(tk[team]);   /* pierres réservées pour l'autre robot */
@@ -2274,19 +2282,24 @@
     duel.run(agents);
     return duel.finish();
   }
-  /* Programme de référence (golden test, tests/test_moteur.js) : piles, murs, porte, tours, tir, Graal monté sur le toit, retour au trône.
-     Tir explicite (contrat §13, catalogue 3.1) : après le Graal (70,4 s), le robot va à la position de tir (salle du trône) et
-     attend par attentes courtes (4 + 4 + 2 + 1 s) ; la brique tir, lancée à 81,7 s, n'attend plus que 0,09 s (premier boulet à 85 s). */
+  /* Programme de référence (golden test, tests/test_moteur.js) : piles, murs, porte, deux tours, tir, Graal monté sur le toit, retour au trône.
+     Tir explicite (contrat §13, catalogue 3.1). Variante à 122 pts adoptée par le chantier adversaires (contrat §14) : une prise et
+     une tour de plus (P6.2 face A, tour T4 face A), imitable depuis que le masque essaie la recherche de secours d'exec.
+     Durées de spec/robot.json (134a8e7 : nacelle 1 s, prise 0,35 s, canon 2 s + 0 s, 1,25 boulet/s) : Graal fini à 75,8 s, trône,
+     attentes courtes 4 + 1 s, tir lancé à 81,1 s (attente interne 0,20 s, premier boulet à 85 s), trône (fin à 92,5 s).
+     Les prises et les tours portent le temps masqué automatique (tm), comme les briques du catalogue (ACTIONS.toProgramStep). */
   var PROGRAMME_REFERENCE = [
-    { a: 'prendre', f: 'A', p: 'P1' }, { a: 'prendre', f: 'B', p: 'P9' },
+    { a: 'prendre', f: 'A', p: 'P1', tm: true }, { a: 'prendre', f: 'B', p: 'P9', tm: true },
     { a: 'mur', f: 'B', z: 'M2', side: 'ext' }, { a: 'mur', f: 'A', z: 'M1', side: 'int' },
-    { a: 'prendre', f: 'A', p: 'P5' }, { a: 'prendre', f: 'B', p: 'P10' },
+    { a: 'prendre', f: 'A', p: 'P5', tm: true }, { a: 'prendre', f: 'B', p: 'P10', tm: true },
     { a: 'mur', f: 'B', z: 'M4', side: 'ext' }, { a: 'mur', f: 'A', z: 'M5', side: 'int' },
-    { a: 'prendre', f: 'B', mode: 'pierre', s: 'P6.3' }, { a: 'prendre', f: 'A', p: 'P2' },
-    { a: 'tour', f: 'B', z: 'T2', s: 'P6.3' },
+    { a: 'prendre', f: 'B', mode: 'pierre', s: 'P6.3', tm: true }, { a: 'prendre', f: 'A', mode: 'pierre', s: 'P6.2', tm: true },
+    { a: 'tour', f: 'A', z: 'T4', s: 'P6.2', tm: true },
+    { a: 'prendre', f: 'A', p: 'P2', tm: true },
+    { a: 'tour', f: 'B', z: 'T2', s: 'P6.3', tm: true },
     { a: 'porte', f: 'A', z: 'M3', side: 'int' },
     { a: 'monterGraal' }, { a: 'trone' },
-    { a: 'attendre', sec: 4 }, { a: 'attendre', sec: 4 }, { a: 'attendre', sec: 2 }, { a: 'attendre', sec: 1 },
+    { a: 'attendre', sec: 4 }, { a: 'attendre', sec: 1 },
     { a: 'tir' }, { a: 'trone' }
   ];
   var api = {

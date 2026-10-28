@@ -300,10 +300,11 @@
     }
     return true;
   }
-  /* deux châssis (robot et adversaire) */
+  /* deux châssis (robot et adversaire). L'adversaire peut porter sa propre empreinte (engine/adversaires.js, contrat §14) :
+     o.fp = polygone convexe dans son repère, o.R = son rayon maximal ; sinon c'est le même châssis que le nôtre. */
   function hullsHit(p, o, tol) {
-    if (Math.hypot(p.x - o.x, p.y - o.y) >= 2 * HULL_R + tol) return false;
-    return hullHit(p, robotPoly(o), tol);
+    if (Math.hypot(p.x - o.x, p.y - o.y) >= HULL_R + (o.fp ? o.R : HULL_R) + tol) return false;
+    return hullHit(p, o.fp ? toTable(o.fp, o) : robotPoly(o), tol);
   }
 
   /* compatibilité : anciens noms (le triangle de 400 mm n'existe plus) */

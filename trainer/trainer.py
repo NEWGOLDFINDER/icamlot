@@ -35,7 +35,7 @@ sys.path.insert(0, str(ROOT))
 import numpy as np
 
 from trainer.js_env_pool import JsEnvPool, default_procs
-from trainer.scenarios import ScenarioSampler, load_strategies
+from trainer.scenarios import ROBOTS, SELF, ScenarioSampler, load_strategies
 
 try:
     import torch
@@ -159,6 +159,8 @@ def env_config_of(cfg: dict) -> dict:
         "skipContacts": ((cfg.get("reglages") or {}).get("mode") or "rapide") == "rapide",
         "onError": (cfg.get("recompense") or {}).get("sur_erreur") or "penalite",
         "recompense": cfg.get("recompense") or {},
+        # caractéristiques physiques de notre robot : { actif, valeurs, plages } (ENV.create({ physique }), contrat §14)
+        "physique": cfg.get("physique") or None,
     }
 
 
@@ -179,9 +181,32 @@ def qualified_opponents(pool: JsEnvPool, strats: List[dict], min_score: float = 
     return kept
 
 
-def sampler_of(cfg: dict, opponents: List[dict]) -> ScenarioSampler:
-    intensity = ((cfg.get("adversaire") or {}).get("intensite")) or "aucun"
+def sampler_of(cfg: dict, opponents: List[dict], pool: Optional[JsEnvPool] = None, log=None) -> ScenarioSampler:
+    """Scénarios d'entraînement. cfg.adversaire.melange = { batisseur, razzia, champion, intermediaire, self, reference,
+    aucun, <id de stratégie> : proportion } (défaut de l'interface : 20 % de chacun des 4 robots + 20 % de self-play).
+    Un robot « réseau » sans modèle figé (.data/adversaires/<id>.json) est retiré du mélange (signalé)."""
+    adv = cfg.get("adversaire") or {}
+    intensity = adv.get("intensite") or "aucun"
     seed = int((cfg.get("reglages") or {}).get("graine") or 1)
+    melange = adv.get("melange")
+    if melange:
+        m = {k: float(v) for k, v in melange.items() if v and float(v) > 0}
+        if pool is not None:
+            dispo = {r["id"]: r.get("modele") for r in pool.robots_adverses()}
+            for k in list(m):
+                if k in ROBOTS and not dispo.get(k):
+                    if log:
+                        log(f"Adversaire « {k} » : modèle non entraîné : lancer l'entraînement "
+                            f"(python -m trainer.adversaires --robot {k}) ; exclu du mélange, proportions redistribuées.")
+                    m.pop(k)
+        known = {o["id"] for o in opponents}
+        for k in list(m):
+            if k not in ROBOTS and k not in (SELF, "reference", "aucun") and k not in known:
+                if log:
+                    log(f"Adversaire « {k} » inconnu, retiré du mélange.")
+                m.pop(k)
+        if m:
+            return ScenarioSampler(opponents, ["realiste"], seed, melange=m)
     return ScenarioSampler(opponents if intensity != "aucun" else [], [intensity], seed)
 
 
@@ -278,11 +303,13 @@ def demos_for(job: Job, pool: JsEnvPool, cfg: dict, strats: List[dict], sampler:
     from trainer.imitation import collect_demos, example_program
     regl = cfg.get("reglages") or {}
     progs = [{"nom": s["nom"], "program": s["spec"]["program"]} for s in strats]
+    # programmes de démonstration fournis par la tâche (entraînement des adversaires : trainer/adversaires.py)
+    progs += [{"nom": d.get("nom") or "demonstration", "program": d["program"]} for d in (cfg.get("demonstrations") or [])]
     if regl.get("imitation_exemple", True):
         progs.append({"nom": "ENV.EXAMPLE", "program": example_program(pool)})
     n_sc = int(regl.get("imitation_scenarios") or 4)
     scs = [{"seed": int(regl.get("graine") or 1) + k, "intensite": "aucun"} for k in range(n_sc)]
-    if sampler.opponents:
+    if sampler.opponents or sampler.melange:
         scs += [dict(sampler.sample()) for _ in range(n_sc)]
     job.logline(f"Collecte des démonstrations : {len(progs)} programme(s) × {len(scs)} scénario(s)…")
     demos = collect_demos(pool, progs, scs)
@@ -299,6 +326,12 @@ def evaluate_and_export(job: Job, pool: JsEnvPool, model, cfg: dict, sampler: Sc
     regl = cfg.get("reglages") or {}
     n_eval = int(regl.get("eval_matchs") if regl.get("eval_matchs") is not None else MATCHS_SELECTION)
     ev = None
+    if n_eval > 0 and sampler.melange and SELF in sampler.melange and SELF not in (getattr(pool, "opponents", None) or {}):
+        # self-play évalué contre le modèle lui-même
+        from trainer.export_onnx import web_json
+        reg = dict(sampler.registry())
+        reg[SELF] = {"brain": web_json(model, info)}
+        pool.set_opponents(reg)
     if n_eval > 0:
         job.logline(f"Évaluation dans le moteur JS sur {n_eval} matchs…")
         ev = evaluate(model, pool, sampler.fixed(n_eval), torch_device(), log=job.logline)
@@ -315,9 +348,22 @@ def evaluate_and_export(job: Job, pool: JsEnvPool, model, cfg: dict, sampler: Sc
     return ev, exp
 
 
-def pool_info(pool: JsEnvPool) -> dict:
-    return {"env_config": pool.config, "obs_version": pool.obs_version, "catalogue_version": pool.catalogue_version,
-            "catalogue": pool.catalogue, "groupes": pool.groups, "moteur": pool.moteur, "bareme": pool.bareme}
+def pool_info(pool: JsEnvPool, sampler: Optional[ScenarioSampler] = None) -> dict:
+    out = {"env_config": pool.config, "obs_version": pool.obs_version, "catalogue_version": pool.catalogue_version,
+           "catalogue": pool.catalogue, "groupes": pool.groups, "moteur": pool.moteur, "bareme": pool.bareme,
+           "physique": physique_info(pool)}
+    if sampler is not None:
+        out["adversaires"] = sampler.describe()
+    return out
+
+
+def physique_info(pool: JsEnvPool) -> dict:
+    """Traçabilité : caractéristiques de notre robot (nominales de la spec, statut) et réglages du tirage de l'entraînement."""
+    try:
+        car = pool.physique()
+    except Exception:  # noqa: BLE001 (ancien worker)
+        car = []
+    return {"caracteristiques": car, "reglages": pool.config.get("physique")}
 
 
 def recurrent_weights_doc(model, base: Path, ev, info: dict) -> dict:
@@ -362,7 +408,7 @@ def run_imitation(job: Job, pool: JsEnvPool, cfg: dict, strats: List[dict], samp
                          batch_demos=int(regl.get("lot") or 16), device=torch_device(),
                          log=job.logline, progress=progress)
     base = model_base(out)
-    info = pool_info(pool)
+    info = pool_info(pool, sampler)
     info.update({"obs_rms": st["obs_rms"].state_dict(), "ret_rms": st["ret_rms"].state_dict(), "gamma": 1.0,
                  "imitation": {k: v for k, v in st.items() if k not in ("historique", "obs_rms", "ret_rms")}})
     ev, _ = evaluate_and_export(job, pool, model, cfg, sampler, base, info)
@@ -388,6 +434,9 @@ def run_ppo(job: Job, pool: JsEnvPool, cfg: dict, strats: List[dict], sampler: S
         penalite_erreur=float(regl.get("ppo_penalite_erreur") or 0), hidden=int(regl.get("hidden") or 128),
         intensites=list(sampler.intensites), graine=int(regl.get("graine") or 1),
         eval_matchs=int(regl.get("eval_matchs") if regl.get("eval_matchs") is not None else PPOConfig.eval_matchs),
+        eval_tous_les=int(regl.get("eval_tous_les") or 0),
+        entropie=float(regl.get("ppo_entropie") if regl.get("ppo_entropie") is not None else PPOConfig.entropie),
+        entropie_fin=float(regl.get("ppo_entropie") if regl.get("ppo_entropie") is not None else PPOConfig.entropie_fin),
     )
     device = torch_device()
     base = model_base(out)
@@ -398,6 +447,7 @@ def run_ppo(job: Job, pool: JsEnvPool, cfg: dict, strats: List[dict], sampler: S
             job.logline("Point de sauvegarde incompatible avec l'environnement actuel : départ de zéro.")
             model, ck = None, None
     tr = PPOTrainer(pc, pool, sampler, device, model or model_of(cfg, pool), log=job.logline)
+    tr.info_extra = {"physique": physique_info(pool), "adversaires": sampler.describe()}
     if ck:
         tr.load_state(ck, optimizer=False)
         tr.update = 0
@@ -406,14 +456,40 @@ def run_ppo(job: Job, pool: JsEnvPool, cfg: dict, strats: List[dict], sampler: S
         job.logline("Pré-entraînement par imitation…")
         demos = demos_for(job, pool, cfg, strats, sampler)
         if demos:
-            imitation_train(tr.model, demos, epochs=int(regl.get("epoques") or 40),
+            imitation_train(tr.model, demos, epochs=int(regl.get("epoques") or 40), batch_demos=int(regl.get("lot") or 16),
                             lr=float(regl.get("imitation_lr") or 1e-3), device=device,
                             obs_rms=tr.obs_rms, ret_rms=tr.ret_rms, log=job.logline)
+            # le réseau imité est candidat à la sélection (le PPO ne garde un modèle que s'il fait mieux)
+            if regl.get("eval_apres_imitation") and pc.eval_matchs:
+                tr.evaluate_and_select(model_base(out), sampler)
     t0 = time.time()
     history = []
     best_mean = [None]
 
+    # self-play (mélange « self ») : notre réseau courant, rafraîchi toutes les self_play_tous_les mises à jour ; au départ,
+    # le champion précédent donné par cfg.adversaire.self_modele (JSON web) s'il existe, sinon le réseau de départ
+    self_k = int(regl.get("self_play_tous_les") or 5)
+    def push_self(src=None):
+        from trainer.export_onnx import web_json
+        brain = src or web_json(tr.model, tr.state())
+        reg = dict(sampler.registry())
+        reg[SELF] = {"brain": brain}
+        pool.set_opponents(reg)
+    if sampler.melange and SELF in sampler.melange:
+        prev = (cfg.get("adversaire") or {}).get("self_modele")
+        src = None
+        if prev and Path(prev).exists():
+            try:
+                src = json.loads(Path(prev).read_text(encoding="utf-8"))
+                src = src.get("modele") or src
+                job.logline(f"Self-play : champion précédent {prev}.")
+            except (OSError, ValueError):
+                src = None
+        push_self(src)
+
     def on_update(st):
+        if sampler.melange and SELF in sampler.melange and self_k > 0 and st["mise_a_jour"] % self_k == 0:
+            push_self()
         elapsed = time.time() - t0
         if st["score_moyen"] is not None:
             best_mean[0] = st["score_moyen"] if best_mean[0] is None else max(best_mean[0], st["score_moyen"])
@@ -491,7 +567,9 @@ def main():
         folder = Path(args.strategies) if args.strategies else None
         strats = load_strategies(folder) if folder else []
         opponents = qualified_opponents(pool, strats)
-        sampler = sampler_of(cfg, opponents)
+        sampler = sampler_of(cfg, opponents, pool, job.logline)
+        if sampler.melange:
+            job.logline("Mélange d'adversaires : " + ", ".join(f"{k} {v * 100:.0f} %" for k, v in sampler.melange.items()))
         if sampler.opponents:
             pool.set_opponents(sampler.registry())
         out = Path(args.weights_out or job.data.get("weights") or job.path.with_name(job.path.stem + "-poids.json"))

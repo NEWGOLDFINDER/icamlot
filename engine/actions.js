@@ -51,6 +51,14 @@
     /* atteignabilité : 'moteur' (le moteur joue l'étape à blanc sur le monde reconstruit depuis la croyance : choix de la pose
        et planificateur certifié du moteur, celui qu'exec essaie en premier), 'grille' (ancien A* du masque) ou 'disque' (approché) */
     planification: 'moteur',
+    /* recherche de secours (chantier adversaires, contrat §14) : quand le planificateur certifié ne trouve aucun passage, le masque
+       essaie le début de la recherche d'origine d'exec (mode « secours » de planifierEtape), comme exec. Vrai par défaut.
+       secoursEtapes : étapes concernées. Mesure (800 croyances d'épisodes aléatoires, graine 11) : le secours rend valides 0,8 %
+       d'actions en plus, mais coûte +155 % par masque s'il est essayé pour toutes les étapes (prises et déplacements : 15 500
+       essais pour 98 réussites). Limité aux constructions, au dépôt et au Graal (tour 21 / 345, mur 12 / 150, porte 1 / 10,
+       Graal 2 / 54), dont les tours T1 et T4 de la référence : surcoût mesuré dans le rapport du chantier (§14). */
+    secours: true,
+    secoursEtapes: ['tour', 'mur', 'porte', 'deposer', 'deposerZone', 'monterGraal'],
     planMax: 4000,
     /* case libre : sans contact avec cette tolérance (mm, négative = marge exigée) ; le moteur vérifie ensuite le tracé au mm */
     margeGrille: 1,
@@ -808,6 +816,7 @@
     Object.keys(b.params || {}).forEach(function (k) { if (b.params[k] != null) P[k] = b.params[k]; });
     return (cache.world = E().makeSim(P, { skipContacts: true, etat: b }));
   }
+  function secoursPour(st) { return HYPOTHESES.secours && (!HYPOTHESES.secoursEtapes || HYPOTHESES.secoursEtapes.indexOf(st.a) >= 0); }
   /* atteignabilité par le moteur : l'étape est jouée à blanc (planifierEtape) jusqu'à son premier trajet, cherché par le
      planificateur certifié ; une étape acceptée ainsi réussit dans exec (même choix de pose, exec essaie d'abord ce planificateur) */
   function engineCheck(st, b, ap, cache) {
@@ -817,6 +826,8 @@
       if (b.t + Math.max(dist(tg, [b.pose.x, b.pose.y]) / v, dh2 / w) + (P2.bdep > 0 ? P2.bdep : 0.1) + (P2.bspin > 0 ? P2.bspin : 0) >= E().MATCH) return 'Tir : la position de tir serait atteinte après 100 s.';
     }
     var r = worldOf(b, cache).planifierEtape(st, { mode: 'disque', verifier: true });
+    /* aucun passage pour le plan certifié : exec essaierait ensuite la recherche d'origine ; le masque en joue le début (secours) */
+    if (!r.ok && secoursPour(st) && !r.trajet && /aucun passage sans contact/.test(r.raison || '')) r = worldOf(b, cache).planifierEtape(st, { mode: 'secours', verifier: true });
     if (!r.ok) return r.raison || 'Refusé par le moteur.';
     if (ap && st.a === 'tir') {
       /* attente avant le premier boulet (contrat §13) : majorée d'abord avec un minorant du trajet (ligne droite à v, rotation à w) ;
@@ -824,6 +835,7 @@
       var att = attenteTir(b, b.t + Math.max(dist(tg, [b.pose.x, b.pose.y]) / v, dh2 / w));
       if (att > HYPOTHESES.attenteMaxTir + 1e-6) {
         var r2 = worldOf(b, cache).planifierEtape(st, { mode: 'disque' });
+        if (!r2.ok && secoursPour(st) && !r2.trajet && /aucun passage sans contact/.test(r2.raison || '')) r2 = worldOf(b, cache).planifierEtape(st, { mode: 'secours' });
         if (!r2.ok) return r2.raison || 'Refusé par le moteur.';
         att = attenteTir(b, b.t + (r2.trajet ? r2.trajet.duree : 0));
         if (att > HYPOTHESES.attenteMaxTir + 1e-6) return raisonAttente(att);

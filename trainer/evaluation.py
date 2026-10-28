@@ -26,7 +26,7 @@ import torch
 
 from trainer.js_env_pool import JsEnvPool, default_procs
 from trainer.models import RecurrentActorCritic, load_checkpoint
-from trainer.scenarios import INTENSITES, ScenarioSampler, brain_opponent, load_strategies, load_strategy_file
+from trainer.scenarios import INTENSITES, ScenarioSampler, brain_opponent, cle_scenario, load_strategies, load_strategy_file
 
 # Hypothèse : nombre de matchs pour sélectionner un champion (critère de sortie de la phase 3 de l'audit : ≥ 200).
 MATCHS_SELECTION = 200
@@ -119,7 +119,7 @@ def rapport(results: List[dict], duree_s: float, decisions: int) -> dict:
     par_adv: Dict[str, List[dict]] = {}
     for r in results:
         sc = r.get("scenario") or {}
-        key = (sc.get("opponentRef") or "sans adversaire") + " · " + (sc.get("intensite") or "aucun")
+        key = cle_scenario(sc) + " · " + (sc.get("intensite") or "aucun")
         par_adv.setdefault(key, []).append(r)
     detail_keys = sorted({k for r in results for k in (r.get("detail") or {})})
     return {
@@ -139,7 +139,9 @@ def rapport(results: List[dict], duree_s: float, decisions: int) -> dict:
         "par_adversaire": {k: {"matchs": len(v), "score": _stats([float(x.get("score") or 0) for x in v]),
                                "taux_victoire": (sum(1 for x in v if x.get("adversaire") and x["score"] > x["adversaire"]["score"])
                                                  / max(1, sum(1 for x in v if x.get("adversaire"))))
-                               if any(x.get("adversaire") for x in v) else None}
+                               if any(x.get("adversaire") for x in v) else None,
+                               "score_adversaire": _stats([float(x["adversaire"]["score"]) for x in v if x.get("adversaire")]),
+                               "erreurs_par_match": _stats([int(x.get("errors") or 0) for x in v])}
                            for k, v in sorted(par_adv.items())},
         "duree_s": duree_s,
         "matchs_par_s": len(results) / duree_s if duree_s > 0 else None,

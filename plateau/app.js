@@ -351,6 +351,7 @@
   function currentOpponent() {
     if (!oppChoice.slug) return null;
     if (oppChoice.slug === 'exemple') return { name: 'Exemple', program: EXAMPLE, params: params };
+    if (oppChoice.slug.indexOf('robot:') === 0) { var rid = oppChoice.slug.slice(6), pr = ADVERSAIRES.PROFILS[rid]; return pr ? { name: 'Robot · ' + pr.nom, robot: rid } : null; }
     return oppLoaded[oppChoice.slug] || null;
   }
   function currentOpponentName() { var o = currentOpponent(); return o && o.name; }
@@ -370,6 +371,20 @@
   function ensureOpponent(fn) {
     var slug = oppChoice.slug;
     if (!slug || slug === 'exemple' || oppLoaded[slug]) return false;
+    if (slug.indexOf('robot:') === 0) {
+      /* robot adverse « réseau » : modèle figé chargé une fois depuis le serveur (.data/adversaires) */
+      var pr = ADVERSAIRES.PROFILS[slug.slice(6)];
+      if (!pr || pr.type !== 'reseau' || ADVERSAIRES.modele(pr.modele)) return false;
+      api('GET', '../api/adversaires/' + pr.id + '/modele').then(function (j) { ADVERSAIRES.enregistrerModele(pr.modele, j); fn(); },
+        function () {
+          /* pas de repli silencieux : le match n'est pas joué, le choix est annulé et le message reste affiché */
+          robotsNonEntraines[pr.id] = 1;
+          toast(pr.nom + ' : ' + ADVERSAIRES.NON_ENTRAINE + ' (' + ADVERSAIRES.commandeEntrainement(pr.id) + ').', 'bad');
+          oppChoice.slug = ''; saveOppChoice(); fillOppSelect(); renderMatch(); $('busy').hidden = true;
+          var rn = $('mRobotNote'); if (rn) { rn.hidden = false; rn.textContent = pr.nom + ' : ' + ADVERSAIRES.NON_ENTRAINE + ' (' + ADVERSAIRES.commandeEntrainement(pr.id) + ').'; }
+        });
+      return true;
+    }
     if (slug.indexOf('cerveau:') === 0) {
       loadOppBrain(slug.slice(8)).then(fn, function () { oppChoice.slug = ''; saveOppChoice(); fillOppSelect(); fn(); });
     } else {
@@ -384,9 +399,11 @@
     readParams(); $('busy').hidden = false;
     if (ensureOpponent(recompute)) return;
     var opp = currentOpponent();
+    /* robot adverse (engine/adversaires.js) : joué dans la page (le worker ne rejoue que des programmes) */
+    if (opp && opp.robot) return recomputeRobot(opp);
     /* un cerveau (le nôtre ou celui d'en face) décide en direct : le moteur joue les deux robots, puis la page rejoue le tout */
     if (pilot.mode === 'cerveau' || (opp && opp.brain)) return recomputeLive(opp);
-    var data = { prog: JSON.parse(JSON.stringify(prog)), P: Object.assign({}, params), id: ++reqId, opponent: oppData(opp), intensity: opp ? oppChoice.intensity : 'aucun' };
+    var data = { prog: JSON.parse(JSON.stringify(prog)), P: paramsMatch(), id: ++reqId, opponent: oppData(opp), intensity: opp ? oppChoice.intensity : 'aucun' };
     if (worker) worker.postMessage(data);
     else setTimeout(function () { var r = ENGINE.simulateMatch(data.prog, data.P, { opponent: data.opponent, intensity: data.intensity }); accept(r, r.opponent); }, 0);
   }
@@ -394,7 +411,7 @@
   function simulateProg(list, oppProg) {
     var opp = currentOpponent();
     var o = opp ? { name: opp.name, program: oppProg || opp.program, params: opp.params || params } : null;
-    var data = { prog: JSON.parse(JSON.stringify(list)), P: Object.assign({}, params), id: ++reqId, opponent: o, intensity: opp ? oppChoice.intensity : 'aucun' };
+    var data = { prog: JSON.parse(JSON.stringify(list)), P: paramsMatch(), id: ++reqId, opponent: o, intensity: opp ? oppChoice.intensity : 'aucun' };
     if (worker) worker.postMessage(data);
     else setTimeout(function () { var r = ENGINE.simulateMatch(data.prog, data.P, { opponent: data.opponent, intensity: data.intensity }); accept(r, r.opponent); }, 0);
   }
@@ -448,8 +465,74 @@
       }
     }, 0);
   }
+  /* ---------- caractéristiques physiques du match (contrat §14) : notre robot (tirées par la graine ou fixées), adversaire ---------- */
+  var phyFixe = {}, oppFixe = {}, phyLast = null, robotsNonEntraines = {};
+  /* robots « réseau » sans modèle figé (API) : signalés dans la liste */
+  api('GET', '../api/adversaires').then(function (j) { (j.robots || []).forEach(function (r) { if (r.type === 'reseau' && !r.entraine) robotsNonEntraines[r.id] = 1; }); if (typeof renderMatch === 'function') renderMatch(); }, function () {});
+  function phyReglages() { return { actif: !!($('mPhyTir') && $('mPhyTir').checked), valeurs: Object.assign({}, phyFixe), plages: (function () { var p = {}; Object.keys(phyFixe).forEach(function (k) { p[k] = 0; }); return p; })() }; }
+  function matchSeed() { var v = $('mSeed') ? parseInt($('mSeed').value, 10) : 1; return isNaN(v) ? 1 : v; }
+  function paramsMatch() {
+    var ph = ADVERSAIRES.tirerPhysique(matchSeed(), phyReglages());
+    phyLast = { notre: ph.valeurs, adversaire: null };
+    return Object.assign({}, params, ph.params, { seed: matchSeed() });
+  }
+  function recomputeRobot(opp) {
+    setTimeout(function () {
+      try {
+        var P = paramsMatch(), spec = { robot: opp.robot, fixe: Object.assign({}, oppFixe) }, ours, res;
+        if (pilot.mode === 'cerveau') {
+          if (!pilot.layers || !pilot.cfg) { $('busy').hidden = true; toast('Charge un cerveau depuis le tiroir Cerveaux.', 'bad'); return; }
+          var bs = brainSpec(pilot.name, pilot.layers, pilot.cfg, pilot.weights);
+          var env = window.ENV.create({ entrees: bs.brain.entrees, familles: bs.brain.familles, params: P, skipContacts: false, onError: 'penalite' });
+          var chooser = bs.brain.model ? window.RUNTIME.chooser(bs.brain.model, { nIn: env.nInputs, nOut: env.nOutputs, obsVersion: window.ENV.OBS_VERSION, catalogueVersion: BrainActs.CATALOGUE_VERSION }) : window.ENV.chooserFromLayers(bs.brain.layers, bs.brain.acts);
+          env.play(chooser, { params: P, seed: matchSeed(), intensite: 'realiste', opponent: spec, filterSafety: true });
+          prog = env.program(); sel = -1; lastSnap = snap(); renderSteps();
+          res = env.result(); phyLast.adversaire = env.physique().adversaire;
+        } else {
+          var pm = window.ENV.playProgram(prog, P, spec, 'realiste', false);
+          res = pm.result; phyLast.adversaire = pm.adversaire;
+        }
+        var opR = res.opponent; res.opponent = null;
+        accept(res, opR);
+        renderPhy();
+      } catch (e) { $('busy').hidden = true; toast('Match contre le robot adverse impossible : ' + e.message, 'bad'); }
+    }, 0);
+  }
+  function renderPhy() {
+    var tb = document.querySelector('#mPhyTab tbody'), to = document.querySelector('#mPhyOpp tbody'); if (!tb) return;
+    var last = phyLast || {}, nv = last.notre || {};
+    tb.innerHTML = '';
+    ADVERSAIRES.PHYSIQUE.forEach(function (d) {
+      var tr = document.createElement('tr'), v = nv[d.id] != null ? nv[d.id] : d.nominal;
+      tr.innerHTML = '<td>' + esc(d.nom) + ' <small>(' + esc(d.unite) + ', ' + esc(d.statut === 'declare' ? 'déclaré' : d.statut === 'herite' ? 'hérité' : d.statut) + ')</small></td><td style="text-align:right">' + (Math.round(v * 1000) / 1000) + '</td><td><input type="number" step="any" style="width:70px"></td>';
+      var inp = tr.querySelector('input'); if (phyFixe[d.id] != null) inp.value = phyFixe[d.id];
+      inp.addEventListener('change', function () { var x = parseFloat(inp.value); if (isNaN(x)) delete phyFixe[d.id]; else phyFixe[d.id] = x; });
+      tb.appendChild(tr);
+    });
+    to.innerHTML = '';
+    var a = last.adversaire;
+    if (!a) { to.innerHTML = '<tr><td colspan="3" class="note">Choisir un robot adverse (Robot) pour voir ses caractéristiques tirées.</td></tr>'; return; }
+    var keys = a.phys ? Object.keys(a.phys).map(function (k) { return [k, a.phys[k], (ADVERSAIRES.physDesc(k) || {}).nom || k]; })
+      : [['forme', a.forme, 'Empreinte'], ['perimetre', a.perimetre, 'Périmètre (mm)'], ['v', a.v, 'Vitesse (mm/s)'], ['w', a.w, 'Rotation (°/s)'], ['tPrise', a.tPrise, 'Prise (s)'], ['tPose', a.tPose, 'Pose par pierre (s)'], ['tGraal', a.tGraal, 'Montée du Graal (s)'], ['dArret', a.dArret, 'Distance d\'arrêt (mm)'], ['precision', a.precision, 'Précision du tir'], ['capacite', a.capacite, 'Capacité (pierres)']];
+    keys.forEach(function (k) {
+      var tr = document.createElement('tr'), v = typeof k[1] === 'number' ? Math.round(k[1] * 1000) / 1000 : k[1];
+      tr.innerHTML = '<td>' + esc(k[2]) + '</td><td style="text-align:right">' + esc(String(v)) + '</td><td>' + (k[0] === 'forme' ? '<select><option value="">tirée</option><option>rond</option><option>rectangle</option><option>triangle</option></select>' : '<input type="number" step="any" style="width:70px">') + '</td>';
+      var inp = tr.querySelector('input,select'); if (oppFixe[k[0]] != null) inp.value = oppFixe[k[0]];
+      inp.addEventListener('change', function () { var x = k[0] === 'forme' ? inp.value : parseFloat(inp.value); if (x === '' || (typeof x === 'number' && isNaN(x))) delete oppFixe[k[0]]; else oppFixe[k[0]] = x; });
+      to.appendChild(tr);
+    });
+  }
+  /* robot adverse abstrait : poses interpolées linéairement (points clés { t, x, y, h }) */
+  function poseAbstraite(K, t) {
+    if (t <= K[0].t) return K[0];
+    var lo = 0, hi = K.length - 1; if (t >= K[hi].t) return K[hi];
+    while (hi - lo > 1) { var mid = (lo + hi) >> 1; if (K[mid].t < t) lo = mid; else hi = mid; }
+    var a = K[hi - 1], b = K[hi], k = b.t > a.t ? (t - a.t) / (b.t - a.t) : 1;
+    return { t: t, x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k, h: a.h + (b.h - a.h) * k };
+  }
   function attachAt(res) {
     if (!res) return res;
+    if (res.abstrait) { res.poseAt = function (t) { return poseAbstraite(res.K, t); }; return res; }
     res.poseAt = function (t) { return ENGINE.poseAtK(res.K, t); };
     res.stoneAt = function (st, t) { var e = st.tl[0]; for (var i = 0; i < st.tl.length; i++) if (st.tl[i].t <= t) e = st.tl[i]; return e; };
     return res;
@@ -465,7 +548,8 @@
     tot.textContent = 'Durée ' + fmt(R.T) + ' s' + (R.T <= MATCH ? '' : ' (+' + fmt(R.T - MATCH) + ' s)') + (nErr ? ' · ' + nErr + ' erreur' + (nErr > 1 ? 's' : '') + ' moteur' : '');
     tot.className = 'tot ' + (R.T <= MATCH && !nErr ? 'ok' : 'bad');
     showStepInfo(); buildTrail(); buildOppTrail(); buildShots(); computeBad(); drawStrip(); renderResults(); renderAlerts(); renderTimeline();
-    if (them) them.group.visible = !!R.opponent;
+    if (them) them.group.visible = !!R.opponent && !R.opponent.abstrait;
+    buildAbstrait(R.opponent && R.opponent.abstrait ? R.opponent : null);
     if (time > TEND) time = TEND;
   }
 
@@ -688,6 +772,42 @@
   var them = makeBot({ elec: blue, mod: yellow, banner: 0xf2b600 });
   them.group.visible = false;
   var robot = us.group, MOD = us.MOD;
+  /* robot adverse abstrait (engine/adversaires.js) : empreinte extrudée à sa hauteur déclarée, et ses constructions */
+  var absBot = null, absBuilt = null, absMat = new THREE.MeshStandardMaterial({ color: 0x4aa3ff, roughness: 0.5, metalness: 0.2, transparent: true, opacity: 0.9 });
+  function buildAbstrait(res) {
+    if (absBot) { scene.remove(absBot); absBot.traverse(function (o) { if (o.geometry) o.geometry.dispose(); }); absBot = null; }
+    if (absBuilt) { scene.remove(absBuilt); absBuilt.traverse(function (o) { if (o.geometry) o.geometry.dispose(); }); absBuilt = null; }
+    if (!res) return;
+    var sh = new THREE.Shape(); res.forme.forEach(function (q, i) { if (i) sh.lineTo(q[0], -q[1]); else sh.moveTo(q[0], -q[1]); }); sh.closePath();
+    var g = new THREE.ExtrudeGeometry(sh, { depth: res.params.hauteur || 340, bevelEnabled: false });
+    var m = new THREE.Mesh(g, absMat); m.rotation.x = -Math.PI / 2; m.castShadow = true;
+    var nose = new THREE.Mesh(new THREE.BoxGeometry(60, 20, 20), new THREE.MeshStandardMaterial({ color: 0xf2b600 })); nose.position.set(res.R - 30, (res.params.hauteur || 340) + 10, 0);
+    absBot = new THREE.Group(); absBot.add(m); absBot.add(nose); scene.add(absBot);
+    absBuilt = new THREE.Group(); scene.add(absBuilt);
+    (res.built || []).forEach(function (c) {
+      c.feet.forEach(function (f) {
+        var xs = f.foot.map(function (v) { return v[0]; }), ys = f.foot.map(function (v) { return v[1]; }), cx = (Math.min.apply(null, xs) + Math.max.apply(null, xs)) / 2, cy = (Math.min.apply(null, ys) + Math.max.apply(null, ys)) / 2;
+        var L = Math.hypot(f.foot[1][0] - f.foot[0][0], f.foot[1][1] - f.foot[0][1]), N = Math.hypot(f.foot[3][0] - f.foot[0][0], f.foot[3][1] - f.foot[0][1]), ang = Math.atan2(f.foot[1][1] - f.foot[0][1], f.foot[1][0] - f.foot[0][0]);
+        var b = new THREE.Mesh(new THREE.BoxGeometry(L, f.top - f.bottom, N), new THREE.MeshStandardMaterial({ color: 0x9a7b55, roughness: 0.8 }));
+        var w = W(cx, cy); b.position.set(w[0], (f.top + f.bottom) / 2, w[1]); b.rotation.y = -ang; b.userData = { t: c.t, id: f.id }; b.castShadow = true;
+        absBuilt.add(b);
+      });
+    });
+  }
+  function placeAbstrait(res, t) {
+    if (!absBot) return;
+    var p = res.poseAt(Math.min(t, res.T)), w = W(p.x, p.y); absBot.position.set(w[0], 0, w[1]); absBot.rotation.y = -p.h * D2R;
+    absBuilt.children.forEach(function (b) { b.visible = t >= b.userData.t; });
+  }
+  /* pierres prises par le robot abstrait : sur sa construction une fois posée, cachées avant (transportées) */
+  function pierreAbstraite(res, id) { var out = null; (res.built || []).forEach(function (c) { if (c.ids.indexOf(id) >= 0) out = c; }); return out; }
+  function graalAbstrait(res, t) {
+    var tl = (res.graal && res.graal.tl) || [{ t: 0, k: 'home' }], e = tl[0]; tl.forEach(function (x) { if (x.t <= t) e = x; });
+    if (e.k === 'home') return { k: 'home', c: res.graalHome.c, ang: res.graalHome.ang, bottom: 0 };
+    if (e.k === 'robot') { var p = res.poseAt(t); return { k: 'robot', c: [p.x, p.y], ang: p.h, bottom: res.params.hauteur || 340 }; }
+    if (e.k === 'construction') { var z = ENGINE.zoneById(e.z), c = (res.built || []).filter(function (q) { return q.z === e.z; })[0], top = 0; if (c) c.feet.forEach(function (f) { top = Math.max(top, f.top); }); return { k: 'construction', c: z.c, ang: 0, bottom: top }; }
+    var q = res.poseAt(e.t); return { k: e.k, c: [q.x, q.y], ang: 0, bottom: 0 };
+  }
   /* Graal (spec : base 62 x 62, hauteur 100, 2 anses basses) : la taille de la base suit le paramètre gs */
   function makeGraal(color) {
     var g = new THREE.Group(), m = new THREE.MeshStandardMaterial({ color: color, roughness: 0.3, metalness: 0.6 }), A = GEO.graal.anse;
@@ -719,7 +839,7 @@
     [shotLines, shotLinesOpp].forEach(function (g) { if (g) { scene.remove(g); g.children.forEach(function (l) { l.geometry.dispose(); }); } });
     function lines(res, colIn) {
       var grp = new THREE.Group(); grp.visible = showTrail; scene.add(grp);
-      ((res && res.balls.shots) || []).forEach(function (b) {
+      ((res && res.balls && res.balls.shots) || []).forEach(function (b) {
         var pts = b.pts.map(function (q) { var w = W(q[1], q[2]); return new THREE.Vector3(w[0], q[3], w[1]); });
         grp.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: b.cour ? colIn : 0xff6b6b, transparent: true, opacity: 0.6 })));
       });
@@ -934,6 +1054,7 @@
     R.stones.forEach(function (st, i) {
       var m = stoneMeshes[i], e = R.stoneAt(st, tt), holder = us;
       m.visible = true;
+      if (e.k === 'gone' && opp && opp.abstrait) { m.visible = false; return; }
       if (e.k === 'gone') {
         if (opp) { e = opp.stoneAt(opp.stones[i], tt); holder = them; }
         else { m.visible = false; return; }
@@ -950,13 +1071,15 @@
       groups.push([m, e, holder]);
     });
     var c = checks(tt), p = c.p; us.place(p);
-    var po = opp ? opp.poseAt(Math.min(t, opp.T)) : null;
-    if (opp) them.place(po);
+    var abs = opp && opp.abstrait, po = opp && !abs ? opp.poseAt(Math.min(t, opp.T)) : null;
+    if (opp && !abs) them.place(po);
+    if (abs) placeAbstrait(opp, t);
     groups.forEach(function (g) { g[2].fromGrip(g[0], g[1].f, STONE_LX, GEOM.stoneZc(g[1].l), Math.PI / 2); });
     var gq = graalPos(tt), gk = graalAt(tt).k;
     placeGraal(graalM, gq, params.gs);
     graalOpp.visible = false;
-    if (opp) { var tO = Math.min(t, opp.T); placeGraal(graalOpp, SCORE.graalPos(opp, opp.params, tO), opp.params.gs || params.gs); }
+    if (opp && !abs) { var tO = Math.min(t, opp.T); placeGraal(graalOpp, SCORE.graalPos(opp, opp.params, tO), opp.params.gs || params.gs); }
+    if (abs) placeGraal(graalOpp, graalAbstrait(opp, Math.min(t, opp.T)), params.gs);
     ['A', 'B'].forEach(function (f) { for (var j = 0; j < 3; j++) { var on = p[f].vac[j]; us.MOD[f].mats[j].color.copy(on ? green : red); us.MOD[f].mats[j].emissive.copy(green).multiplyScalar(on ? 0.2 : 0); } });
     if (po) ['A', 'B'].forEach(function (f) { if (!po[f]) return; for (var j = 0; j < 3; j++) { var on = po[f].vac[j]; them.MOD[f].mats[j].color.copy(on ? green : red); them.MOD[f].mats[j].emissive.copy(green).multiplyScalar(on ? 0.2 : 0); } });
     var shots = R.balls.shots || [], nOn = 0, nIn = 0;
@@ -972,9 +1095,9 @@
       return { on: nO, in: nI };
     }
     var fb = flyBalls(balls, R, us, Math.min(t, TEND), params.bn); nOn = fb.on; nIn = fb.in;
-    if (opp) {
+    if (opp && !abs) {
       flyBalls(ballsOpp, opp, them, Math.min(t, opp.T), opp.params.bn);
-    }
+    } else ballsOpp.forEach(function (bm) { bm.visible = false; });
     var hR = $('hR'), hS = $('hS'), hP = $('hP'), hB = $('hBall');
     hR.textContent = Math.round(c.robotH) + ' mm ' + (c.robotH <= 350.5 ? '✓' : '✗'); hR.className = c.robotH <= 350.5 ? 'ok' : 'bad';
     if (c.n) { var okS = c.oTop <= c.oLim + 0.5; hS.textContent = Math.round(c.oTop) + ' / ' + (c.oLim === Infinity ? 'sans limite' : c.oLim + ' mm') + ' ' + (okS ? '✓' : '✗'); hS.className = okS ? 'ok' : 'bad'; } else { hS.textContent = '-'; hS.className = ''; }
@@ -1318,7 +1441,7 @@
   }
   /* ---------- Match : qui pilote chaque robot ---------- */
   var oursKind = 'strategie';
-  function oppKind() { var s = oppChoice.slug; return !s ? 'aucun' : s === 'exemple' ? 'exemple' : s.indexOf('cerveau:') === 0 ? 'cerveau' : 'strategie'; }
+  function oppKind() { var s = oppChoice.slug; return !s ? 'aucun' : s === 'exemple' ? 'exemple' : s.indexOf('cerveau:') === 0 ? 'cerveau' : s.indexOf('robot:') === 0 ? 'robot' : 'strategie'; }
   function fillSel(sel_, list, cur, placeholder) {
     var h = placeholder ? '<option value="">' + esc(placeholder) + '</option>' : '';
     list.forEach(function (o) { h += '<option value="' + esc(o[0]) + '">' + esc(o[1]) + '</option>'; });
@@ -1342,6 +1465,10 @@
     setPressed('mOppInt', 'i', oppChoice.intensity);
     if (k === 'cerveau') fillSel($('mOppSel'), brains.map(function (b) { return [b.slug, b.name + (b.entraine ? '' : ' (non entraîné)')]; }), oppChoice.slug.slice(8), brains.length ? '' : 'Aucun cerveau enregistré');
     if (k === 'strategie') fillSel($('mOppSel'), strats.map(function (s) { return [s.slug, s.name]; }), oppChoice.slug, strats.length ? '' : 'Aucune stratégie enregistrée');
+    if (k === 'robot') fillSel($('mOppSel'), ADVERSAIRES.IDS.map(function (id) { var p = ADVERSAIRES.PROFILS[id]; return [id, p.nom + (p.type === 'reseau' ? (robotsNonEntraines[id] ? ' (' + ADVERSAIRES.NON_ENTRAINE + ')' : ' (réseau figé)') : ' (à règles)')]; }), oppChoice.slug.slice(6), '');
+    $('mOppInt').hidden = k === 'aucun' || k === 'robot';
+    var rn = $('mRobotNote'); if (rn) { rn.hidden = k !== 'robot'; if (k === 'robot') { var pr = ADVERSAIRES.PROFILS[oppChoice.slug.slice(6)]; rn.textContent = pr ? pr.description + ' Esquisse : ' + pr.esquisse + ' pts.' : ''; } }
+    renderPhy();
     var bm = $('bMatch'); if (bm) bm.title = 'Match · jaune : ' + (pilot.mode === 'cerveau' ? 'cerveau ' + pilot.name : 'stratégie') + ' · bleu : ' + (k === 'aucun' ? 'aucun' : (currentOpponentName() || k));
   }
   function setOpp(slug) { oppChoice.slug = slug; saveOppChoice(); fillOppSelect(); renderMatch(); recompute(); }
@@ -1364,11 +1491,12 @@
       if (k === 'aucun') return setOpp('');
       if (k === 'exemple') return setOpp('exemple');
       if (k === 'strategie') return setOpp(strats.length ? strats[0].slug : '');
+      if (k === 'robot') return setOpp('robot:' + ADVERSAIRES.IDS[0]);
       if (!brains.length) return refreshBrains().then(function () { setOpp(brains.length ? 'cerveau:' + brains[0].slug : ''); });
       setOpp('cerveau:' + brains[0].slug);
     });
   });
-  $('mOppSel').addEventListener('change', function () { var v = $('mOppSel').value; if (v) setOpp(oppKind() === 'cerveau' ? 'cerveau:' + v : v); });
+  $('mOppSel').addEventListener('change', function () { var v = $('mOppSel').value; if (v) setOpp(oppKind() === 'cerveau' ? 'cerveau:' + v : oppKind() === 'robot' ? 'robot:' + v : v); });
   document.querySelectorAll('#mOppInt button').forEach(function (b) {
     b.addEventListener('click', function () { oppChoice.intensity = b.dataset.i; saveOppChoice(); fillOppSelect(); renderMatch(); recompute(); });
   });

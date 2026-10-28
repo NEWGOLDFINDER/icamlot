@@ -162,6 +162,8 @@
   /* score à l'instant t (t omis : fin du match). Le trône, les boulets et le Graal ne comptent qu'à T = 100 s. */
   function scoreAt(R, params, t) {
     var M = ENGINE.MATCH || 100, T = t == null ? M : Math.min(t, M);
+    /* robot adverse abstrait (engine/adversaires.js) : son propre décompte, même barème */
+    if (R && R.abstrait && R.scoreAt) return R.scoreAt(T);
     return scoreOf(outcome(R, params, T), params);
   }
   var api = { BARS: BARS, gripTop: gripTop, hullPer: hullPer, robotFoot: robotFoot, graalPos: graalPos, stoneGeoAt: stoneGeoAt, inCastle: inCastle, own: own, graalAt: graalAt, checks: checks, outcome: outcome, scoreOf: scoreOf, scoreAt: scoreAt };

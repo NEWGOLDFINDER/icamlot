@@ -139,7 +139,7 @@ def web_json(model: RecurrentActorCritic, meta: Optional[dict] = None) -> dict:
         "acteur": actor,
     }
     if meta:
-        for k in ("obs_version", "catalogue_version", "groupes", "moteur", "bareme"):
+        for k in ("obs_version", "catalogue_version", "groupes", "moteur", "bareme", "physique", "adversaires"):
             if meta.get(k) is not None:
                 out[k] = meta[k]
     return out
@@ -202,6 +202,11 @@ def meta_json(model: RecurrentActorCritic, info: Optional[dict] = None, opset: i
         "catalogue": info.get("catalogue"),
         "moteur": info.get("moteur"), "bareme": info.get("bareme"),
         "evaluation": info.get("evaluation"),
+        # traçabilité (chantier adversaires) : configuration de l'environnement, caractéristiques physiques (nominales, plages,
+        # tirage) et mélange d'adversaires utilisés pour l'entraînement
+        "env_config": info.get("env_config"),
+        "physique": info.get("physique") or (info.get("env_config") or {}).get("physique"),
+        "adversaires": info.get("adversaires"),
     }
 
 

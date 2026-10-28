@@ -191,6 +191,7 @@ class JsEnvPool:
         self._last_obs: Optional[np.ndarray] = None
         self._last_mask: Optional[np.ndarray] = None
         self.stats = {"pas": 0, "decisions": 0, "episodes": 0, "crashs": 0, "tronques": 0, "masques_vides": 0}
+        self.opponents: Dict[str, dict] = {}
         _POOLS.add(self)
         try:
             self.procs = [_NodeProc(i, node=node) for i in range(self.n_procs)]
@@ -290,7 +291,16 @@ class JsEnvPool:
     # ───────────── adversaires ─────────────
     def set_opponents(self, opponents: Dict[str, dict]) -> None:
         """Enregistre les adversaires {id: {program, params} | {brain}} dans chaque processus."""
+        self.opponents = dict(opponents)
         self._broadcast([{"cmd": "set_opponents", "opponents": opponents} for _ in self.procs])
+
+    def robots_adverses(self) -> List[dict]:
+        """Robots adverses (engine/adversaires.js) : [{ id, nom, type, esquisse, modele }] ; modele faux = réseau non entraîné."""
+        return self._broadcast([{"cmd": "adversaires"} for _ in self.procs])[0].get("robots") or []
+
+    def physique(self) -> List[dict]:
+        """Caractéristiques physiques de notre robot (ADVERSAIRES.PHYSIQUE : id, nom, unité, nominale, statut, source, plage)."""
+        return self._broadcast([{"cmd": "physique"} for _ in self.procs])[0].get("caracteristiques") or []
 
     # ───────────── reset / step ─────────────
     def reset(self, scenarios: Optional[Sequence[Optional[dict]]] = None):

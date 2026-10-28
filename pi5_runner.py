@@ -30,7 +30,7 @@ from typing import Any, Callable, List, Optional, Tuple
 
 import numpy as np
 
-from embarque.croyance import CamerasAbsentes, ConstructeurCroyance, Mesures
+from embarque.croyance import CamerasAbsentes, ConstructeurCroyance, Mesures, params_calibration
 from embarque.pont import ErreurPont, PontNode
 from embarque.spec import duree_match_s
 from esp32_bridge import DualESP32Orchestrator, ErreurLiaison, EtatActionneurs, Rapport
@@ -222,11 +222,12 @@ class RobotBackend:
     """Robot réel (ou ESP32 simulés avec --mock-esp) : croyance = modèle interne + capteurs, brique exécutée par les ESP32."""
 
     def __init__(self, pont: PontNode, orch: DualESP32Orchestrator, capteurs: Any, equipe: str = "yellow", horloge: Any = None,
-                 attendre_tirette: bool = True):
+                 attendre_tirette: bool = True, params_moteur: Optional[dict] = None):
         """attendre_tirette : le match commence au retrait de la tirette (ESP32 des actionneurs). False : au lancement (essais de banc)."""
         self.pont, self.orch, self.capteurs, self.equipe, self.attendre_tirette = pont, orch, capteurs, equipe, attendre_tirette
         self.horloge = horloge or orch.horloge
-        self.cons = ConstructeurCroyance(pont, equipe)
+        # params_moteur : caractéristiques physiques mesurées (--calibration), sinon celles de la spec
+        self.cons = ConstructeurCroyance(pont, equipe, params_moteur)
         self.t_depart = 0.0
         self.echec_materiel = False
         self.programme: List[dict] = []
@@ -390,6 +391,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--act-port", default=None)
     ap.add_argument("--equipe", choices=("jaune", "bleue"), default="jaune")
     ap.add_argument("--runs", type=int, default=1000)
+    ap.add_argument("--calibration", help="caractéristiques physiques mesurées (JSON, unités du moteur ; embarque/croyance.py)")
     ap.add_argument("--sortie", help="écrit le bilan JSON ici")
     ap.add_argument("-v", "--verbeux", action="store_true")
     a = ap.parse_args(argv)
@@ -423,7 +425,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             kw = {k: v for k, v in (("nav_port", a.nav_port), ("act_port", a.act_port)) if v}
             orch = DualESP32Orchestrator(mock=a.mock_esp, **kw)
             capteurs = CapteursRobot(orch, lidar=LidarTracker(mock=a.mock_esp))
-            be = RobotBackend(pont, orch, capteurs, equipe)
+            be = RobotBackend(pont, orch, capteurs, equipe, params_moteur=params_calibration(a.calibration))
             bilan = Pi5Runner(pol, pont, be, MAX_DECISIONS_ROBOT, log=print).jouer()
             print(json.dumps({k: v for k, v in bilan.items() if k != "programme"}, indent=1))
             orch.close()
