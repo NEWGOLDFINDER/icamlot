@@ -609,7 +609,7 @@
       var free = !poseHit(b, poseOf(b, (i + 0.5) * GRID.C, (j + 0.5) * GRID.C, h, over), null, cache, HYPOTHESES.margeGrille);
       st[k] = free ? 1 : -1; return free;
     };
-    f.key = key;
+    f.key = key; f.h = h; f.over = over;
     return (fc[key] = f);
   }
   function cellOf2(x, y) { return [Math.max(0, Math.min(GRID.W - 1, Math.floor(x / GRID.C))), Math.max(0, Math.min(GRID.H - 1, Math.floor(y / GRID.C)))]; }
@@ -617,10 +617,18 @@
   var WK = { gS: new Float32Array(75 * 50), stamp: new Uint32Array(75 * 50), closed: new Uint32Array(75 * 50), gen: 1 };
   /* A* de s0 vers g0 sur la grille free ; un échec complet donne la composante connexe du départ, gardée pour les requêtes
      suivantes de même cap et même état des pinces */
-  function astar(free, s0, g0, maxN, cache) {
+  function astar(free, s0, g0, maxN, cache, sp) {
     var W = GRID.W, si = s0[1] * W + s0[0], gi = g0[1] * W + g0[0];
     if (si === gi) return true;
-    var comps = cache.comp = cache.comp || {}, ck = free.key + '@' + si, comp = comps[ck];
+    var comps = cache.comp = cache.comp || {}, ck = free.key + '@' + si + (sp ? '@' + sp[0].toFixed(0) + ',' + sp[1].toFixed(0) : ''), comp = comps[ck];
+    /* premier pas depuis la position exacte du robot (et non le centre de sa case) : vérifié au tiers et aux deux tiers */
+    function firstOk(nx, ny) {
+      if (!sp) return true;
+      var cx2 = (nx + 0.5) * GRID.C, cy2 = (ny + 0.5) * GRID.C;
+      for (var u = 1; u <= 2; u++) if (poseHit(b0, poseOf(b0, sp[0] + (cx2 - sp[0]) * u / 3, sp[1] + (cy2 - sp[1]) * u / 3, free.h, free.over), null, cache)) return false;
+      return true;
+    }
+    var b0 = cache.belief;
     if (comp) return comp.has(gi) || comp.border.has(gi);
     var gen = ++WK.gen, gS = WK.gS, stamp = WK.stamp, closed = WK.closed, heap = [], n = 0, seen = [], border = new Set();
     function g(i) { return stamp[i] === gen ? gS[i] : Infinity; }
@@ -635,7 +643,7 @@
         if (!dx && !dy) continue; var nx = cx + dx, ny = cy + dy; if (nx < 0 || ny < 0 || nx >= W || ny >= GRID.H) continue;
         var ni = ny * W + nx; if (closed[ni] === gen) continue;
         if (ni === gi) { stamp[ni] = gen; gS[ni] = g(cur) + 1; push(0, ni); continue; }
-        if (!free(nx, ny)) { border.add(ni); continue; }
+        if (!free(nx, ny) || (cur === si && !firstOk(nx, ny))) { border.add(ni); continue; }
         var ng = g(cur) + Math.hypot(dx, dy); if (ng < g(ni)) { stamp[ni] = gen; gS[ni] = ng; push(ng + Math.hypot(nx - g0[0], ny - g0[1]), ni); }
       }
     }
@@ -644,17 +652,27 @@
     return false;
   }
   function planOk(b, c, cache) {
+    cache.belief = b;
     var goals = c.back.length ? c.back : [c.O], h1 = c.h, over = c.over && !c.porteF ? c.over : null;
     var s0 = cellOf2(b.pose.x, b.pose.y), memo = cache.plan = cache.plan || {};
     return goals.some(function (G0) {
       if (dist(G0, [b.pose.x, b.pose.y]) < 60) return true;
       var g0 = cellOf2(G0[0], G0[1]), mk = h1.toFixed(1) + '|' + JSON.stringify(over) + '|' + g0;
       if (memo[mk] != null) return memo[mk];
-      var ok = astar(freeFn(b, h1, over, cache), s0, g0, HYPOTHESES.planMax, cache) ||
-        (over && astar(freeFn(b, h1, null, cache), s0, g0, HYPOTHESES.planMax, cache)) ||
+      /* chemin direct au cap d'arrivée : le robot doit aussi pouvoir tourner de h0 à h1, au départ ou à l'arrivée
+         (sinon le moteur passe par viaRotation : rotation sur place en un point dégagé) */
+      var sp = [b.pose.x, b.pose.y];
+      var direct = astar(freeFn(b, h1, over, cache), s0, g0, HYPOTHESES.planMax, cache, sp) ||
+        (over && astar(freeFn(b, h1, null, cache), s0, g0, HYPOTHESES.planMax, cache, sp));
+      var ok = (direct && (rotFree(b, b.pose.x, b.pose.y, b.pose.h, h1, null, cache) || rotFree(b, G0[0], G0[1], b.pose.h, h1, over, cache))) ||
         viaRot(b, s0, g0, h1, over, cache);
       return (memo[mk] = !!ok);
     });
+  }
+  function rotFree(b, x, y, h0, h1, over, cache) {
+    var dh = ((h1 - h0) % 360 + 540) % 360 - 180, n = Math.ceil(Math.abs(dh) / 10);
+    for (var k = 1; k <= n; k++) if (poseHit(b, poseOf(b, x, y, h0 + dh * k / n, over), null, cache)) return false;
+    return true;
   }
   /* parcours au cap actuel (une fois par appel du masque) puis rotation sur place et A* au cap d'arrivée */
   function viaRot(b, s0, g0, h1, over, cache) {
