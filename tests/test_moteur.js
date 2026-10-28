@@ -207,7 +207,7 @@ ok(!excD, 'makeDuel + run sans exception', excD && excD.message);
 /* ------------------------------------------------------------------ */
 titre('Chantier moteur-2');
 (function () { var r = run(ref), b = r.sim.balls(); ok(b.tDeploy >= E.T_ATTAQUE - E.DEF.bdep - E.DEF.bspin - 1e-6 && b.shots && b.shots[0].t >= E.T_ATTAQUE - 1e-6, 'canon sorti juste à temps pour la phase d\'attaque (pas avant 85 s - sortie - mise en route)', 'sortie à ' + b.tDeploy.toFixed(2) + ' s, 1er tir à ' + b.shots[0].t.toFixed(2) + ' s'); })();
-ok(proche(E.DEF.trz, 1.25 - 100 / 84, 1e-9) && E.DEF.vz === L.SPEC.robot.mecanismes.pince_A_et_B.vitesse_chariot_mm_s, 'vérins Z : vitesse et rampes lues dans la spec', E.DEF.vz + ' mm/s, ' + E.DEF.trz.toFixed(3) + ' s par mouvement');
+ok(proche(E.DEF.trz, Math.round((1.25 - 100 / 84) * 1000) / 1000, 1e-12) && E.DEF.vz === L.SPEC.robot.mecanismes.pince_A_et_B.vitesse_chariot_mm_s, 'vérins Z : vitesse et rampes lues dans la spec', E.DEF.vz + ' mm/s, ' + E.DEF.trz.toFixed(3) + ' s par mouvement');
 /* mirrorStep : dépôt et trajectoire en repère réel mis en miroir (comme ACTIONS.realStep) */
 var mD = E.mirrorStep({ a: 'deposer', f: 'A', q: 'pile', x: 300, y: 620, ang: 30, r: 0 }), mT = E.mirrorStep({ a: 'traj', pts: [{ x: 500, y: 400, a: 10 }, { x: 600, y: 700 }] });
 ok(mD.x === 2700 && mD.ang === 150 && mD.y === 620 && mT.pts[0].x === 2500 && mT.pts[0].a === 170 && mT.pts[1].x === 2400 && mT.pts[1].a === undefined, 'mirrorStep : deposer.x/ang et points de traj en miroir');

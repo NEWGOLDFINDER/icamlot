@@ -15,8 +15,8 @@
     v: val(ENT.vitesse_lineaire_mm_s) / 1000, va: val(ENT.vitesse_approche_mm_s) / 1000, w: val(ENT.vitesse_rotation_deg_s),
     vz: NAC.vitesse_chariot_mm_s, trot: NAC.rotation_duree_s_pour_90deg, tvac: NAC.prise_vide_s, trel: NAC.relache_s,
     /* rampes des vérins Z, ajoutées à chaque mouvement d'axe : 1,25 s pour 100 mm avec rampes contre 100 / 84 = 1,19 s à vide
-       (spec actionneurs_carte.verins), soit 0,06 s */
-    trz: val(VER.duree_100mm_avec_rampes_s) - val(VER.course_mm) / val(VER.vitesse_a_vide_mm_s),
+       (spec actionneurs_carte.verins), soit 0,06 s, arrondi à la milliseconde (résolution des durées du protocole ESP32) */
+    trz: Math.round((val(VER.duree_100mm_avec_rampes_s) - val(VER.course_mm) / val(VER.vitesse_a_vide_mm_s)) * 1000) / 1000,
     /* hypothèse héritée : départ au centre de la salle du trône, face A vers +x */
     x0: 250, y0: 1000, h0: 0,
     /* Graal au départ (repère jaune) : centre (gx, gy), ga = angle (repère table) de l'axe perpendiculaire aux anses.
@@ -988,21 +988,25 @@
           if (X.found < 0) return null;
           return [{ c: chainOf(A0.par, ea, X.found), M: Mh0 }, { c: [X.found], M: discF, disc: true }, { c: chainOf(X.par, xa, X.found).reverse(), M: Mh1 }];
         }
-        parts = same && !verif ? viaGrids() || viaStraight() : viaStraight() || viaGrids() || (same ? null : viaRotEnds() || viaRotCells());
+        /* exec, sans rotation ni pince : la ligne droite si elle est sans contact (contrôle fin) */
+        if (same && !verif && dist(st0, O) > 0.5 && segFree(st0, O, h0, p0, F.fr, F, lim)) parts = [];
+        if (!parts) parts = same && !verif ? viaGrids() || viaStraight() : viaStraight() || viaGrids() || (same ? null : viaRotEnds() || viaRotCells());
         if (!parts) return null;
         /* vérification seule (masque d'actions) : le trajet existe, inutile de le construire */
         if (dryStep && dryStep.verifier) { discT = { D: 0.2, L: 0, ts: [0.2], gOff: 0 }; return [{ p: O, h: h1, d: 0 }]; }
         /* raccourcis en ligne droite : chaque point (pas de 10 mm) dans une case libre de la même grille */
         function los(a, b, M) { var n = Math.ceil(dist(a, b) / 10); for (var q = 1; q < n; q++) { var ci3 = Math.max(0, Math.min(GW - 1, Math.floor((a[0] + (b[0] - a[0]) * q / n) / CELL))), cj3 = Math.max(0, Math.min(GH - 1, Math.floor((a[1] + (b[1] - a[1]) * q / n) / CELL))); if (!M(cj3 * GW + ci3)) return false; } return true; }
-        function smooth(cells, M) { var P = cells.map(cellCtr), out = [P[0]], ia = 0; while (ia < P.length - 1) { var jb = P.length - 1; while (jb > ia + 1 && !los(P[ia], P[jb], M)) jb--; out.push(P[jb]); ia = jb; } return out; }
+        /* extrémités exactes : départ et arrivée remplacent le centre de leur case quand elle fait partie du tracé */
+        var sc5 = gridCell(st0), si5 = sc5[1] * GW + sc5[0], gc5 = gridCell(O), gi5 = gc5[1] * GW + gc5[0];
+        function smooth(cells, M, first, lastP) { var P = cells.map(cellCtr); if (first && cells[0] === si5) P[0] = st0; if (lastP && cells[cells.length - 1] === gi5) P[P.length - 1] = O; var out = [P[0]], ia = 0; while (ia < P.length - 1) { var jb = P.length - 1; while (jb > ia + 1 && !los(P[ia], P[jb], M)) jb--; out.push(P[jb]); ia = jb; } return out; }
         /* nœuds et instants */
         var Vv = speed || V, nodes = [], ts = [], t = 0, d = 0, prev = st0, hc = h0, tE = 0;
         function add(pt, hh, dt) { d += dist(prev, pt); t += dt; nodes.push({ p: pt, h: hh, d: d }); ts.push(t); prev = pt; hc = hh; }
         function go(pt, hh) { var L2 = dist(prev, pt); if (L2 > 0.5 || Math.abs(hh - hc) > 1e-9) add(pt, hh, Math.max(L2 / Vv, Math.abs(hh - hc) / WR)); }
         if (gm === 'debut' && Gl.length) add(st0, h0, Gtot);
-        if (parts[0].rot === 'debut') add(st0, h1, Math.abs(dh) / WR);
-        parts.forEach(function (pa) {
-          var pts2 = smooth(pa.c, pa.M);
+        if ((parts[0] || {}).rot === 'debut') add(st0, h1, Math.abs(dh) / WR);
+        parts.forEach(function (pa, ip) {
+          var pts2 = smooth(pa.c, pa.M, ip === 0, ip === parts.length - 1 && !pa.disc);
           if (!pa.disc) { pts2.forEach(function (pt) { go(pt, hc); }); return; }
           go(pts2[0], hc); tE = t;
           var Lm = 0; for (var q5 = 1; q5 < pts2.length; q5++) Lm += dist(pts2[q5 - 1], pts2[q5]);
@@ -1012,8 +1016,8 @@
           hc = h1;
           if (gm === 'trajet' && Gl.length && tE + Gtot > t + 1e-9) add(prev, h1, tE + Gtot - t);
         });
-        go(O, parts[0].rot === 'fin' ? h0 : h1);
-        if (parts[0].rot === 'fin') add(O, h1, Math.abs(dh) / WR);
+        go(O, (parts[0] || {}).rot === 'fin' ? h0 : h1);
+        if ((parts[0] || {}).rot === 'fin') add(O, h1, Math.abs(dh) / WR);
         if (gm === 'debut') tE = 0;
         if (gm === 'fin' && Gl.length) { tE = t; add(O, h1, Gtot); }
         if (!nodes.length) add(O, h1, 0.2);
