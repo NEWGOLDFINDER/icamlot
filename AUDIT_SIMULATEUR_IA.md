@@ -157,9 +157,55 @@ Conséquences : le torch est environ 20 % trop optimiste sur le temps, et la pos
 
 ---
 
-## 4. Points à confirmer avant de figer le plan (règlement et robot réel)
+## 4. Confrontation au règlement officiel Eurobot 2027 (version OFFICIELLE 1.0)
 
-Le code contient des valeurs que je ne peux pas valider sans le règlement officiel et les caractéristiques réelles du robot. Elles sont listées dans les questions à part. Tant qu'elles ne sont pas tranchées, les phases 1 et 2 ci-dessous gardent ces valeurs marquées « à confirmer ».
+Source : `Eurobot2027_Rules_FR.pdf`, fourni par l'équipe. Les numéros de section sont ceux du règlement.
+
+### 4.1 Ce qui est conforme
+- **Géométrie de la table** (plan G.1, relu en 300 dpi) :
+  - carrières P1 à P10 : 4 sur chaque grand bord en x = 750 / 1250 / 1750 / 2250, et 2 au centre en (1500, 500) et (1500, 1500) ;
+  - tours T1 à T4 (Ø 200 mm) en (500, 400), (850, 750), (850, 1250) et (500, 1600) ;
+  - murs M1, M3, M5 (200 × 400 mm) ;
+  - salle du trône de 500 × 500 mm en x ∈ [0, 500], y ∈ [750, 1250].
+  Les valeurs de `engine.js` correspondent au plan.
+- **Pierres** : 320 × 110 × 110 mm, 30 sur la table, 3 par carrière (D.4).
+- **Barème** (F) : `bareme.js` reprend les bonnes valeurs (1 / 5 / 5 / 20 ; Graal 5 + 5 par niveau ; trône 5 / 10 ; boulets 5 + 15).
+- **Validation d'une pierre** : « tout ou partie de sa projection verticale dans la zone, ou sur une pierre déjà valide » (E.1.b). C'est bien implémenté dans `score.js` (`grow`).
+- **Élément encore contrôlé en fin de match** : non comptabilisé (E.1.b, E.2.b). Le moteur JS ne compte que les pierres libres.
+- **Phase d'attaque** de 85 s à la fin du match (E.4.b) : le moteur JS attend bien 85 s avant de tirer.
+- **Carrières côté adverse** : le règlement ne les attribue à aucune équipe. Prendre P3, P4, P7 ou P8 est donc permis.
+
+### 4.2 Ce qui n'est pas conforme ou manque dans le code
+
+| # | Règle (section) | Code actuel | Impact |
+|---|---|---|---|
+| R1 | Graal : niveau 1 = 1 pierre à plat, niveau 2 = 2 pierres, niveau 3 = 3 pierres à plat **ou 1 pierre verticale**, niveau 4 = toit du robot (> 30 cm), libre de tout actionneur et de tout moyen de fixation (E.2.b) | JS plafonne au niveau 3. Torch : niveau 3 sur un mur, **1 sur une tour** (faux, c'est 3). Le niveau 4 n'existe nulle part | Jusqu'à 5 pts mal évalués ; option du niveau 4 invisible pour le réseau |
+| R2 | « Durant toute la durée du match, le Graal n'a pas le droit de sortir de la cour du château et de ses remparts. Il sera sorti de la table le cas échéant » (E.2.b) | **Aucune** vérification : ni moteur, ni masque, ni score. Un robot peut aller chercher P4 (x = 2250) en tenant le Graal | Perte du Graal (jusqu'à 25 pts) sur une stratégie que le simulateur juge valide |
+| R3 | Porte autorisée dans **n'importe quelle** zone rectangulaire de mur, une seule par château (E.1.b) | M5 et M1 côté extérieur sont interdits pour la porte (`actions.js:275-279`, `torch_engine.py:843`) | Contrainte inventée (peut-être géométrique, à vérifier dans le moteur, mais pas réglementaire) |
+| R4 | Au plus 3 pierres stockées dans la cour du château (E.1.b) | Non vérifié | Stratégie de stockage potentiellement illégale |
+| R5 | Voler des pierres du château adverse : seulement si toutes les carrières sont vides, sans détruire le château, sinon pénalité d'au moins 50 pts (E.1.b) | Non modélisé | Sans effet tant que le réseau ne peut pas voler ; à garder interdit |
+| R6 | Le trône, les boulets et le Graal sont évalués **en fin de match** (E.2, E.3, E.4) | JS : 10 pts de trône dès t = 0, donc récompense −10 en sortant puis +10 en rentrant. Torch : trône compté dès 80 s | Récompenses intermédiaires fausses ; à calculer seulement à 100 s |
+| R7 | Boulets lancés par le robot **ou par les PAMI** (1 boulet par PAMI au maximum, 10 boulets par équipe) ; aucune position de tir imposée (E.4.b) | JS impose un tir depuis la salle du trône (choix d'équipe, pas une règle). Torch : 10 boulets sur 10 réussis | Choix de conception à confirmer ; le score torch est faux |
+| R8 | Graal « plus grand qu'un cube de 60 mm » (E.2.b) | `gs = 60` (pile la limite) | Mineur : utiliser la vraie dimension du Graal construit |
+| R9 | Douves (5 pts chacune) et attaque PAMI (5 pts) (E.4) | Non simulées | Hors du périmètre du réseau du robot principal, mais à compter dans le score attendu de l'équipe |
+
+### 4.3 Score maximal accessible au robot principal (calcul à partir du barème)
+- **Constructions (19 pierres, si elles sont disponibles malgré l'adversaire)** : 1 porte (3 pierres, 20 pts) + 4 murs (12 pierres, 20 pts) + 4 tours (4 pierres, 20 pts) + 19 pts de pierres = **79 pts**.
+- **Graal** : 5 + 4 × 5 = **25 pts** au niveau 4, ou 20 pts au niveau 3.
+- **Trône** : 10 pts. **Boulets** : 20 pts.
+- **Total théorique : 134 pts** (hors PAMI), contre 105 pour la stratégie de référence actuelle, qui n'utilise ni les tours ni le niveau 4.
+
+### 4.4 Ce qui n'est pas dans ce document
+- Les valeurs de **limite de hauteur et de périmètre** (le code utilise 350 mm, 430 mm et 1200 / 1400 mm de périmètre) ne figurent pas dans ce règlement. Elles relèvent de la « réglementation générale Eurobot » (B), qui n'a pas été fournie.
+- Le niveau d'un Graal posé **sur une porte** (2 pierres verticales + 1 linteau, environ 430 mm) n'est pas défini en E.2.b. À faire préciser par la FAQ ou l'arbitre (referee@planete-sciences.org).
+
+### 4.5 Base roulante (`BASE_ROULANTE_V1.zip`)
+- 18 fichiers SolidWorks (`.SLDPRT` / `.SLDASM`) dans un format binaire propriétaire compressé, illisibles sans SolidWorks. Seuls les **noms de fichiers** sont exploitables :
+  - roues omnidirectionnelles de 60 mm (variantes à 3 patins et à 3 rangées de patins) ;
+  - motoréducteur « 37d-gearmotor-50-70-encoder » ;
+  - profilés de 20 × 20 mm (110 mm et 300 mm) ;
+  - une carte nommée « rasberrypicot » (Raspberry Pi Pico ?).
+- Le nombre et la disposition des roues, les dimensions du châssis et la vitesse réelle **ne peuvent pas être déduits** de ces fichiers. Ce sont pourtant les paramètres qui fixent les durées de trajet du simulateur (aujourd'hui 0,5 m/s, 0,2 m/s en approche et 120°/s, valeurs non justifiées).
 
 ---
 
@@ -179,6 +225,11 @@ Principe directeur : **un seul monde de référence, une seule définition des o
 - Ajouter un test automatique qui joue chaque action déclarée valide sur un échantillon d'états et exige 0 erreur moteur. Objectif : faire passer le taux d'échec du masque de 52 % à moins de 2 %.
 - Corriger l'observation : `hullRadius` exposé, radar en miroir pour l'équipe bleue, normalisations bornées.
 - Retirer les règles de stratégie des masques. Le masque ne doit exprimer que ce qui est **physiquement ou réglementairement** possible.
+- Mettre le code en conformité avec le règlement (§4.2) :
+  - Graal : niveaux 1 à 4 (R1) et interdiction de sortir de la cour et des remparts (R2) ;
+  - porte autorisée sur toutes les zones de mur (R3), sauf impossibilité géométrique démontrée par le moteur ;
+  - stockage limité à 3 pierres dans la cour (R4) ;
+  - score du trône, des boulets et du Graal calculé seulement en fin de match (R6).
 - **Critère de sortie** : 0 action valide qui produise une erreur moteur sur 10 000 états tirés au hasard.
 
 ### Phase 2 — Un simulateur d'entraînement fidèle
