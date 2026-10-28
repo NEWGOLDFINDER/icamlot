@@ -193,3 +193,13 @@ Règle absolue de l'équipe : **ne rien inventer**. Une valeur absente de la spe
 - **Données conservées** : celles du vérin mesuré (100 mm, 84 / 75 mm/s), qui servent au calcul des rampes.
 - **À vérifier** : l'encombrement du vérin dans la CAO.
 - Cahier des charges : `spec/robot.json` → `actionneurs_carte.verins.cahier_des_charges`.
+
+## 13. Tir explicite (décision de l'équipe, option B ; catalogue `icamlot-catalogue-3.1`)
+- **Constat** : la brique `tir` attendait jusqu'à 85 s sans décision (référence : 13 s immobile à partir de 70,4 s).
+- **Action « tir »** : valide seulement si l'attente de la brique avant la sortie du canon, pour un lancement maintenant, est d'au plus `ACTIONS.HYPOTHESES.attenteMaxTir` (1 s, hypothèse). Les autres conditions restent : tir pas encore fait, position atteinte avant 100 s. Le masque majore l'attente avec un minorant du trajet. Si ce majorant dépasse 1 s, il joue l'étape à blanc avec son vrai trajet (même planificateur qu'`exec`). Masque et `exec` concordent sur les 113 instants testés (`tests/test_engine.js` §3b). La brique `tir` du moteur est inchangée (programmes, `esp32_bridge.py`).
+- **Aller à la position de tir** : l'action « Aller dans la salle du trône » est réutilisée. La position de tir imposée (`tx, ty` = 250, 1000, `tirDepuisTrone`) est le centre du trône, cible de `trone`. Depuis là, `tir` ne fait plus qu'une rotation (1,7 s mesurée). Aucune nouvelle brique : `BRIQUES_PRISES_EN_CHARGE` d'`esp32_bridge.py` est inchangé.
+- **Nouvelle famille `attenteCourte`** : « Attendre 1 / 2 / 4 s sur place » (brique `attendre`, bornée à 100 s), toujours valide avant 100 s ; « finir » reste.
+  - Durées `HYPOTHESES.attentesCourtes` = [1, 2, 4] s (hypothèse). 1 s = `attenteMaxTir` : la fenêtre de tir est toujours atteignable. 1 + 2 + 4 composent toute attente entière de 1 à 7 s. 4 s reste sous la durée médiane d'une macro-action de la référence (4,2 s).
+- **Référence** : … Graal (fin à 70,4 s), trône, attentes 4 + 4 + 2 + 1 s, tir à 81,7 s (attente interne 0,09 s, premier boulet à 85 s), trône. 116 pts, 90,30 s, 20 paires imitables, 0 cible invalide.
+  - Une prise et une tour de plus (P6.2, tours T4 ou T1, 122 pts, Graal fini à 80,2 s) réussissent dans le moteur, mais ne sont pas imitables. Le masque refuse la tour T4 ou T1 de la face A ou B : le trajet vers la pose (680, 1815) ou (680, 185) n'est pas trouvé par le planificateur certifié, alors que la recherche d'origine d'`exec` le trouve.
+- **Conséquence** : 155 sorties au lieu de 152 ; les modèles et `.meta.json` du catalogue 3.0 sont refusés (version) et **à réentraîner**.

@@ -492,14 +492,15 @@
       return state();
     }
     /* Imitation d'un programme : chaque brique reconnue par ACTIONS.indexOfStep est jouée comme ENV.step (brique du catalogue,
-       avec temps masqué) et donne une paire { obs, action, mask, reward, t } ; les autres briques (attentes...) sont jouées
+       avec temps masqué) et donne une paire { obs, action, mask, reward, t } ; les autres briques (attentes d'une durée hors catalogue...) sont jouées
        telles quelles et leur gain est compté dans la paire précédente. Somme des récompenses = score final - score0 - pénalités. */
     function imitate(program, scenario) {
       var s0 = reset(scenario || { intensite: 'aucun' }), pairs = [], score0 = lastScore, prev = null;
       (program || []).forEach(function (st) {
         if (done || !st) return;
         var idx = -1;
-        if (st.a !== 'attendre' && !(st.a === 'attendreJusqua' && +st.sec < MATCH)) idx = ACTIONS.indexOfStep(st, cur.belief, catalogue);
+        /* attentes du catalogue (attentes courtes, finir) reconnues ; une attente d'une autre durée est jouée telle quelle */
+        if (!(st.a === 'attendreJusqua' && +st.sec < MATCH)) idx = ACTIONS.indexOfStep(st, cur.belief, catalogue);
         if (idx < 0) {
           syncOpp();
           var t0 = sim.time(), info = exec(st);

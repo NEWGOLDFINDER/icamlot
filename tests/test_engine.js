@@ -28,10 +28,14 @@ console.log('Moteur ' + ENGINE.VERSION + ', barème ' + ctx.BAREME_VERSION + ', 
 
 console.log('\n1. Catalogue v3');
 var ALL = ACTIONS.ALL;
-check('versions exposées', ACTIONS.CATALOGUE_VERSION === 'icamlot-catalogue-3.0' && ENV.OBS_VERSION === 'icamlot-obs-3.0');
+check('versions exposées', ACTIONS.CATALOGUE_VERSION === 'icamlot-catalogue-3.1' && ENV.OBS_VERSION === 'icamlot-obs-3.0');
 check('familles = catalogue', sum(ACTIONS.FAMILLES.map(function (f) { return f.n; })) === ALL.length, ALL.length + ' actions');
 check('labels uniques', new Set(ALL.map(function (a) { return a.label; })).size === ALL.length);
 check('plus de prendreGraal / poserGraal / staging / repickup', !ALL.some(function (a) { return /Graal$|staging|repickup/.test(a.famille) && a.famille !== 'monterGraal'; }));
+var ATT = ALL.filter(function (a) { return a.famille === 'attenteCourte'; });
+check('attentes courtes (contrat §13) : une action par durée de HYPOTHESES.attentesCourtes, « finir » conservé',
+  JSON.stringify(ATT.map(function (a) { return a.sec; })) === JSON.stringify(ACTIONS.HYPOTHESES.attentesCourtes) && ATT.every(function (a) { return a.a === 'attendre'; }) && ALL.some(function (a) { return a.a === 'finir'; }),
+  ATT.map(function (a) { return a.sec + ' s'; }).join(', '));
 check('monterGraal et préparer la pince présents', ALL.some(function (a) { return a.a === 'monterGraal'; }) && ALL.filter(function (a) { return a.a === 'preparer'; }).length === 6);
 var env0 = ENV.create({ skipContacts: true }); env0.reset({});
 var b0 = env0.belief();
@@ -67,6 +71,33 @@ var envS = ENV.create({ skipContacts: true }); envS.reset({});
 im.pairs.forEach(function (p) { envS.step(p.action); });
 var stEnd = envS.step(envS.catalogue.map(function (a) { return a.a; }).indexOf('finir'));
 check('mêmes actions jouées par ENV.step : même score', finalScore(envS.result()) === sRef, finalScore(envS.result()) + ' pts');
+
+console.log('\n3b. Tir explicite (contrat §13) : attente avant le premier boulet <= ' + ACTIONS.HYPOTHESES.attenteMaxTir + ' s');
+/* attente réelle de la brique tir (segments « Attente, canon rentré » d'exec) */
+function attenteExec(sim, st) {
+  var snap = sim.snapshot(), n0 = sim.result(false).segs.length; sim.exec(st);
+  var a = sim.result(false).segs.slice(n0).filter(function (x) { return /^Attente, canon rentré/.test(x.label); }).reduce(function (u, x) { return u + x.t1 - x.t0; }, 0);
+  sim.restore(snap); return a;
+}
+var segsI = envI.result().segs, tirI = segsI.filter(function (x) { return /^Attente, canon rentré/.test(x.label); });
+check('référence imitée : attente dans la brique tir <= attenteMaxTir', sum(tirI.map(function (x) { return x.t1 - x.t0; })) <= ACTIONS.HYPOTHESES.attenteMaxTir + 1e-6, sum(tirI.map(function (x) { return x.t1 - x.t0; })).toFixed(2) + ' s');
+check('référence imitée : premier boulet à ' + ENGINE.T_ATTAQUE + ' s', Math.abs(envI.result().balls.t0 - ENGINE.T_ATTAQUE) < 1e-6, String(envI.result().balls.t0));
+/* balayage : préfixe de la référence jusqu'au Graal (puis trône), instants de 0,25 s jusqu'à 84,5 s ; validité de tir (masque)
+   comparée à l'attente réelle d'exec */
+var tirAct = ALL.filter(function (a) { return a.a === 'tir'; }), iGr = ENGINE.PROGRAMME_REFERENCE.map(function (x) { return x.a; }).indexOf('monterGraal');
+var swOk = true, swDet = [], swN = 0, swV = 0;
+[[], [{ a: 'trone' }]].forEach(function (extra) {
+  var simW = ENGINE.makeSim(ENGINE.DEF, { skipContacts: true }), memW = ENV.newMemory();
+  ENGINE.PROGRAMME_REFERENCE.slice(0, iGr + 1).concat(extra).forEach(function (st) { var t0 = simW.time(), inf = simW.exec(st); ENV.updateMemory(memW, simW, t0, simW.time(), st, inf); });
+  while (simW.time() < 84.5) {
+    var bW = ENV.beliefFromSim(simW, memW, null), why = ACTIONS.explainBelief(bW, tirAct)[0], att = attenteExec(simW, ACTIONS.toProgramStep(tirAct[0], bW));
+    swN++; if (!why) swV++;
+    if (!why && att > ACTIONS.HYPOTHESES.attenteMaxTir + 1e-6) { swOk = false; swDet.push('valide à ' + simW.time().toFixed(2) + ' s, attente ' + att.toFixed(2)); }
+    if (why && /attente/.test(why) && att <= ACTIONS.HYPOTHESES.attenteMaxTir - 0.05) { swOk = false; swDet.push('masqué à ' + simW.time().toFixed(2) + ' s, attente ' + att.toFixed(2)); }
+    var t1 = simW.time(), inf2 = simW.exec({ a: 'attendre', sec: 0.25 }); ENV.updateMemory(memW, simW, t1, simW.time(), null, inf2);
+  }
+});
+check('masque de tir = attente réelle d\'exec (' + swN + ' instants, ' + swV + ' valides)', swOk && swV > 0, swDet.slice(0, 3).join(' ; '));
 
 console.log('\n4. Récompense, rejeu, pureté (épisodes aléatoires)');
 var rS = rng(7), okSum = true, okReplay = true, okPure = true, okPen = true, nEp = 0, worst = '';
@@ -134,12 +165,15 @@ var PATH = /aucun passage|aucune position|Aucune position|pas de place|pas de po
 /* causes liées à l'adversaire (non masquées, décision §9) ou à la croyance (pierres prises sans être vues) */
 var OPP = /n'est plus là|absente|robot adverse/;
 function serie(withOpp, seed) {
-  var r = rng(seed), o = { dec: 0, fail: 0, path: 0, opp: 0, other: {}, eps: 0, t: Date.now(), sansFinir: 0 }, iFin = ENV.create({}).catalogue.map(function (a) { return a.a; }).indexOf('finir');
+  var r = rng(seed), o = { dec: 0, fail: 0, path: 0, opp: 0, other: {}, eps: 0, t: Date.now(), sansFinir: 0, sansAttente: 0, att: 0 }, iFin = ENV.create({}).catalogue.map(function (a) { return a.a; }).indexOf('finir');
+  var iAtt = []; ENV.create({}).catalogue.forEach(function (a, i) { if (a.famille === 'attenteCourte') iAtt.push(i); });
   while (o.dec < N_DEC) {
     var envR = ENV.create({ skipContacts: true }), sr = envR.reset({ seed: seed * 1000 + o.eps, intensite: withOpp ? 'realiste' : 'aucun' }), kk = 0; o.eps++;
     while (!sr.done && kk < 80 && o.dec < N_DEC) {
       if (!sr.mask[iFin] && sr.t < ENV.MATCH - 0.05) o.sansFinir++;
-      sr = envR.step(randomPick(r, envR, sr.mask)); kk++; o.dec++;
+      if (iAtt.some(function (i) { return !sr.mask[i]; }) && sr.t < ENV.MATCH - 0.05) o.sansAttente++;
+      var pick = randomPick(r, envR, sr.mask); if (iAtt.indexOf(pick) >= 0) o.att++;
+      sr = envR.step(pick); kk++; o.dec++;
       if (!sr.err) continue;
       o.fail++;
       if (OPP.test(sr.err)) o.opp++;
@@ -150,6 +184,7 @@ function serie(withOpp, seed) {
   o.nOther = o.fail - o.path - o.opp;
   function pc(n) { return (100 * n / o.dec).toFixed(2) + ' %'; }
   console.log('   ' + (withOpp ? 'avec adversaire (référence en miroir)' : 'sans adversaire') + ' : ' + o.dec + ' décisions, ' + o.eps + ' matchs, ' + ((Date.now() - o.t) / o.dec).toFixed(1) + ' ms/décision ; échecs ' + o.fail + ' = ' + pc(o.fail));
+  console.log('     dont attentes courtes (jamais en échec) : ' + o.att + ' ; échecs hors attentes : ' + (100 * o.fail / Math.max(1, o.dec - o.att)).toFixed(2) + ' %');
   console.log('     trajet ou pose choisie par le moteur : ' + o.path + ' (' + pc(o.path) + ') ; adversaire / croyance : ' + o.opp + ' (' + pc(o.opp) + ') ; autres : ' + o.nOther + ' (' + pc(o.nOther) + ') ' + JSON.stringify(o.other));
   return o;
 }
@@ -159,6 +194,7 @@ check('avec adversaire : échecs hors trajet et hors adversaire < 2 %', S1.nOthe
 /* cohérence masque -> moteur (chantier moteur-2 : le masque joue l'étape à blanc avec le planificateur du moteur) */
 check('sans adversaire : échecs toutes causes < 2 %', S0.fail / S0.dec < 0.02, (100 * S0.fail / S0.dec).toFixed(2) + ' %');
 check('« finir » toujours valide avant 100 s (le masque n\'est jamais vide)', !S0.sansFinir && !S1.sansFinir, S0.sansFinir + ' / ' + S1.sansFinir);
+check('attentes courtes toujours valides avant 100 s', !S0.sansAttente && !S1.sansAttente, S0.sansAttente + ' / ' + S1.sansAttente);
 
 console.log('\n7. Adversaires : stratégie, MLP « layers », modèle récurrent');
 function randMat(r, n, m, s) { var w = []; for (var i = 0; i < n; i++) { var row = []; for (var j = 0; j < m; j++) row.push((r() * 2 - 1) * s); w.push(row); } return w; }
