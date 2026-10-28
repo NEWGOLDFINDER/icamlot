@@ -145,3 +145,8 @@ Règle absolue de l'équipe : **ne rien inventer**. Une valeur absente de la spe
   - Le canon sort avant 85 s ; seuls les tirs sont limités à [85, 100] s.
   - `deploy/install.sh` ne copie pas `spec/spec.js`.
   - `plateau/app.js` dessine encore l'ancien triangle.
+
+## 9. Décisions de l'équipe (vague 2)
+- **Adversaire par défaut** (équipe, 2026-10-28) : le programme de référence en miroir est conservé. Le conflit avec notre robot (108 pts au lieu de 116) est voulu. Le but du réseau est de s'adapter à l'adversaire.
+- **Entraînement** : faire jouer le réseau contre plusieurs adversaires (référence miroir, stratégies enregistrées, réseaux en self-play), et non seul sur la table.
+- **Collisions** : l'évitement est obligatoire (`regles.robot.systeme_evitement_obligatoire` ; pénalité `evitement_non_fonctionnel` −30). Le moteur le modélise déjà (`oppBlocks` : le robot s'arrête, attend, et l'étape échoue). Deux réseaux face à face ne peuvent donc pas se percuter. Un adversaire scripté qui « fonce dessus » est hors règlement et n'est pas un cas d'entraînement visé.
