@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Nacelle de préhension (faces A et B) : faisabilité des rotations 0 / 90 / 180° sous 350 mm.
+"""Nacelle de préhension (faces A et B) : faisabilité des rotations -90 / 0 / 90 / 180° sous 350 mm.
 
 Modèle plan, dans le plan de la face : u = horizontale le long de la face, z = hauteur.
 L'axe de rotation est au niveau de la rangée de ventouses 2 (comme dans engine/engine.js : hc).
@@ -12,6 +12,12 @@ Règles appliquées (règlement général F.3, jeu E.1.b) :
 
 Pendant une rotation, le chariot monte ou descend en même temps (mouvement coordonné) :
 une rotation est faisable si, à chaque angle, il existe une hauteur d'axe qui respecte tout.
+
+Angles de la nacelle : spec/robot.json, mecanismes.pince_A_et_B.rotation_angles_deg = [-90, 0, 90, 180] (-90° : décision de
+l'équipe du 2026-10-28, rotation_moins_90). Plage des rotations coordonnées : [-90, 180] (pas de passage par -180).
+Sens : ici, tourne(+a) est la rotation trigonométrique dans le plan (u, z) ; le moteur (engine/geom.js) compte l'angle dans
+l'autre sens. Les hauteurs ne dépendent pas de ce choix (nacelle et pierres symétriques en u) : -90 et +90 donnent les mêmes
+marges, seule la position latérale de la pierre change (u opposé).
 
 Usage : python tools/conception_pince.py   (écrit conception/pince_rotation.png)
 """
@@ -173,6 +179,28 @@ def main():
     resume("1 pierre (ventouse 1) 0 -> 90° (tour), dans le château", p1, 0, 90, True)
     resume("1 pierre (ventouse 2) 0 -> 180°, dans le château", pierre_tenue(2), 0, 180, True)
 
+    print("\n— Rotations à -90° (autre sens ; plage [-90, 180]) —")
+    resume("nacelle vide 0 -> -90°", [], 0, -90, False)
+    resume("nacelle vide -90 -> 180° (270°, par 0 et 90)", [], -90, 180, False)
+    resume("nacelle vide 90 -> -90° (par 0)", [], 90, -90, False)
+    resume("1 pierre (ventouse 1) 0 -> -90° (tour), hors château", p1, 0, -90, False)
+    resume("1 pierre (ventouse 1) 0 -> -90° (tour), dans le château", p1, 0, -90, True)
+    resume("1 pierre (ventouse 2) 0 -> -90° (tour), hors château", pierre_tenue(2), 0, -90, False)
+    resume("1 pierre (ventouse 3) 0 -> -90° (tour), hors château", p3, 0, -90, False)
+    resume("1 pierre (ventouse 3) 0 -> -90° (tour), dans le château", p3, 0, -90, True)
+    resume("pile de 3 pierres 0 -> -90° (piliers de porte), hors château", pile, 0, -90, False)
+    resume("pile de 3 pierres 0 -> -90° (piliers de porte), dans le château", pile, 0, -90, True)
+    resume("1 pierre (ventouse 1) 90 -> -90° (par 0), hors château", p1, 90, -90, False)
+    resume("1 pierre (ventouse 2) -90 -> 180° (par 0 et 90), dans le château", pierre_tenue(2), -90, 180, True)
+    # symétrie : profil (hmin, hmax) à -a identique à celui à +a pour chaque charge (nacelle et pierres symétriques en u)
+    ecart = 0.0
+    for charge in ([], p1, pierre_tenue(2), p3, pile):
+        for ch in (False, True):
+            _, _, pp = balayage(charge, 0, 90, ch)
+            _, _, pm = balayage(charge, 0, -90, ch)
+            ecart = max(ecart, max(max(abs(a[1] - b[1]), abs(a[2] - b[2])) for a, b in zip(pp, pm)))
+    print(f"symétrie : écart maximal des hauteurs d'axe admissibles entre +a et -a (5 charges, château ou non) : {ecart:.2e} mm")
+
     print("\n— Sensibilité : demi-largeur des rangées 1 et 2 (axe des ventouses extrêmes + rayon) —")
     z1, hl1, r1 = RANGEES[1]; z2, hl2, r2 = RANGEES[2]
     for hl in (105, 90, 80, 70, 60):
@@ -265,7 +293,7 @@ def perimetre(step_path):
 
     act = actionneur()
     demi0 = max(abs(u) for u, _ in act)
-    demi_max = max(max(abs(u) for u, _ in tourne(act, a)) for a in range(0, 181))
+    demi_max = max(max(abs(u) for u, _ in tourne(act, a)) for a in range(-90, 181))   # plage [-90, 180]
     print(f"\n— Périmètre (châssis seul : {perimeter(base):.1f} mm) —")
     print(f"largeur de la nacelle à 0° : ±{demi0:.0f} mm ; au pire pendant une rotation : ±{demi_max:.0f} mm")
     for s_ in (10, 20, 25, 30, 35, 40):

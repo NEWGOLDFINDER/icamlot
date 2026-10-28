@@ -18,6 +18,21 @@ pile de 3 pierres 0 -> 90° (piliers de porte), dans le château     FAISABLE   
 1 pierre (ventouse 1) 0 -> 90° (tour), dans le château             FAISABLE   marge mini     4.1 mm
 1 pierre (ventouse 2) 0 -> 180°, dans le château                   FAISABLE   marge mini    17.1 mm
 
+— Rotations à -90° (autre sens ; plage [-90, 180]) —
+nacelle vide 0 -> -90°                                             FAISABLE   marge mini    65.4 mm
+nacelle vide -90 -> 180° (270°, par 0 et 90)                       FAISABLE   marge mini    65.4 mm
+nacelle vide 90 -> -90° (par 0)                                    FAISABLE   marge mini    65.4 mm
+1 pierre (ventouse 1) 0 -> -90° (tour), hors château               FAISABLE   marge mini     4.1 mm
+1 pierre (ventouse 1) 0 -> -90° (tour), dans le château            FAISABLE   marge mini     4.1 mm
+1 pierre (ventouse 2) 0 -> -90° (tour), hors château               FAISABLE   marge mini     6.6 mm
+1 pierre (ventouse 3) 0 -> -90° (tour), hors château               IMPOSSIBLE marge mini   -53.4 mm
+1 pierre (ventouse 3) 0 -> -90° (tour), dans le château            FAISABLE   marge mini    65.0 mm
+pile de 3 pierres 0 -> -90° (piliers de porte), hors château       IMPOSSIBLE marge mini  -114.7 mm
+pile de 3 pierres 0 -> -90° (piliers de porte), dans le château    FAISABLE   marge mini     4.1 mm
+1 pierre (ventouse 1) 90 -> -90° (par 0), hors château             FAISABLE   marge mini     4.1 mm
+1 pierre (ventouse 2) -90 -> 180° (par 0 et 90), dans le château   FAISABLE   marge mini    17.1 mm
+symétrie : écart maximal des hauteurs d'axe admissibles entre +a et -a (5 charges, château ou non) : 0.00e+00 mm
+
 — Sensibilité : demi-largeur des rangées 1 et 2 (axe des ventouses extrêmes + rayon) —
   demi-longueur 105 + rayon 20 : pile 0->90° (château) marge    4.1 | retournement avec pierre marge  -56.9
   demi-longueur  90 + rayon 20 : pile 0->90° (château) marge    4.1 | retournement avec pierre marge  -46.6
