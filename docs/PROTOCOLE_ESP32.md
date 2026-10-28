@@ -42,7 +42,7 @@ ESP : DONE #12                mouvement terminé (position atteinte)
 
 Une commande instantanée (`SET_POSE`, `SET_LIMITS`, `CFG`) n'a que `ACK` ou `NAK` : l'`ACK` vaut fin. Une commande de mouvement reçoit exactement un `ACK` ou un `NAK`, puis, si `ACK`, exactement un résultat parmi `DONE`, `FAIL`, `ABORT`.
 
-**Voies de mouvement** : un ordre sur une voie déjà occupée est refusé (`NAK #id BUSY`). `NAV` : une seule voie (déplacement). `ACT` : `Z_A`, `Z_B`, `ROT_A`, `ROT_B`, `ASC`, `TIR`, `PUMP_A`, `PUMP_B`. Les voies d'un même ESP32 s'exécutent en parallèle (temps masqué du moteur, `docs/CONTRATS.md` §7). **Le Pi n'envoie un ordre sur une voie qu'après le résultat du précédent**, sauf une trajectoire enchaînée (`PATH`).
+**Voies de mouvement** : un ordre sur une voie déjà occupée est refusé (`NAK #id BUSY <voie>`). `NAV` : une seule voie (déplacement). `ACT` : `Z_A`, `Z_B`, `ROT_A`, `ROT_B`, `ASC`, `TIR`, `PUMP_A`, `PUMP_B`. Les voies d'un même ESP32 s'exécutent en parallèle (temps masqué du moteur, `docs/CONTRATS.md` §7). **Le Pi n'envoie un ordre sur une voie qu'après le résultat du précédent**, sauf une trajectoire enchaînée (`PATH`).
 
 ## 3. Commandes communes aux deux ESP32
 
@@ -109,7 +109,7 @@ Les consignes sont celles du moteur (`sim.pose()`, points clés `A.hc`, `A.rot`,
 |---|---|---|
 | `Z <face> <hc> [T=<ms>] #id` | `ACK`, puis `DONE` | amener l'axe Z de la nacelle `A` ou `B` à la hauteur d'axe `hc` (mm). Recopie par le potentiomètre (GPIO1 / GPIO2). |
 
-`T=<ms>` (**proposé**, facultatif) : durée voulue du mouvement. Le firmware cherche à arriver au bout de `T` ms (vitesse constante). Sans `T`, il va à sa vitesse nominale. Le moteur coordonne certains axes (rotation de nacelle avec montée du chariot pour rester sous 350 mm) : sans durée, le firmware ne peut pas reproduire cette coordination. Si la durée est inférieure à ce que l'axe peut faire, `NAK #id SPEED`.
+`T=<ms>` (**proposé**, facultatif) : durée voulue du mouvement, en millisecondes, décimales admises (`T=716.667`) ; absent pour un saut instantané du moteur. Le firmware cherche à arriver au bout de `T` ms (vitesse constante). Sans `T`, il va à sa vitesse nominale. Le moteur coordonne certains axes (rotation de nacelle avec montée du chariot pour rester sous 350 mm) : sans durée, le firmware ne peut pas reproduire cette coordination. Si la durée est inférieure à ce que l'axe peut faire, `NAK #id SPEED`.
 Course (mm) et vitesse (mm/s) du vérin : à définir (`spec/robot.json`, `actionneurs_carte.verins`) ; la relation entre `hc` et la course du vérin aussi (Q2). Les consignes hors de la plage du firmware sont refusées (`NAK #id RANGE`). Surveillance du courant (sortie CS du VNH5019, environ 0,14 V par ampère d'après le guide) : `FAIL #id OVERCURRENT`.
 
 ### 5.2 Rotation des nacelles
@@ -194,6 +194,10 @@ Règles (hypothèses du Pi, paramètres nommés de `ParamsESP32`) :
 4. **Évitement** : tant qu'un déplacement est en cours, le Pi évalue la menace toutes les `periode_evitement_s` (hypothèse : 0,1 s, la cadence du lidar). Menace : le robot adverse est à moins de `rayon_securite_mm` du lidar (350 mm, hérité de `lidar_tracker.py`) et devant le robot dans le sens du déplacement. Alors : `STOP` à `NAV` ; les actionneurs continuent. Si la menace disparaît dans `attente_evitement_max_s` (hypothèse : 8 s, soit les 4 attentes de 2 s du moteur, `travel` dans `engine/engine.js`), le Pi renvoie la fin du trajet interrompu. Sinon la brique échoue (« évitement »), le réseau décide à nouveau. Même comportement que le moteur (`oppBlocks`).
 5. **Fin du match** : à 100 s (`regles.match.duree_s`), `STOP` aux deux ESP32.
 6. **Démarrage** : ouverture des ports, `HELLO`, `CFG` (chien de garde, télémétrie, seuil de vide), `SET_POSE`, `SET_LIMITS`, `INIT`, attente de la tirette, début du match.
+
+## 7 bis. Firmware simulé (mock)
+
+`FirmwareSimule` (`esp32_bridge.py`) parle ce protocole ligne à ligne derrière une `SerieSimulee` (même interface que pyserial) : le Pi utilise exactement le même code pour le robot et pour la simulation, et `pi5_runner.py --robot --mock-esp` rejoue un match sans matériel, en temps simulé. Il implémente `HELLO`, `PING`, `CFG`, `STOP`, `SET_POSE`, `SET_LIMITS`, `GOTO`, `PATH` (avec `WPT`), `POSE?`, `INIT`, `Z`, `ROT`, `ASC`, `PUMP`, `TIR`, `STATUS?`, la télémétrie, le chien de garde et la tirette (`EVT TIRETTE`). Limites : pas de moteurs, donc la durée d'un mouvement est `T=` (sinon instantané) ; pour la base, distance / vitesse de `SET_LIMITS` ; une pompe en marche donne une dépression de 2 fois le seuil (`mock_vide_facteur`, hypothèse de test) ; la tirette est retirée 1 s après `INIT` (`mock_delai_tirette_s`). Un canal de test hors protocole (`programmee`) permet au pont de rejouer exactement les durées du moteur (base, séance de tir, pompes) et d'injecter des retards ; il n'existe pas sur le robot.
 
 ## 8. Codes d'erreur (proposés)
 
