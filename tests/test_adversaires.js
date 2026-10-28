@@ -12,7 +12,7 @@ function seul(id, seed) {
   for (var k = 0; k < 300; k++) { var b = prep.agent.next(sim); if (!b) break; sim.exec(b); }
   var r = sim.result(); return { r: r, sc: S.scoreAt(r, r.params), tirage: prep.tirage, program: sim.program() };
 }
-/* modèles figés des robots « réseau » (s'ils ont été entraînés) */
+/* modèles figés des robots « réseau » s'ils ont été entraînés (sinon §7 crée un petit modèle temporaire) */
 var DIR = process.env.ICAMLOT_ADVERSAIRES || path.join(ROOT, '.data', 'adversaires');
 A.IDS.forEach(function (id) { var pr = A.PROFILS[id]; if (pr.modele && fs.existsSync(path.join(DIR, pr.modele + '.json'))) A.enregistrerModele(pr.modele, JSON.parse(fs.readFileSync(path.join(DIR, pr.modele + '.json'), 'utf8'))); });
 
@@ -119,13 +119,34 @@ check('observation physique : 0 aux nominales, écart relatif sinon, bornée', E
 var envN = ENV.create({ skipContacts: true });
 check('sans réglage physique : valeurs de la spec (embarqué, tests existants)', A.clesPhysiques().every(function (k) { envN.reset({ seed: 5 }); return envN.sim.params()[k] === E.DEF[k]; }));
 
-console.log('\n7. Robots « réseau » (modèles figés de ' + DIR + ')');
-['champion', 'intermediaire'].forEach(function (id) {
-  var pr = A.PROFILS[id];
-  if (!A.modele(pr.modele)) { console.log('  --  ' + pr.nom + ' : modèle absent (python -m trainer.adversaires --robot ' + id + ')'); return; }
+console.log('\n7. Robots « réseau » : sans modèle, message explicite ; avec un petit modèle temporaire (créé ici, jamais versionné)');
+function rngT(s) { var a = s >>> 0 || 1; return function () { a |= 0; a = a + 0x6D2B79F5 | 0; var t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function randMat(r, n, m, s) { var w = []; for (var i = 0; i < n; i++) { var row = []; for (var j = 0; j < m; j++) row.push((r() * 2 - 1) * s); w.push(row); } return w; }
+function randVec(r, n, s) { var v = []; for (var i = 0; i < n; i++) v.push((r() * 2 - 1) * s); return v; }
+/* modèle récurrent minuscule (format icamlot-modele-recurrent), poids aléatoires */
+function petitModele(seed) {
+  var r = rngT(seed), nIn = ENV.nInputs(), nOut = C.ACTIONS.ALL.length, H = 8, Eh = 12;
+  return {
+    format: 'icamlot-modele-recurrent', version: 1, n_in: nIn, n_out: nOut, hidden: H, activation: 'silu',
+    obs_version: ENV.OBS_VERSION, catalogue_version: C.ACTIONS.CATALOGUE_VERSION,
+    normalisation: { mean: randVec(r, nIn, 0.1), std: new Array(nIn).fill(0).map(function () { return 0.5 + r(); }), clip: 5 },
+    encodeur: [{ w: randMat(r, nIn, Eh, 0.3), b: randVec(r, Eh, 0.1), ln: { gamma: randVec(r, Eh, 1), beta: randVec(r, Eh, 0.1), eps: 1e-5 } }],
+    gru: { w_ih: randMat(r, Eh, 3 * H, 0.3), w_hh: randMat(r, H, 3 * H, 0.3), b_ih: randVec(r, 3 * H, 0.1), b_hh: randVec(r, 3 * H, 0.1) },
+    acteur: [{ w: randMat(r, H, nOut, 0.3), b: randVec(r, nOut, 0.1) }]
+  };
+}
+['champion', 'intermediaire'].forEach(function (id, k) {
+  var pr = A.PROFILS[id], msg = '';
+  if (!A.modele(pr.modele)) {
+    try { ENV.playProgram([], { seed: 300 }, { robot: id }, 'realiste', true); } catch (e) { msg = e.message; }
+    check(pr.nom + ' sans modèle : erreur explicite, pas de repli', msg.indexOf(A.NON_ENTRAINE) >= 0 && msg.indexOf(A.commandeEntrainement(id)) >= 0, msg);
+    A.enregistrerModele(pr.modele, petitModele(10 + k));
+  }
   var res = ENV.playProgram([], { seed: 300 }, { robot: id }, 'realiste', true), R = res.result.opponent;
-  check(pr.nom + ' : joue le robot bleu avec ses caractéristiques tirées', R && !R.abstrait && Math.abs(R.params.v * 1000 - res.adversaire.phys.v) < 1e-3 && R.errors.length === 0, 'score ' + S.scoreAt(R, R.params).total + ', v ' + res.adversaire.phys.v.toFixed(0) + ' mm/s');
+  check(pr.nom + ' : joue le robot bleu avec ses caractéristiques tirées (petit modèle temporaire ou modèle figé)', R && !R.abstrait && R.params.team === 'blue' && Math.abs(R.params.v * 1000 - res.adversaire.phys.v) < 1e-3 && Math.abs(R.params.trot - res.adversaire.phys.trot) < 1e-6,
+    'score ' + S.scoreAt(R, R.params).total + ', v ' + res.adversaire.phys.v.toFixed(0) + ' mm/s, ' + R.program.length + ' briques');
+  var env7 = ENV.create({ skipContacts: true }), s7 = env7.reset({ seed: 301, intensite: 'realiste', opponent: { robot: id } });
+  check(pr.nom + ' : adversaire d\'un épisode d\'entraînement (ENV.create / reset)', s7.physique.adversaire.profil === id && s7.obs.length === env7.nInputs);
 });
-
 console.log('\n' + (fails ? fails + ' échec(s) sur ' + n + '.' : n + ' tests passés.'));
 process.exit(fails ? 1 : 0);

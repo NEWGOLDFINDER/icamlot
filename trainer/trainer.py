@@ -196,7 +196,8 @@ def sampler_of(cfg: dict, opponents: List[dict], pool: Optional[JsEnvPool] = Non
             for k in list(m):
                 if k in ROBOTS and not dispo.get(k):
                     if log:
-                        log(f"Adversaire « {k} » : modèle figé absent (.data/adversaires/{k}.json), retiré du mélange.")
+                        log(f"Adversaire « {k} » : modèle non entraîné : lancer l'entraînement "
+                            f"(python -m trainer.adversaires --robot {k}) ; exclu du mélange, proportions redistribuées.")
                     m.pop(k)
         known = {o["id"] for o in opponents}
         for k in list(m):

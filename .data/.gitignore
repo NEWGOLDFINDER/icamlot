@@ -4,3 +4,4 @@ modeles/*.tmp
 # entraînement des robots adverses : journaux, points de reprise, exports intermédiaires (le modèle figé est .data/adversaires/<id>.json)
 adversaires/entrainement/
 adversaires/*.api.log
+adversaires/

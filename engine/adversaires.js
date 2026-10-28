@@ -216,6 +216,9 @@
     return P;
   }
 
+  /* message affiché partout (API, interfaces, entraîneur) quand un robot « réseau » n'a pas de modèle figé */
+  var NON_ENTRAINE = 'modèle non entraîné : lancer l\'entraînement';
+  function commandeEntrainement(id) { return 'python -m trainer.adversaires --robot ' + id; }
   /* modèles figés des adversaires « réseau » : enregistrés par le chargeur (worker Node, plateau) */
   var MODELES = {};
   function enregistrerModele(id, brain) { MODELES[id] = brain; }
@@ -702,7 +705,8 @@
     tirerPhysique: tirerPhysique, observerPhysique: observerPhysique, clesPhysiques: clesPhysiques, physDesc: physDesc, bornes: bornes,
     tirerAdversaire: tirerAdversaire, paramsReseau: paramsReseau, plagesReseau: plagesReseau, reglagesPhysiques: reglagesPhysiques, programmeDemo: programmeDemo, empreinte: empreinte, perimetreOf: perimetreOf,
     makeRobot: makeRobot, agentRegles: agentRegles, preparerRegles: preparerRegles,
-    enregistrerModele: enregistrerModele, modele: modele, modeles: function () { return Object.keys(MODELES); }
+    enregistrerModele: enregistrerModele, modele: modele, modeles: function () { return Object.keys(MODELES); },
+    NON_ENTRAINE: NON_ENTRAINE, commandeEntrainement: commandeEntrainement
   };
   root.ADVERSAIRES = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

@@ -1179,7 +1179,10 @@ class Handler(SimpleHTTPRequestHandler):
                 if (prev.get("fichiers") or {}).get("pt"):
                     cfg["reprendre_pt"] = prev["fichiers"]["pt"]
             jid = time.strftime("%Y%m%d-%H%M%S") + "-" + secrets.token_hex(3)
+            mel = (cfg.get("adversaire") or {}).get("melange") or {}
+            mel_eff, avert = melange_effectif(mel)
             job = {
+                "melange_effectif": mel_eff, "avertissements": avert,
                 "id": jid, "slug": brain_slug, "name": cfg["name"], "status": "queued",
                 "created": int(time.time()), "methode": cfg["methode"], "config": cfg,
                 "log": os.path.join(jobs_dir(), jid + ".log"),
@@ -1318,13 +1321,39 @@ def adversaires_info():
         if r["type"] == "reseau":
             f = os.path.join(adversaires_dir(), r["modele"] + ".json")
             d["entraine"] = os.path.exists(f)
+            if not d["entraine"]:
+                d["etat"] = NON_ENTRAINE
+                d["commande"] = f"python -m trainer.adversaires --robot {r['id']}"
+            d["fichier"] = f
             d["bilan"] = load_json(os.path.join(adversaires_dir(), r["modele"] + ".entrainement.json"))
             pr = _adv_procs.get(r["id"])
             d["entrainement_en_cours"] = bool(pr and pr.poll() is None)
         else:
             d["entraine"] = True
         out.append(d)
-    return {"robots": out, "physique": info.get("physique") or [], "melange_defaut": MELANGE_DEFAUT, "dossier": adversaires_dir()}
+    return {"robots": out, "physique": info.get("physique") or [], "melange_defaut": MELANGE_DEFAUT, "dossier": adversaires_dir(),
+            "melange_defaut_effectif": melange_effectif(MELANGE_DEFAUT)[0]}
+
+
+NON_ENTRAINE = "modèle non entraîné : lancer l'entraînement"
+
+
+def melange_effectif(melange):
+    """Mélange réellement joué : robots « réseau » sans modèle figé exclus, proportions redistribuées (somme 1).
+    Renvoie (mélange, avertissements)."""
+    try:
+        robots = {r["id"]: r for r in env_info().get("robots") or []}
+    except RuntimeError:
+        robots = {}
+    m, avert = {}, []
+    for k, v in (melange or {}).items():
+        r = robots.get(k)
+        if r and r["type"] == "reseau" and not os.path.exists(os.path.join(adversaires_dir(), r["modele"] + ".json")):
+            avert.append(f"{r['nom']} : {NON_ENTRAINE} (python -m trainer.adversaires --robot {k}) ; exclu du mélange.")
+            continue
+        m[k] = float(v)
+    tot = sum(m.values())
+    return ({k: round(v / tot, 4) for k, v in m.items()} if tot > 0 else {}), avert
 
 
 def lancer_entrainement_adversaire(rid, j):

@@ -383,7 +383,7 @@
         return { agent: ag, make: prep.make, tirage: prep.tirage, spec: spec, robot: spec.robot };
       }
       var brain = spec.brain || ADV.modele(pr.modele);
-      if (!brain) throw new Error('Robot adverse « ' + pr.nom + ' » : modèle figé absent (.data/adversaires/' + pr.modele + '.json, à entraîner : python -m trainer.adversaires --robot ' + spec.robot + ').');
+      if (!brain) throw new Error('Robot adverse « ' + pr.nom + ' » : ' + ADV.NON_ENTRAINE + ' (' + ADV.commandeEntrainement(spec.robot) + ', fichier .data/adversaires/' + pr.modele + '.json).');
       var tir = ADV.tirerAdversaire(spec.robot, sd, spec.fixe);
       var paramsR = blueParams(Object.assign({}, P, ADV.paramsReseau(tir)));
       var agR = brainAgent(brain); agR.kind = 'reseau';

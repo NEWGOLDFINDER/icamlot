@@ -36,10 +36,28 @@
     var m = t.match(/^([0-9.]+)\s*[-–à]\s*([0-9.]+)$/); if (m) return [parseFloat(m[1]), parseFloat(m[2])];
     var v = parseFloat(t); return isNaN(v) ? d : Math.max(0, Math.min(90, v));
   }
+  /* robots « réseau » sans modèle figé (API) : exclus du mélange par l'entraîneur, proportions redistribuées */
+  var robotsNonEntraines = {};
+  api('GET', '../api/adversaires').then(function (j) { (j.robots || []).forEach(function (r) { if (r.type === 'reseau' && !r.entraine) robotsNonEntraines[r.id] = 1; }); renderMelange(); }, function () {});
+  function melangeEffectif() {
+    var m = {}, tot = 0;
+    Object.keys(cfg.adversaire.melange || {}).forEach(function (k) { var v = cfg.adversaire.melange[k]; if (v > 0 && !robotsNonEntraines[k]) { m[k] = v; tot += v; } });
+    Object.keys(m).forEach(function (k) { m[k] = m[k] / tot; });
+    return m;
+  }
+  function renderMelangeNote() {
+    var exclus = Object.keys(cfg.adversaire.melange || {}).filter(function (k) { return robotsNonEntraines[k] && cfg.adversaire.melange[k] > 0; });
+    var eff = melangeEffectif(), noms = {}; MEL_COMP.forEach(function (c) { noms[c[0]] = c[1]; });
+    var txt = 'Proportions en %, ramenées à 100 %. Défaut de l\'équipe : 20 % de chacun des 4 robots + 20 % de self-play (notre réseau courant).';
+    if (exclus.length) txt += ' ' + exclus.map(function (k) { return noms[k]; }).join(', ') + ' : ' + ADVERSAIRES.NON_ENTRAINE + ' (' + exclus.map(function (k) { return ADVERSAIRES.commandeEntrainement(k); }).join(' ; ') + ') ; exclu' + (exclus.length > 1 ? 's' : '') + ' du mélange.';
+    if ($('advMel').checked) txt += ' Mélange joué : ' + (Object.keys(eff).map(function (k) { return noms[k] + ' ' + Math.round(100 * eff[k]) + ' %'; }).join(', ') || 'aucun') + '.';
+    $('advMelNote').textContent = txt;
+    $('advMelNote').className = 'note' + (exclus.length ? ' bad' : '');
+  }
   function renderMelange() {
     var g = $('advMelGrid'); g.innerHTML = '';
     MEL_COMP.forEach(function (c) {
-      var l = document.createElement('label'); l.textContent = c[1] + ' (%) ';
+      var l = document.createElement('label'); l.textContent = c[1] + (robotsNonEntraines[c[0]] ? ' — ' + ADVERSAIRES.NON_ENTRAINE : '') + ' (%) ';
       var i = document.createElement('input'); i.type = 'number'; i.min = 0; i.max = 100; i.step = 5; i.dataset.k = c[0];
       i.value = Math.round(100 * ((cfg.adversaire.melange || {})[c[0]] || 0));
       i.addEventListener('change', function () { readUi(); updateDirty(); });
@@ -47,6 +65,7 @@
     });
     $('advMel').checked = !!(cfg.adversaire.melange && Object.keys(cfg.adversaire.melange).length);
     g.hidden = !$('advMel').checked;
+    renderMelangeNote();
   }
   function renderPhysique() {
     var tb = document.querySelector('#phyTab tbody'); tb.innerHTML = '';
@@ -69,6 +88,7 @@
     if ($('advMel').checked) document.querySelectorAll('#advMelGrid input').forEach(function (i) { var v = parseFloat(i.value); if (v > 0) mel[i.dataset.k] = v / 100; });
     cfg.adversaire.melange = mel;
     cfg.adversaire.actif = cfg.adversaire.intensite !== 'aucun' || Object.keys(mel).length > 0;
+    renderMelangeNote();
     var ph = { actif: $('phyAct').checked, valeurs: {}, plages: {} };
     ADVERSAIRES.PHYSIQUE.forEach(function (d) {
       var v = parseFloat(document.querySelector('[data-v="' + d.id + '"]').value);

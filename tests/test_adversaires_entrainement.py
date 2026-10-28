@@ -79,3 +79,29 @@ def test_api_reglages_par_defaut_et_validation():
     assert doc2["physique"] == {"actif": False, "valeurs": {"v": 450.0}, "plages": {"w": 10.0, "tMonteeGraal": [3.0, 4.0], "trot": 0}}
     info = srv.env_info()
     assert len(info["physique"]) == 11 and {r["id"] for r in info["robots"]} == set(ROBOTS)
+
+
+def test_api_melange_effectif_sans_modele(tmp_path, monkeypatch):
+    monkeypatch.setenv("ICAMLOT_ADVERSAIRES", str(tmp_path))
+    srv = _server()
+    eff, avert = srv.melange_effectif(MELANGE_DEFAUT)
+    assert eff == {"batisseur": 0.3333, "razzia": 0.3333, "self": 0.3333}
+    assert len(avert) == 2 and all(srv.NON_ENTRAINE in a for a in avert)
+    info = srv.adversaires_info()
+    champ = [r for r in info["robots"] if r["id"] == "champion"][0]
+    assert champ["entraine"] is False and champ["etat"] == srv.NON_ENTRAINE and "trainer.adversaires --robot champion" in champ["commande"]
+    assert info["melange_defaut_effectif"] == eff
+
+
+def test_entrainement_adversaire_de_bout_en_bout(tmp_path, monkeypatch):
+    """Pipeline complet d'un robot « réseau » avec un budget minuscule : modèle temporaire dans tmp_path (jamais versionné),
+    puis chargé par les workers Node et joué comme adversaire."""
+    from trainer import adversaires as ADV
+    monkeypatch.setenv("ICAMLOT_ADVERSAIRES", str(tmp_path))
+    b = ADV.entrainer("intermediaire", n_procs=1, duree=5, transitions=64, epoques=1, eval_matchs=1, dossier=tmp_path)
+    assert (tmp_path / "intermediaire.json").exists() and (tmp_path / "intermediaire.entrainement.json").exists()
+    assert b["config"]["physique"]["actif"] is True and b["evaluation"]["matchs"] == 1
+    with JsEnvPool(1, 1, {"skipContacts": True}) as pool:
+        assert {r["id"]: r["modele"] for r in pool.robots_adverses()}["intermediaire"] is True
+        obs, mask = pool.reset([{"seed": 7, "intensite": "realiste", "opponent": {"robot": "intermediaire"}}])
+        assert obs.shape[1] == pool.n_in and mask.any()

@@ -376,7 +376,13 @@
       var pr = ADVERSAIRES.PROFILS[slug.slice(6)];
       if (!pr || pr.type !== 'reseau' || ADVERSAIRES.modele(pr.modele)) return false;
       api('GET', '../api/adversaires/' + pr.id + '/modele').then(function (j) { ADVERSAIRES.enregistrerModele(pr.modele, j); fn(); },
-        function (e) { toast('Robot ' + pr.nom + ' : ' + e.message, 'bad'); oppChoice.slug = ''; saveOppChoice(); fillOppSelect(); fn(); });
+        function () {
+          /* pas de repli silencieux : le match n'est pas joué, le choix est annulé et le message reste affiché */
+          robotsNonEntraines[pr.id] = 1;
+          toast(pr.nom + ' : ' + ADVERSAIRES.NON_ENTRAINE + ' (' + ADVERSAIRES.commandeEntrainement(pr.id) + ').', 'bad');
+          oppChoice.slug = ''; saveOppChoice(); fillOppSelect(); renderMatch(); $('busy').hidden = true;
+          var rn = $('mRobotNote'); if (rn) { rn.hidden = false; rn.textContent = pr.nom + ' : ' + ADVERSAIRES.NON_ENTRAINE + ' (' + ADVERSAIRES.commandeEntrainement(pr.id) + ').'; }
+        });
       return true;
     }
     if (slug.indexOf('cerveau:') === 0) {
@@ -460,7 +466,9 @@
     }, 0);
   }
   /* ---------- caractéristiques physiques du match (contrat §14) : notre robot (tirées par la graine ou fixées), adversaire ---------- */
-  var phyFixe = {}, oppFixe = {}, phyLast = null;
+  var phyFixe = {}, oppFixe = {}, phyLast = null, robotsNonEntraines = {};
+  /* robots « réseau » sans modèle figé (API) : signalés dans la liste */
+  api('GET', '../api/adversaires').then(function (j) { (j.robots || []).forEach(function (r) { if (r.type === 'reseau' && !r.entraine) robotsNonEntraines[r.id] = 1; }); if (typeof renderMatch === 'function') renderMatch(); }, function () {});
   function phyReglages() { return { actif: !!($('mPhyTir') && $('mPhyTir').checked), valeurs: Object.assign({}, phyFixe), plages: (function () { var p = {}; Object.keys(phyFixe).forEach(function (k) { p[k] = 0; }); return p; })() }; }
   function matchSeed() { var v = $('mSeed') ? parseInt($('mSeed').value, 10) : 1; return isNaN(v) ? 1 : v; }
   function paramsMatch() {
@@ -1457,7 +1465,7 @@
     setPressed('mOppInt', 'i', oppChoice.intensity);
     if (k === 'cerveau') fillSel($('mOppSel'), brains.map(function (b) { return [b.slug, b.name + (b.entraine ? '' : ' (non entraîné)')]; }), oppChoice.slug.slice(8), brains.length ? '' : 'Aucun cerveau enregistré');
     if (k === 'strategie') fillSel($('mOppSel'), strats.map(function (s) { return [s.slug, s.name]; }), oppChoice.slug, strats.length ? '' : 'Aucune stratégie enregistrée');
-    if (k === 'robot') fillSel($('mOppSel'), ADVERSAIRES.IDS.map(function (id) { var p = ADVERSAIRES.PROFILS[id]; return [id, p.nom + (p.type === 'reseau' ? ' (réseau figé)' : ' (à règles)')]; }), oppChoice.slug.slice(6), '');
+    if (k === 'robot') fillSel($('mOppSel'), ADVERSAIRES.IDS.map(function (id) { var p = ADVERSAIRES.PROFILS[id]; return [id, p.nom + (p.type === 'reseau' ? (robotsNonEntraines[id] ? ' (' + ADVERSAIRES.NON_ENTRAINE + ')' : ' (réseau figé)') : ' (à règles)')]; }), oppChoice.slug.slice(6), '');
     $('mOppInt').hidden = k === 'aucun' || k === 'robot';
     var rn = $('mRobotNote'); if (rn) { rn.hidden = k !== 'robot'; if (k === 'robot') { var pr = ADVERSAIRES.PROFILS[oppChoice.slug.slice(6)]; rn.textContent = pr ? pr.description + ' Esquisse : ' + pr.esquisse + ' pts.' : ''; } }
     renderPhy();
