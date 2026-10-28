@@ -48,7 +48,7 @@ var readline = require('readline');
 var loadIcamlot = require('../engine/load.js').loadIcamlot;
 var rootDir = path.resolve(__dirname, '..');
 var ctx = loadIcamlot(rootDir);
-var ENV = ctx.ENV, ACTIONS = ctx.ACTIONS, ENGINE = ctx.ENGINE, SCORE = ctx.SCORE;
+var ENV = ctx.ENV, ACTIONS = ctx.ACTIONS, ENGINE = ctx.ENGINE, SCORE = ctx.SCORE, GEOM = ctx.GEOM || globalThis.GEOM;
 
 /* Hypothèse : nombre maximal de décisions par épisode simulé (repris de engine/env_worker.js, DEFAULT_MAX_DECISIONS). */
 var DEFAULT_MAX_DECISIONS = 80;
@@ -86,7 +86,7 @@ function hello(msg) {
     nInputs: ENV.nInputs(cfg.groups), nOutputs: cfg.catalogue.length, groups: cfg.groups, catalogue: cfg.catalogue,
     match: ENV.MATCH, vitesses: vitesses(),
     /* miroir bleu (contrat §15) : écart angulaire entre faces (embarque/miroir.py doit avoir le même) */
-    miroir: { ecartFaces: ENGINE.ECART_FACES }
+    miroir: { ecartFaces: ENGINE.ECART_FACES, anglesNacelle: GEOM.GEO.anglesNacelle }
   };
 }
 
@@ -212,13 +212,16 @@ function planVersEquipe(plan) {
   var p = JSON.parse(JSON.stringify(plan));
   p.moves.forEach(function (m) {
     if (m.g === 'NAV') m.pts.forEach(function (q) { q.v = [3000 - q.v[0], q.v[1], ENGINE.mirrorCap(q.v[2])]; });
-    else if (m.g === 'GRIP_A' || m.g === 'GRIP_B') m.g = 'GRIP_' + ENGINE.mirrorFace(m.g.slice(-1));
+    /* nacelles : faces A <-> B et angle +θ réel = -θ de l'équipe (contrat §16 ; 0 et 180 inchangés) */
+    else if (m.g === 'GRIP_A' || m.g === 'GRIP_B') { m.g = 'GRIP_' + ENGINE.mirrorFace(m.g.slice(-1)); m.pts.forEach(function (q) { q.v = [q.v[0], GEOM.mirrorRot(q.v[1])]; }); }
   });
   p.events.forEach(function (e) { if (e.face) e.face = ENGINE.mirrorFace(e.face); });
   return p;
 }
 function framesVersEquipe(frames) {
-  return frames.map(function (f) { return { t: f.t, x: 3000 - f.x, y: f.y, h: ENGINE.mirrorCap(f.h), A: f.B, B: f.A, C: f.C }; });
+  function g(p) { return p ? Object.assign({}, p, { rot: GEOM.mirrorRot(p.rot) }) : p; }
+  return frames.map(function (f) { return { t: f.t, x: 3000 - f.x, y: f.y, h: ENGINE.mirrorCap(f.h), A: g(f.B), B: g(f.A), C: f.C }; });
+
 }
 function trackBelief(adversaire) {
   if (track.equipe !== 'blue') return ENV.beliefFromSim(track.sim, track.mem, adversaire || null);

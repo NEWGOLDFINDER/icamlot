@@ -30,7 +30,23 @@ def face_miroir(f: str) -> str:
     return {"A": "B", "B": "A"}.get(f, f)
 
 
+def rot_miroir(r: float) -> float:
+    """Angle de nacelle réel <-> angle de l'équipe bleue (docs/CONTRATS.md §16), identique à GEOM.mirrorRot (engine/geom.js) :
+    le miroir change u (droite vue de face) en -u, donc rot en -rot ; 0 et 180 sont leur propre miroir (-180 est hors de la plage
+    [-90, 180] de spec/robot.json, rotation_angles_deg). Involutif sur la plage."""
+    r = float(r)
+    if abs(abs(r) - 180.0) < 1e-9:
+        return 180.0
+    return 0.0 if r == 0 else -r
+
+
+def rot_reelle(r: float, equipe: str) -> float:
+    """Angle de l'équipe -> angle réel (identité pour le jaune)."""
+    return rot_miroir(r) if equipe == "blue" else float(r)
+
+
 def face_reelle(f: str, equipe: str) -> str:
+
     return face_miroir(f) if equipe == "blue" else f
 
 
