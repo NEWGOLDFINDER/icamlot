@@ -343,16 +343,14 @@
           "https://cdn.robotshop.com/media/r/rpk/rb-rpk-22/pdf/rplidar-a2m12-360-laser-range-scanner-datasheet.pdf"
         ]
       },
-      "hauteur_plan_de_scan": {
-        "statut": "declare",
-        "valeur": "hauteur réglementaire (voir position)"
-      },
+      "hauteur_plan_de_scan": "voir position",
       "zero_et_sens_angle": "a_definir",
       "position": {
         "statut": "declare",
-        "source": "équipe, 2026-10-28",
-        "valeur": "centré sur le robot, à la hauteur réglementaire",
-        "interpretation": "hauteur du support de balise (regles robot_limites.support_balise_hauteur : 425–435 mm), au-dessus des pierres (≤ 350 mm) — à confirmer"
+        "source": "équipe, 2026-10-28 ; règles générales F.3 et F.6",
+        "valeur": "centré, intégré dans la colonne du support de balise, au-dessus de 350 mm (autorisé : la limite de 350 mm exclut le mât et les capteurs intégrés sous le mât)",
+        "contraintes": "ouverture du mât < 20 mm de haut, enveloppe Ø70 à carré 100, sommet du support à 430 ± 5 mm",
+        "hauteur_exacte_plan_de_scan_mm": "a_definir"
       }
     },
     "cameras": {
