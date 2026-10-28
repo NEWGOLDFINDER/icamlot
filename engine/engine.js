@@ -59,7 +59,16 @@
   function throneOf(team) { return team === 'blue' ? THRONE_B : THRONE; }
   function castleOf(team) { return team === 'blue' ? CASTLE_B : CASTLE; }
   function tx(x, team) { return team === 'blue' ? 3000 - x : x; }
-  function th(h, team) { return team === 'blue' ? 180 - h : h; }
+  /* Miroir bleu (chantier symétrie, contrat §15). Le robot n'est pas symétrique : faces A, B, C à h, h + ECART_FACES, h + 2 ECART_FACES
+     (spec/robot.json, repere.angle_0). Le miroir de la table change l'ordre cyclique (A, B, C) en (A, C, B) ; en échangeant A et B,
+     on retrouve l'ordre du vrai robot. Repère de l'équipe bleue : la face « A » de l'équipe est la vraie face B (et inversement),
+     la face C reste C ; le cap de l'équipe est celui de cette face « A » mis en miroir : h_équipe = 180 - (h_réel + ECART_FACES),
+     involutif. Seule asymétrie résiduelle : la disposition interne des faces (canon à gauche et ascenseur à droite sur C ; pierres
+     décalées vers la gauche quand une nacelle est à 90°), traitée par le moteur avec la vraie géométrie. */
+  var ECART_FACES = 120;
+  function mirrorFace(f) { return f === 'A' ? 'B' : f === 'B' ? 'A' : f; }
+  function mirrorCap(h) { return 180 - ECART_FACES - h; }
+  function th(h, team) { return team === 'blue' ? mirrorCap(h) : h; }
   function mirrorId(id) {
     var n = parseInt(id.slice(1), 10), p = id[0];
     if (p === 'M') return 'M' + (n <= 5 ? n + 5 : n - 5);
@@ -70,15 +79,17 @@
     }
     return id;
   }
+  /* brique du repère de l'équipe -> repère réel bleu (involutif) : ids, faces A <-> B, coordonnées et caps */
   function mirrorStep(st) {
     var o = {}; Object.keys(st).forEach(function (k) { o[k] = st[k]; });
+    if (o.f) o.f = mirrorFace(o.f);
     if (o.p) o.p = mirrorId(o.p);
     if (o.z) o.z = mirrorId(o.z);
     if (o.s && o.s.indexOf('.') >= 0) o.s = mirrorId(o.s.split('.')[0]) + '.' + o.s.split('.')[1];
-    /* coordonnées en repère table réel (deposer, traj) : x -> 3000 - x, angle -> 180 - angle.
-       seDeplacer et trone restent en repère d'équipe (mis en miroir à l'exécution). */
+    /* coordonnées en repère table réel (deposer, traj) : x -> 3000 - x ; angle d'un objet (grand axe des pierres) -> 180 - angle ;
+       cap du robot (points de traj) -> mirrorCap. seDeplacer et trone restent en repère d'équipe (mis en miroir à l'exécution). */
     if (o.a === 'deposer') { if (o.x != null) o.x = 3000 - o.x; if (o.ang != null) o.ang = 180 - o.ang; }
-    if (o.a === 'traj' && o.pts) o.pts = o.pts.map(function (q) { var r = Object.assign({}, q); if (q.x != null) r.x = 3000 - q.x; if (q.a != null && q.a !== '') r.a = 180 - q.a; return r; });
+    if (o.a === 'traj' && o.pts) o.pts = o.pts.map(function (q) { var r = Object.assign({}, q); if (q.x != null) r.x = 3000 - q.x; if (q.a != null && q.a !== '') r.a = mirrorCap(q.a); return r; });
     return o;
   }
   function blueParams(base) {
@@ -86,7 +97,7 @@
     var P = Object.assign({}, DEF, base, { team: 'blue' });
     delete P.oppTaken;
     P.x0 = 3000 - (base.x0 != null ? base.x0 : DEF.x0);
-    P.h0 = 180 - (base.h0 != null ? base.h0 : DEF.h0);
+    P.h0 = mirrorCap(base.h0 != null ? base.h0 : DEF.h0);   /* face B réelle à la place de la face A jaune (contrat §15) */
     P.gx = 3000 - (base.gx != null ? base.gx : DEF.gx);
     P.gy = base.gy != null ? base.gy : DEF.gy;
     P.ga = 180 - (base.ga != null ? base.ga : DEF.ga);
@@ -1532,7 +1543,7 @@
     }
     function seanceTir() {
       var why = preTir(); if (why) return err(why);
-      var h = P.team === 'blue' ? 300 : 120;  /* face C (h + 240) vers le camp adverse */
+      var h = (th(120, P.team) + 360) % 360;  /* face C (h + 240) vers le camp adverse (bleu : mirrorCap(120) = -60, soit 300) */
       if (P.tirDepuisTrone !== false) travel([mir(P.tx != null ? P.tx : 250), P.ty != null ? P.ty : 1000], h, 'Vers la position de tir : face C vers le camp adverse');
       else travel([s.x, s.y], h, 'Rotation sur place : face C vers le camp adverse');
       /* sortie du canon (90 mm en 1 s) et mise en route des volants, au plus tard pour la phase d'attaque : le robot attend
@@ -1896,7 +1907,7 @@
         return steps.lacher(st);
       },
       seDeplacer: function (st) {
-        var x = mir(st.x != null ? st.x : 1050), y = st.y != null ? st.y : 1000, h = st.h != null ? st.h : s.h;
+        var x = mir(st.x != null ? st.x : 1050), y = st.y != null ? st.y : 1000, h = st.h != null ? th(+st.h, P.team) : s.h;
         travel([x, y], h, 'Déplacement vers waypoint');
       },
       tourner: function (st) {
@@ -2307,6 +2318,7 @@
     poseAtK: poseAtK, mirrorId: mirrorId, mirrorStep: mirrorStep, blueParams: blueParams,
     intensityParams: intensityParams, PK: PK, ZM: ZM, ZT: ZT, THRONE: THRONE, THRONE_B: THRONE_B, CASTLE: CASTLE,
     CASTLE_B: CASTLE_B, COUR: COUR, COUR_B: COUR_B, inPoly: inPoly, zoneById: zoneById, zoneRect: zoneRect, throneOf: throneOf, castleOf: castleOf, tx: tx, th: th,
+    ECART_FACES: ECART_FACES, mirrorFace: mirrorFace, mirrorCap: mirrorCap,
     graalPoly: graalPoly, graalOnRobot: graalOnRobot, PROGRAMME_REFERENCE: PROGRAMME_REFERENCE
   };
   root.ENGINE = api;

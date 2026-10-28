@@ -13,7 +13,7 @@
    ── Fonctions pures (mêmes entrées que l'entraînement) ──
    hello        { entrees?, familles?, vision? }  configure les groupes d'observation et les familles d'actions (défaut : tous),
                                                   -> { obsVersion, catalogueVersion, nInputs, nOutputs, groups, catalogue, match,
-                                                       vitesses, moteur, bareme }
+                                                       vitesses, moteur, bareme, miroir: { ecartFaces } }
                 vision:false coupe le modèle de caméras simulé (ENV.VISION), à utiliser quand les caméras sont réelles.
    observe      { belief }                        -> { obs }
    mask         { belief }                        -> { mask }
@@ -33,13 +33,15 @@
    ── Modèle interne du robot (robot réel) ──
    Le robot réel exécute chaque brique sur un moteur local sans adversaire (prédiction de ses propres pinces, constructions,
    pierres posées, Graal), dont le plan (trajet, mouvements de pince en temps masqué) est celui que les ESP32 reproduisent.
-   track_start  { params?, vision? }              -> { belief }
+   track_start  { params?, vision?, equipe? }     -> { belief }   equipe 'blue' : moteur bleu en repère réel (contrat §15),
+                                                  croyance, plans et images rendus dans le repère de l'équipe
    track_exec   { brique, adversaire?, trace? }   -> { info, plan, belief, frames? }
    reference                                      -> { programme } : ENGINE.PROGRAMME_REFERENCE (briques en repère de l'équipe)
    track_belief { adversaire? }                   -> { belief }
 
    Repère : toutes les briques, tous les plans et la croyance du modèle interne sont dans le repère de l'équipe (jaune).
-   Pour l'équipe bleue, le runner met les mesures en miroir à l'entrée et les commandes ESP32 à la sortie. */
+   Pour l'équipe bleue, le runner met les mesures en miroir à l'entrée et les commandes ESP32 à la sortie, avec l'échange des
+   faces A et B (contrat §15, embarque/miroir.py : la face A de l'équipe est la vraie face B). */
 'use strict';
 var path = require('path');
 var readline = require('readline');
@@ -82,7 +84,9 @@ function hello(msg) {
     ok: true, moteur: ENGINE.VERSION, bareme: ctx.BAREME_VERSION,
     obsVersion: ENV.OBS_VERSION, catalogueVersion: ACTIONS.CATALOGUE_VERSION,
     nInputs: ENV.nInputs(cfg.groups), nOutputs: cfg.catalogue.length, groups: cfg.groups, catalogue: cfg.catalogue,
-    match: ENV.MATCH, vitesses: vitesses()
+    match: ENV.MATCH, vitesses: vitesses(),
+    /* miroir bleu (contrat §15) : écart angulaire entre faces (embarque/miroir.py doit avoir le même) */
+    miroir: { ecartFaces: ENGINE.ECART_FACES }
   };
 }
 
@@ -200,20 +204,44 @@ function simStep(msg) {
 /* ---------------------------------------------------------------------------------------------------------------------------
    Modèle interne du robot réel (moteur local sans adversaire, repère de l'équipe)
 --------------------------------------------------------------------------------------------------------------------------- */
+/* Équipe bleue (contrat §15) : le modèle interne est un moteur BLEU en repère réel, pour que la disposition interne des faces
+   (canon et ascenseur sur C, pierres décalées à gauche par une nacelle à 90°) soit la vraie. Ses sorties sont rendues dans le
+   repère de l'équipe : croyance par ENV.mirrorBelief, plan et images par planVersEquipe (x -> 3000 - x, cap -> ENGINE.mirrorCap,
+   faces A <-> B) ; esp32_bridge.traduire fait l'inverse exact (embarque/miroir.py). */
+function planVersEquipe(plan) {
+  var p = JSON.parse(JSON.stringify(plan));
+  p.moves.forEach(function (m) {
+    if (m.g === 'NAV') m.pts.forEach(function (q) { q.v = [3000 - q.v[0], q.v[1], ENGINE.mirrorCap(q.v[2])]; });
+    else if (m.g === 'GRIP_A' || m.g === 'GRIP_B') m.g = 'GRIP_' + ENGINE.mirrorFace(m.g.slice(-1));
+  });
+  p.events.forEach(function (e) { if (e.face) e.face = ENGINE.mirrorFace(e.face); });
+  return p;
+}
+function framesVersEquipe(frames) {
+  return frames.map(function (f) { return { t: f.t, x: 3000 - f.x, y: f.y, h: ENGINE.mirrorCap(f.h), A: f.B, B: f.A, C: f.C }; });
+}
+function trackBelief(adversaire) {
+  if (track.equipe !== 'blue') return ENV.beliefFromSim(track.sim, track.mem, adversaire || null);
+  var b = ENV.mirrorBelief(ENV.beliefFromSim(track.sim, track.mem, null));
+  b.adversaire = adversaire || null;
+  return b;
+}
 function trackStart(msg) {
   configure(msg);
-  var P = Object.assign({}, ENGINE.DEF, msg.params || {});
-  var duel = ENGINE.makeDuel({ params: P, skipContacts: true, blue: null });
-  track = { duel: duel, sim: duel.sims.yellow, mem: ENV.newMemory() };
-  return { belief: ENV.beliefFromSim(track.sim, track.mem, null) };
+  var P = Object.assign({}, ENGINE.DEF, msg.params || {}), equipe = msg.equipe === 'blue' ? 'blue' : 'yellow', sim = null, duel = null;
+  if (equipe === 'blue') sim = ENGINE.makeSim(ENGINE.blueParams(P), { skipContacts: true });
+  else { duel = ENGINE.makeDuel({ params: P, skipContacts: true, blue: null }); sim = duel.sims.yellow; }
+  track = { duel: duel, sim: sim, mem: ENV.newMemory(), equipe: equipe };
+  return { belief: trackBelief(null) };
 }
 function trackExec(msg) {
   if (!track) throw new Error('track_start d\'abord.');
   var brique = need(msg, 'brique'), sim = track.sim, k0 = sim.result(false).K.length, t0 = sim.time();
-  var info = track.duel.exec('yellow', ACTIONS.realStep(brique, 'yellow'));
-  ENV.updateMemory(track.mem, sim, t0, sim.time(), brique, info);
-  var out = { info: info, plan: extractPlan(sim, k0, t0, brique, info), belief: ENV.beliefFromSim(sim, track.mem, msg.adversaire || null) };
-  if (msg.trace) out.frames = framesSince(sim, k0, t0);
+  var reelle = ACTIONS.realStep(brique, track.equipe), info = track.duel ? track.duel.exec('yellow', reelle) : sim.exec(reelle);
+  ENV.updateMemory(track.mem, sim, t0, sim.time(), reelle, info);
+  var plan = extractPlan(sim, k0, t0, brique, info);
+  var out = { info: info, plan: track.equipe === 'blue' ? planVersEquipe(plan) : plan, belief: trackBelief(msg.adversaire) };
+  if (msg.trace) out.frames = track.equipe === 'blue' ? framesVersEquipe(framesSince(sim, k0, t0)) : framesSince(sim, k0, t0);
   return out;
 }
 
@@ -243,7 +271,7 @@ function handle(msg) {
     case 'sim_step': return simStep(msg);
     case 'track_start': return trackStart(msg);
     case 'track_exec': return trackExec(msg);
-    case 'track_belief': if (!track) throw new Error('track_start d\'abord.'); return { belief: ENV.beliefFromSim(track.sim, track.mem, msg.adversaire || null) };
+    case 'track_belief': if (!track) throw new Error('track_start d\'abord.'); return { belief: trackBelief(msg.adversaire) };
     case 'close': return { ok: true, bye: true };
   }
   throw new Error('Commande inconnue : ' + msg.cmd);

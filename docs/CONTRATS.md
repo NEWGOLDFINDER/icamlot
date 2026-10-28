@@ -291,3 +291,54 @@ Nos erreurs moteur contre la référence (28 et 190 sur 30 matchs) viennent du p
 - Évaluation de sélection du self-play : contre le réseau courant (premières mises à jour : réseau de départ).
 - La neuroévolution (MLP) n'utilise pas le mélange (intensité seule).
 - Un robot à règles qui voit notre robot apparaître brusquement à moins de sa distance d'arrêt s'arrête aussitôt (pas de recul).
+
+## 15. Symétrie jaune / bleu : faces A et B échangées côté bleu (chantier symétrie ; obs `icamlot-obs-3.2`, catalogue `icamlot-catalogue-3.2`)
+
+### 15.1 Principe
+- **Constat** : faces A, B, C à h, h + 120°, h + 240° (`spec/robot.json`, `repere.angle_0`). Le miroir de la table (x -> 3000 - x) change l'ordre cyclique (A, B, C) en (A, C, B). Avec l'ancien miroir (h -> 180 - h, faces inchangées), la face B jaune correspondait à la face C bleue : un réseau entraîné en jaune ne voyait pas la même situation en bleu.
+- **Repère de l'équipe bleue** (remplace le miroir de cap des §2 et §10) :
+  - la face « A » de l'équipe est la **vraie face B**, et inversement ; la face C reste C ;
+  - cap de l'équipe = cap de la vraie face B mis en miroir : `h_équipe = 180 - (h_réel + 120)` = `ENGINE.mirrorCap(h_réel)` (involutif) ; `ENGINE.ECART_FACES` = 120 (`repere.angle_0`, valeur en texte dans la spec) ;
+  - x -> 3000 - x, ids en miroir (inchangé).
+- **Moteur** (`engine/engine.js`) : `mirrorFace`, `mirrorCap`, `ECART_FACES` ; `mirrorStep` échange A et B et met les caps de `traj` en `mirrorCap` (angles d'objets `deposer.ang` : 180 - ang, inchangé) ; `blueParams.h0 = mirrorCap(h0)` (départ bleu à 60° : vraie face B vers le centre) ; `seDeplacer.h` passe par `th()` ; cap de tir bleu inchangé (300°, déjà cohérent). Un programme jaune passé par `mirrorStep` est donc la vraie image miroir (au résidu près, 15.3).
+- **Actions** (`engine/actions.js`) : `realStep` (via `mirrorStep`) échange les faces ; `toProgramStep` lit la vraie face (`ACTIONS.realFace`) pour les tours et le stockage. Les libellés « face A / B » du catalogue sont ceux de l'équipe. Les raisons du masque (`explainBelief`) citent la face réelle.
+- **Observation** (`engine/env.js`) : en bleu, cap = `mirrorCap(h)`, groupe `pinces` dans l'ordre (vraie B, vraie A), rayons « spatial » à partir de la vraie face B ; rayons, château et trône calculés dans le repère de l'équipe (même résultat au bord ; pose arrondie à 1e-9, tolérance numérique). Jaune : observation inchangée. `ENV.mirrorBelief(b)` : croyance du miroir physique (involutive).
+- **Versions** : `icamlot-obs-3.2` et `icamlot-catalogue-3.2` (le sens change en bleu). Les modèles 3.1 sont refusés : à réentraîner (en jaune, leurs entrées et sorties sont les mêmes qu'en 3.1).
+
+### 15.2 Embarqué
+- `embarque/miroir.py` : `cap_miroir`, `face_miroir`, `face_reelle`, `pose_miroir` (identiques au moteur ; `hello.miroir.ecartFaces` du pont vérifié par test).
+- `embarque/croyance.py` : pose mesurée -> repère d'équipe avec `cap_miroir` ; recoupement ESP32 : vraie face B contre pince A du modèle.
+- `embarque/bridge.js` : `track_start { equipe: 'blue' }` fait tourner le modèle interne comme un **moteur bleu en repère réel** (vraie disposition de la face C et des nacelles à 90°) ; croyance (`ENV.mirrorBelief`), plans et images rendus dans le repère de l'équipe (x, `mirrorCap`, GRIP_A <-> GRIP_B, VAC). L'observation et le masque restent calculés sur cette croyance d'équipe (bit d'équipe 0, comme avant).
+- `esp32_bridge.traduire` / `initialize` : en bleu, la face A de l'équipe pilote la vraie face B (Z, ROT, PUMP) ; caps `cap_miroir`. Départ bleu : `SET_POSE 2750 1000 60`.
+
+### 15.3 Mesures (`tests/mesure_symetrie.js`, cette machine, 4 cœurs)
+| Mesure | Avant (a856c19) | Après |
+|---|---|---|
+| obs(jaune) = obs(bleu, miroir physique) hors bit d'équipe, 200 croyances (140 avec pierres tenues) | 0 / 200 | **200 / 200** |
+| masque identique (états) ; actions différentes | 56 / 200 ; 3113 / 31 000 (10,0 %) | 121 / 200 ; **281 / 31 000 (0,91 %)** |
+| référence 122 pts -> 20 actions du catalogue, rejouée en bleu seul (actions masquées sautées) | 32 pts, 8 masquées (dès l'action 10) | 32 pts, 8 masquées (dès l'action 10) |
+| même programme, briques sans masque (`mirrorStep`), bleu seul | 79 pts, 3 erreurs | 49 pts, 6 erreurs |
+| masque -> moteur, seul, 2000 décisions (graine 11) jaune / bleu | 0,55 % / 0,15 % | 0,55 % / 0,80 % (1 cause hors trajet : hauteur 355 mm signalée pendant une attente, état déjà fautif) |
+
+Imitation (`python -m trainer.imitation --exemple --scenarios 4 --epoques 200 --eval-matchs 8`, 122,0 ± 0 en jaune dans les deux cas), puis 8 matchs (graines 1000-1007) ; nous · adversaire · erreurs moteur cumulées :
+
+| | Avant, jaune | Avant, bleu | Après, jaune | Après, bleu |
+|---|---|---|---|---|
+| seul | 122,0 ± 0 | 91,0 ± 0 | 122,0 ± 0 | **32,0 ± 0** |
+| Bâtisseur | 103,9 ± 23,1 · 93,8 · 5 | 72,1 ± 13,8 · 96,8 · 1 | 112,4 ± 10,7 · 94,5 · 4 | 95,3 ± 34,7 · 94,5 · 2 |
+| Razzia | 29,0 ± 0 · 106,5 · 16 | 45,3 ± 22,8 · 104,8 · 19 | 66,0 ± 8,3 · 107,3 · 16 | 56,5 ± 13,4 · 105,5 · 20 |
+
+- En bleu seul, le réseau imité obtient le même score que la référence rejouée en bleu (32 pts) : les 10 premières actions sont celles du jaune, aux mêmes poses en miroir ; l'action 11 (tour T4 face A, rangée 2) est masquée en bleu : la recherche de secours du masque (§14.0) ne trouve pas le passage vers (2320, 1815), alors qu'`exec` (recherche complète) le trouve (2,6 s au lieu de 1,2 s en jaune). Le réseau, sans autre exemple, s'arrête ensuite (32 pts). Avant, ses entrées bleues étaient fausses et il jouait par hasard une autre suite (91 pts).
+- L'écart jaune/bleu ne devient donc pas faible pour un réseau imité d'**un seul** programme : il faut entraîner (ou au moins évaluer et sélectionner) aussi en bleu, ce qui a maintenant un sens (mêmes entrées, mêmes actions).
+
+### 15.4 Asymétries résiduelles (mesurées)
+- **Nacelles à 90° (principal)** : la pierre de la rangée 1 part à droite, celle de la rangée 3 à gauche (`GEOM.heldFoot`, u = zc sin(rot)) ; pas d'angle -90° (angles 0, 90, 180). 248 des 281 actions de masque différentes (88 %) sont dans les 101 états où une nacelle est (ou sera) à 90° ; 33 sur les 99 autres (0,22 % des actions). Tours de rangée 1 ou 3, portes : la référence échoue en bleu sur la tour T6 rangée 3 (« pierre décalée de 60 mm ») et la porte M8.
+- **Face C** (canon à gauche, ascenseur à droite, fourche saillante d'environ 20 mm d'un côté) : essai avec une face C symétrisée (canon et Graal centrés, fourche doublée en miroir, copie hors dépôt) : 280 actions différentes au lieu de 281, référence inchangée. **Effet mesuré négligeable** sur le masque ; le Graal est pris en bleu avec le robot décalé de 114 mm (2 × 57) par rapport au miroir, sans échec mesuré.
+- **Planificateur** : à requête miroir, trajets légèrement différents (cap interpolé, lissage ; ex. +0,17 s sur le mur M1 de la référence) ; un essai d'ordre de parcours des cases inversé en bleu (A*, recherche en largeur, voisinages) ne change presque rien (275 au lieu de 281) et n'a pas été gardé.
+- Châssis : symétrique à 0,32 mm près (réflexion échangeant A et B).
+
+### 15.5 Points ouverts
+- Entraîner aussi en bleu (l'environnement ne fait jouer que le jaune ; `tests/mesure_symetrie.js` contient un runner bleu, seul ou contre un robot à règles) : décision de l'équipe.
+- Masque bleu de la tour T8 de la référence : la recherche de secours est plus étroite que celle d'`exec` (asymétrie du planificateur).
+- Embarqué bleu : observation et masque calculés sur la croyance d'équipe (chiralité jaune) alors que le modèle interne exécute avec la chiralité réelle : une action acceptée par le masque peut être refusée par le modèle interne (échec connu, rien n'est envoyé aux ESP32).
+- `esp32_bridge.py` (chantier embarqué) modifié pour la traduction bleue.

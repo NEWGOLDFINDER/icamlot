@@ -138,9 +138,42 @@ def test_miroir_bleu_des_commandes_de_navigation(pont):
     jaune = [c.texte for c in traduire(r["plan"], "yellow") if c.dev == "NAV"]
     bleu = [c.texte for c in traduire(r["plan"], "blue") if c.dev == "NAV"]
     assert jaune == ["GOTO 900.0 1000.0 0.0"]
-    assert bleu == [f"GOTO {3000 - 900:.1f} 1000.0 180.0"]
-    # le miroir ne touche pas les commandes d'actionneurs
-    assert [c.texte for c in traduire(r["plan"], "yellow") if c.dev == "ACT"] == [c.texte for c in traduire(r["plan"], "blue") if c.dev == "ACT"]
+    # bleu (CONTRATS §15) : x -> 3000 - x, cap de la vraie face B en miroir : 180 - 120 - 0 = 60°
+    assert bleu == [f"GOTO {3000 - 900:.1f} 1000.0 60.0"]
+
+
+def _echange(texte: str) -> str:
+    """Commande d'actionneur avec les faces A et B échangées (Z A ..., ROT B ..., PUMP A ...)."""
+    mots = texte.split()
+    if mots[0] in ("Z", "ROT", "PUMP") and mots[1] in ("A", "B"):
+        mots[1] = {"A": "B", "B": "A"}[mots[1]]
+    return " ".join(mots)
+
+
+def test_equipe_bleue_pilote_la_vraie_face_b_quand_le_reseau_dit_a():
+    """Échange des faces (CONTRATS §15) : la même brique d'équipe (« prendre P1 face A ») jouée par le modèle interne jaune et par
+    le modèle interne bleu (moteur bleu en repère réel) donne le même plan dans le repère de l'équipe ; traduit pour le bleu, il
+    pilote la vraie face B (Z, ROT, PUMP) et des caps 180 - 120 - h, positions x -> 3000 - x."""
+    with PontNode() as pj, PontNode() as pb:
+        pj.hello(), pb.hello()
+        bj = pj.track_start(vision=False)["belief"]
+        bb = pb.track_start(vision=False, equipe="blue")["belief"]
+        assert bb["pose"] == bj["pose"] and bb["pinces"] == bj["pinces"]          # croyance rendue dans le repère de l'équipe
+        brique = {"a": "prendre", "f": "A", "p": "P1", "tm": True}
+        rj, rb = pj.track_exec(brique), pb.track_exec(brique)
+        assert not rj["info"].get("err") and not rb["info"].get("err")
+        assert rb["belief"]["pinces"]["A"]["slots"] == rj["belief"]["pinces"]["A"]["slots"] == ["P1.1", "P1.2", "P1.3"]
+        cj, cb = traduire(rj["plan"], "yellow"), traduire(rb["plan"], "blue")
+        actj = [c.texte for c in cj if c.dev == "ACT"]
+        actb = [c.texte for c in cb if c.dev == "ACT"]
+        assert actj and any(t.startswith(("Z A", "ROT A", "PUMP A")) for t in actj)
+        assert actb == [_echange(t) for t in actj]                               # vraie face B en bleu
+        navj = [c.cible for c in cj if c.dev == "NAV"]
+        navb = [c.cible for c in cb if c.dev == "NAV"]
+        assert len(navj) == len(navb) > 0
+        for (xj, yj, hj), (xb, yb, hbl) in zip(navj, navb):
+            assert xb == pytest.approx(3000 - xj, abs=0.11) and yb == pytest.approx(yj, abs=0.11)
+            assert ((hbl - (60.0 - hj)) % 360.0) == pytest.approx(0.0, abs=0.11) or ((hbl - (60.0 - hj)) % 360.0) == pytest.approx(360.0, abs=0.11)
 
 
 def test_la_seance_de_tir_est_une_seule_commande_tardive():

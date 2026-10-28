@@ -221,9 +221,17 @@ ok(!excD, 'makeDuel + run sans exception', excD && excD.message);
 titre('Chantier moteur-2');
 (function () { var r = run(ref), b = r.sim.balls(); ok(b.tDeploy >= E.T_ATTAQUE - E.DEF.bdep - E.DEF.bspin - 1e-6 && b.shots && b.shots[0].t >= E.T_ATTAQUE - 1e-6, 'canon sorti juste à temps pour la phase d\'attaque (pas avant 85 s - sortie - mise en route)', 'sortie à ' + b.tDeploy.toFixed(2) + ' s, 1er tir à ' + b.shots[0].t.toFixed(2) + ' s'); })();
 ok(proche(E.DEF.trz, Math.round((1.25 - 100 / 84) * 1000) / 1000, 1e-12) && E.DEF.vz === L.SPEC.robot.mecanismes.pince_A_et_B.vitesse_chariot_mm_s, 'vérins Z : vitesse et rampes lues dans la spec', E.DEF.vz + ' mm/s, ' + E.DEF.trz.toFixed(3) + ' s par mouvement');
-/* mirrorStep : dépôt et trajectoire en repère réel mis en miroir (comme ACTIONS.realStep) */
+/* mirrorStep : dépôt et trajectoire en repère réel mis en miroir (comme ACTIONS.realStep) ; faces A <-> B et cap de la face B
+   réelle (chantier symétrie, contrat §15) : cap d'équipe 10° -> cap réel 180 - 120 - 10 = 50° */
 var mD = E.mirrorStep({ a: 'deposer', f: 'A', q: 'pile', x: 300, y: 620, ang: 30, r: 0 }), mT = E.mirrorStep({ a: 'traj', pts: [{ x: 500, y: 400, a: 10 }, { x: 600, y: 700 }] });
-ok(mD.x === 2700 && mD.ang === 150 && mD.y === 620 && mT.pts[0].x === 2500 && mT.pts[0].a === 170 && mT.pts[1].x === 2400 && mT.pts[1].a === undefined, 'mirrorStep : deposer.x/ang et points de traj en miroir');
+ok(mD.x === 2700 && mD.ang === 150 && mD.y === 620 && mD.f === 'B' && mT.pts[0].x === 2500 && mT.pts[0].a === 50 && mT.pts[1].x === 2400 && mT.pts[1].a === undefined, 'mirrorStep : deposer.x/ang, face A -> B et points de traj (cap de la face B réelle) en miroir');
+ok(['A', 'B', 'C'].every(function (f) { return E.mirrorFace(E.mirrorFace(f)) === f; }) && E.mirrorFace('A') === 'B' && E.mirrorFace('C') === 'C' && [0, 37.5, -200, 300].every(function (h) { return E.mirrorCap(E.mirrorCap(h)) === h; }),
+  'mirrorFace et mirrorCap involutifs (A <-> B, C inchangée)');
+/* départ bleu : la vraie face B pointe là où pointe la face A jaune en miroir ; la face C (canon, ascenseur) en miroir de la C jaune */
+(function () {
+  var Pb = E.blueParams({}), nrm = function (a) { return ((a % 360) + 360) % 360; };
+  ok(nrm(Pb.h0 + 120) === nrm(180 - E.DEF.h0) && nrm(Pb.h0 + 240) === nrm(180 - (E.DEF.h0 + 240)), 'départ bleu : face B réelle au miroir de la face A jaune, face C au miroir de la face C jaune', 'h0 bleu = ' + Pb.h0);
+})();
 /* PRE.deposer : le stockage est évalué avec les empreintes de la pose réelle (grand axe selon ang) */
 (function () {
   var base = run([{ a: 'prendre', f: 'A', p: 'P1' }, { a: 'prendre', f: 'B', p: 'P2' }, { a: 'deposer', f: 'A', q: 'pile', x: 300, y: 1320, ang: 0, r: 0 }]);
