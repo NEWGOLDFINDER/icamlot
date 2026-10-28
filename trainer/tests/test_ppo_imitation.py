@@ -1,5 +1,6 @@
 """PPO (apprentissage sur un environnement jouet, fumée sur le moteur JS) et imitation (masque, retours)."""
 import json
+import time
 
 import numpy as np
 import pytest
@@ -25,6 +26,33 @@ def test_ppo_apprend_et_respecte_le_masque(tmp_path):
     assert pool.masked_chosen == 0
     assert last["score_moyen"] > max(2.5, first + 0.8), (first, last["score_moyen"])
     assert tr.ret_rms.count > 1 and np.all(tr.obs_rms.var >= 0)
+
+
+class LentPool(FakePool):
+    """FakePool dont chaque pas dure `dt` secondes (cœur unique : un rollout dure très longtemps)."""
+    dt = 0.05
+
+    def step(self, actions, next_scenarios=None):
+        time.sleep(self.dt)
+        return super().step(actions, next_scenarios)
+
+
+def test_duree_max_verifiee_pendant_la_collecte_et_progression(tmp_path):
+    torch.manual_seed(0)
+    pool = LentPool(n_envs=4, n_valid=3, n_out=5, length=3)
+    # un rollout de 200 pas durerait ~10 s ; la durée maximale est de 0,4 s
+    cfg = PPOConfig(rollout=200, mises_a_jour=5, hidden=16, encodeur=[16], critique=[16], duree_max_s=0.4,
+                    eval_matchs=0, checkpoint_tous_les=0, mini_lots=2)
+    logs, prog = [], []
+    tr = PPOTrainer(cfg, pool, ScenarioSampler(), torch.device("cpu"), log=logs.append)
+    tr.on_collect = lambda done, total, dt: prog.append((done, total, dt))
+    t0 = time.time()
+    res = tr.run(tmp_path / "m", None, None)
+    assert time.time() - t0 < 5, "la limite de durée n'a pas coupé la collecte"
+    assert res["mises_a_jour"] == 0 and res["transitions"] == 0
+    assert any("Durée maximale atteinte pendant la collecte" in l for l in logs), logs
+    assert prog and prog[0][1] == 200 * 4 and prog[-1][0] < prog[-1][1]
+    assert [p[0] for p in prog] == sorted(p[0] for p in prog)
 
 
 def test_gae_cas_simple():

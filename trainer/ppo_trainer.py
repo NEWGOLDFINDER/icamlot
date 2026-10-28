@@ -83,6 +83,10 @@ class PPOConfig:
     eval_graine: int = 10_000
 
 
+class TimeLimit(Exception):
+    """duree_max_s atteinte pendant la collecte d'un rollout (le rollout partiel est abandonné)."""
+
+
 class PPOTrainer:
     def __init__(self, cfg: PPOConfig, pool: JsEnvPool, sampler: ScenarioSampler,
                  device: Optional[torch.device] = None, model: Optional[RecurrentActorCritic] = None,
@@ -110,6 +114,10 @@ class PPOTrainer:
         self._obs = self._mask = None
         self._hidden = self.model.init_hidden(N, self.device)
         self._start = np.ones(N, bool)
+        # Rappel de progression pendant la collecte : on_collect(décisions faites, total du rollout, s écoulées).
+        # Sur 1 cœur un rollout dure des dizaines de minutes : sans lui, ni progression ni limite de durée.
+        self.on_collect: Optional[Callable[[int, int, float], None]] = None
+        self.deadline: Optional[float] = None   # instant (time.time()) de fin de la durée maximale
 
     # ───────── état sauvegardé ─────────
     def state(self) -> dict:
@@ -177,6 +185,7 @@ class PPOTrainer:
             self.model.set_obs_stats(self.obs_rms.mean, self.obs_rms.var)
         self.model.eval()
         buf = {k: [] for k in ("obs", "mask", "act", "logp", "val", "rew", "done", "start")}
+        t_start = time.time()
         h0 = None
         raw_obs = []
         for t in range(T):
@@ -209,6 +218,10 @@ class PPOTrainer:
             self._obs, self._mask = sr.obs, sr.mask
             self._hidden = h
             self._start = sr.done.copy()
+            if self.deadline is not None and time.time() > self.deadline:
+                raise TimeLimit()
+            if self.on_collect is not None:
+                self.on_collect((t + 1) * N, T * N, time.time() - t_start)
         # valeur de la dernière observation (bootstrap)
         start = torch.as_tensor(self._start, device=dev)
         h_in = self._hidden * (~start).float().unsqueeze(-1)
@@ -357,8 +370,13 @@ class PPOTrainer:
         eval_sampler = eval_sampler or self.sampler
         t0 = time.time()
         last_eval = None
+        self.deadline = t0 + c.duree_max_s if c.duree_max_s else None
         while self.update < c.mises_a_jour:
-            st = self.train_iteration()
+            try:
+                st = self.train_iteration()
+            except TimeLimit:
+                self.log(f"Durée maximale atteinte pendant la collecte du rollout {self.update + 1} : rollout partiel abandonné.")
+                break
             self.log(f"Mise à jour {self.update}/{c.mises_a_jour} — transitions {self.global_step} · "
                      f"épisodes {st['episodes']} · score moyen {st['score_moyen'] if st['score_moyen'] is None else round(st['score_moyen'], 1)} · "
                      f"π {st['perte_politique']:.3f} · V {st['perte_valeur']:.3f} · H {st['entropie']:.3f} · "
@@ -381,6 +399,7 @@ class PPOTrainer:
         self.save(Path(str(base) + ".dernier.pt"))
         if c.eval_matchs and (last_eval is None or last_eval.get("_update") != self.update):
             last_eval = self.evaluate_and_select(base, eval_sampler)
+        self.deadline = None
         return {"evaluation": last_eval, "best_eval": self.best_eval, "mises_a_jour": self.update,
                 "transitions": self.global_step, "duree_s": time.time() - t0}
 

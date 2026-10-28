@@ -22,6 +22,8 @@ from pathlib import Path
 from typing import List, Optional
 
 ROOT = Path(__file__).resolve().parent.parent
+# Hypothèse : période minimale (s) entre deux messages de progression pendant la collecte du 1er rollout.
+MESSAGE_PERIODE_S = 2.0
 TRAINER_DIR = Path(__file__).resolve().parent
 # Éliminer le dossier trainer/ de sys.path pour éviter qu'un module trainer.py masque le package trainer
 while str(TRAINER_DIR) in sys.path:
@@ -398,6 +400,7 @@ def run_ppo(job: Job, pool: JsEnvPool, cfg: dict, strats: List[dict], sampler: S
         tr.update = 0
         job.logline("Reprise des poids du modèle précédent.")
     elif regl.get("pretrain_imitation", True):
+        job.logline("Pré-entraînement par imitation…")
         demos = demos_for(job, pool, cfg, strats, sampler)
         if demos:
             imitation_train(tr.model, demos, epochs=int(regl.get("epoques") or 40),
@@ -429,6 +432,20 @@ def run_ppo(job: Job, pool: JsEnvPool, cfg: dict, strats: List[dict], sampler: S
         job.save()
         return job.wait_if_paused()
 
+    # Message de progression pendant la collecte d'un rollout (sur 1 cœur, des dizaines de minutes sans mise à jour).
+    # Seul le message est publié ici ; la limite de durée est vérifiée par PPOTrainer pendant la collecte.
+    last_msg = [0.0]
+
+    def on_collect(done, total, dt):
+        if time.time() - last_msg[0] < MESSAGE_PERIODE_S and done < total:
+            return
+        last_msg[0] = time.time()
+        job.data.setdefault("progress", {})["message"] = (
+            f"Collecte du rollout {tr.update + 1} : {done}/{total} décisions · {done / max(dt, 1e-9):.1f} déc/s")
+        job.save()
+
+    job.logline(f"Collecte du rollout 1 : 0/{pc.rollout * pool.n_envs} décisions")
+    tr.on_collect = on_collect
     res = tr.run(base, sampler, on_update)
     ev = tr.best_eval
     info = tr.state()
