@@ -33,7 +33,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 from embarque.miroir import face_reelle, pose_miroir, rot_reelle
-from embarque.spec import angles_nacelle_deg, depression_minimale_kpa, table_longueur_mm
+from embarque.spec import angles_nacelle_deg, depression_minimale_kpa, duree_match_s, table_longueur_mm
 
 try:
     import serial
@@ -67,6 +67,21 @@ class ParamsESP32:
     watchdog_ms: int = 500
     periode_ping_s: float = 0.1
     telem_ms: int = 50
+    # --- fin de match (hypothèses ; docs/PROTOCOLE_ESP32.md §6 bis et §9) ---
+    # Arrêt autonome des ESP32 : `CFG FIN_MS` à l'initialisation, puis chaque ESP32 s'arrête de lui-même à `durée du match - marge`
+    # (durée lue dans spec/regles_2027.json, jamais écrite dans le firmware). False : le Pi est seul à arrêter le robot (ancien comportement).
+    arret_autonome: bool = True
+    # Marge (s) de l'arrêt autonome : l'ESP32 s'arrête à `durée - marge_arret_esp32_s` pour être IMMOBILE à `durée`. Elle couvre
+    # l'incertitude sur l'instant de départ de NAV (un aller-retour USB, quelques ms) et le temps d'arrêt de la base, INCONNU
+    # (décélération du firmware, question Q9 : à mesurer sur le robot). Pénalité si le robot bouge après la fin : -50.
+    marge_arret_esp32_s: float = 0.2
+    # Marge (s) du Pi : plus aucune commande envoyée aux ESP32 après `durée - marge_fin_s`, et aucune brique lancée si elle ne peut pas
+    # finir avant `durée - marge_fin_s` (durée du plan du moteur). Au moins la marge d'arrêt autonome (vérifié à la construction) : un Pi
+    # en bonne santé n'envoie jamais un ordre que l'arrêt autonome couperait. 0,5 s = 2,5 fois la marge d'arrêt ; à remesurer sur le Pi 5
+    # (docs/PROTOCOLE_ESP32.md §9).
+    marge_fin_s: float = 0.5
+    # Essais de `START` à NAV (sans accusé, on réessaie avec un âge recalculé) avant de continuer sans arrêt autonome de NAV.
+    essais_start: int = 3
     # --- exécution des plans ---
     envoyer_limites: bool = True            # `SET_LIMITS <v_mm_s> <w_deg_s>` : valeurs de spec/robot.json (500 mm/s, 120 °/s, « declare »)
     envoyer_durees: bool = True             # `T=<ms>` sur Z, ROT, ASC : reproduit la coordination du moteur (proposé)
@@ -102,6 +117,10 @@ class ParamsESP32:
     mock_vide_facteur: float = 2.0
     # Délai (s, temps simulé) entre `INIT` et le retrait de la tirette dans le scénario de test. None : la tirette ne bouge pas seule.
     mock_delai_tirette_s: Optional[float] = 1.0
+
+    def __post_init__(self) -> None:
+        if self.marge_fin_s < self.marge_arret_esp32_s:
+            raise ValueError("marge_fin_s doit être au moins marge_arret_esp32_s : le Pi ne doit pas envoyer d'ordre que l'arrêt autonome couperait.")
 
 
 PARAMS = ParamsESP32()
@@ -376,7 +395,7 @@ class Evenement:
 
 
 _TYPES_AVEC_ID = frozenset({"ACK", "NAK", "DONE", "FAIL", "ABORT", "WPT"})
-_TYPES_SANS_ID = frozenset({"PONG", "HELLO", "POSE", "STATUS", "EVT", "ERR"})
+_TYPES_SANS_ID = frozenset({"PONG", "HELLO", "POSE", "STATUS", "CHRONO", "EVT", "ERR"})
 _RE_ID = re.compile(r"^#(\d+)$")
 
 
@@ -444,7 +463,9 @@ class ESP32Device:
         self.dernier_statut: Optional[EtatActionneurs] = None
         self.tirette: Optional[int] = None
         self.erreurs: List[str] = []                       # lignes ERR reçues
-        self._n_pose = self._n_statut = 0
+        self.dernier_chrono: Optional[int] = None          # ms écoulées depuis le départ du match selon l'ESP32 (-1 : pas parti)
+        self.fin_recue = False                              # l'ESP32 a signalé son arrêt autonome de fin de match (`EVT FIN`)
+        self._n_pose = self._n_statut = self._n_chrono = 0
         self._buf = b""
         self._tampon: List[Evenement] = []
         self._verrou = threading.Lock()
@@ -565,10 +586,16 @@ class ESP32Device:
                 if self.dernier_statut.tirette is not None:
                     self.tirette = self.dernier_statut.tirette
                 return
-        except ValueError as ex:
+            if e.type == "CHRONO":
+                self.dernier_chrono, self._n_chrono = int(e.args[0]), self._n_chrono + 1
+                return
+        except (ValueError, IndexError) as ex:
             logger.warning("[%s] %s", self.name, ex)
             return
         if e.type == "PONG":
+            return
+        if e.type == "EVT" and e.args[:1] == ("FIN",):
+            self.fin_recue = True
             return
         if e.type == "EVT" and len(e.args) >= 2 and e.args[0] == "TIRETTE":
             try:
@@ -604,14 +631,20 @@ class ESP32Device:
         return self._attendre(lambda e: e.id == pid and e.type in types, self.timeout if timeout is None else timeout)
 
     def interroger(self, requete: str, genre: str) -> Any:
-        """Envoie `POSE?` ou `STATUS?` et renvoie la ligne POSE / STATUS reçue ensuite."""
-        n0 = self._n_pose if genre == "POSE" else self._n_statut
+        """Envoie `POSE?`, `STATUS?` ou `CHRONO?` et renvoie la ligne POSE / STATUS / CHRONO reçue ensuite."""
+        def compteur() -> int:
+            return {"POSE": self._n_pose, "STATUS": self._n_statut, "CHRONO": self._n_chrono}[genre]
+
+        def valeur() -> Any:
+            return {"POSE": self.derniere_pose, "STATUS": self.dernier_statut, "CHRONO": self.dernier_chrono}[genre]
+
+        n0 = compteur()
         self.ecrire(requete)
         fin = time.monotonic() + self.timeout
         while True:
             self.sonder()
-            if (self._n_pose if genre == "POSE" else self._n_statut) > n0:
-                return self.derniere_pose if genre == "POSE" else self.dernier_statut
+            if compteur() > n0:
+                return valeur()
             if self.virtuel or time.monotonic() >= fin:
                 raise ErreurLiaison(f"[{self.name}] pas de réponse à {requete}")
             time.sleep(0.001)
@@ -688,12 +721,22 @@ class FirmwareSimule:
     NAV, distance / vitesse de `SET_LIMITS` ; sinon le mouvement est instantané. Le canal `programmee` (durées nominales du plan,
     par identifiant de commande) n'existe pas dans le protocole : il sert aux tests pour rejouer exactement les durées du moteur
     et pour injecter des retards ; il l'emporte sur `T=`.
+
+    Fin de match autonome (PROTOCOLE_ESP32.md §6 bis) : `CFG FIN_MS` donne l'instant d'arrêt (ms après le départ) ; le départ est le
+    retrait de la tirette (ACT) ou `START <âge_ms>` (les deux rôles). À cet instant, que le Pi soit en retard ou absent, l'ESP32
+    abandonne tout mouvement (`ABORT #id FIN`), garde l'état des pompes, signale `EVT FIN` et refuse toute commande d'action (`NAK STATE FIN`).
+    Les événements sont traités à leur instant exact même si l'horloge a sauté plus loin (Pi en retard).
     """
 
     def __init__(self, role: str, horloge: Any, params: ParamsESP32 = PARAMS):
         assert role in ("NAV", "ACT")
         self.role, self.hz, self.params = role, horloge, params
         self.journal: List[str] = []
+        self.journal_t: List[float] = []                   # instant (horloge) de réception de chaque ligne de `journal` (test)
+        self.fin_s: Optional[float] = None                 # CFG FIN_MS : durée avant l'arrêt autonome (s) ; None : pas d'arrêt autonome
+        self.t0: Optional[float] = None                    # instant de départ du match (horloge de cet ESP32)
+        self.fini = False                                  # arrêt autonome effectué (verrou jusqu'à un nouveau `CFG FIN_MS`)
+        self.mouvement_jusqua = -math.inf                  # dernier instant où un axe a bougé (observation de test, absente du protocole)
         self.programmee: Dict[int, List[float]] = {}
         self._sortie: List[str] = []
         self.watchdog_s: Optional[float] = None
@@ -724,12 +767,17 @@ class FirmwareSimule:
         out, self._sortie = self._sortie, []
         return out
 
-    def retirer_tirette(self) -> None:
-        """Scénario de test : la tirette est retirée maintenant."""
+    def retirer_tirette(self, t: Optional[float] = None) -> None:
+        """Scénario de test : la tirette est retirée (à l'instant `t`, par défaut maintenant). Elle arme le chrono de fin de match."""
         if self.role == "ACT" and self.tirette == 1:
             self.tirette = 0
             self.etat.tirette = 0
             self._emettre("EVT TIRETTE 0")
+            if self.fin_s is not None and self.t0 is None and not self.fini:
+                self.t0 = self.hz.now() if t is None else t
+
+    def _mv(self, t: float) -> None:
+        self.mouvement_jusqua = max(self.mouvement_jusqua, t)
 
     # ---- temps ---------------------------------------------------------------------------------------------------------
     def prochaine_echeance(self) -> Optional[float]:
@@ -740,17 +788,33 @@ class FirmwareSimule:
         c += [v["t0"] + v["dur"] for v in self._voies.values()]
         if self._retrait_a is not None and self.tirette == 1:
             c.append(self._retrait_a)
+        fin = self._echeance_fin()
+        if fin is not None:
+            c.append(fin)
         return min(c) if c else None
+
+    def _avancer(self, t: float) -> None:
+        if self.role == "NAV":
+            self._avancer_nav(t)
+        else:
+            self._avancer_act(t)
+
+    def _echeance_fin(self) -> Optional[float]:
+        return self.t0 + self.fin_s if (self.t0 is not None and self.fin_s is not None and not self.fini) else None
 
     def mise_a_jour(self) -> None:
         now = self.hz.now()
+        if (self.role == "ACT" and self._retrait_a is not None and self.tirette == 1 and now >= self._retrait_a - 1e-9
+                and not self.fini and self.fin_s is not None):
+            self._avancer_act(self._retrait_a)             # le retrait de la tirette arme le chrono à son instant exact
+        fin = self._echeance_fin()
+        if fin is not None and now >= fin - 1e-9:
+            self._avancer(fin)                             # tout ce qui se terminait avant l'arrêt est terminé à son instant
+            self._finir(fin)
         if (self.watchdog_s and self.derniere_rx is not None and not self._securite
                 and now - self.derniere_rx > self.watchdog_s):
             self._securite_watchdog(now)
-        if self.role == "NAV":
-            self._avancer_nav(now)
-        else:
-            self._avancer_act(now)
+        self._avancer(now)
         if self.telem_s and now >= self._prochaine_telem:
             self._emettre(self._ligne_etat())
             self._prochaine_telem = now + self.telem_s
@@ -766,14 +830,39 @@ class FirmwareSimule:
         if self.role == "NAV" and self._nav:
             self.pose = self._pose_nav(now)
             self._emettre(f"ABORT #{self._nav['id']} WATCHDOG")
+            self._mv(now)
             self._nav = None
             self._nav_stoppe = True
         for voie, v in list(self._voies.items()):
             self._emettre(f"ABORT #{v['id']} WATCHDOG")
+            if not voie.startswith("PUMP"):
+                self._mv(now)
             if voie == "TIR":
                 self.etat.tir = "IDLE"
         self._voies.clear()
         self._emettre("ERR WATCHDOG")
+
+    def _finir(self, t: float) -> None:
+        """Arrêt autonome de fin de match à l'instant `t` : base et axes arrêtés, séance de tir abandonnée, pompes inchangées, verrou."""
+        self.fini = True
+        if self.role == "NAV":
+            if self._nav:
+                self.pose = self._pose_nav(t)
+                self._emettre(f"ABORT #{self._nav['id']} FIN")
+                self._mv(t)
+                self._nav = None
+            self._nav_stoppe = True
+        else:
+            for voie, v in list(self._voies.items()):
+                self._emettre(f"ABORT #{v['id']} FIN")
+                if voie == "TIR":
+                    self.etat.tir = "IDLE"
+                    self._mv(t)
+                elif not voie.startswith("PUMP"):
+                    self._appliquer(voie, self._valeur_voie(voie, v, t))
+                    self._mv(t)
+            self._voies.clear()
+        self._emettre("EVT FIN")
 
     # ---- réception -----------------------------------------------------------------------------------------------------
     def recevoir(self, ligne: str) -> None:
@@ -783,6 +872,7 @@ class FirmwareSimule:
             return
         if l != "PING":
             self.journal.append(l)
+            self.journal_t.append(self.hz.now())
         self.derniere_rx = self.hz.now()
         self._securite = False
         t = l.split()
@@ -807,6 +897,12 @@ class FirmwareSimule:
                 self._cfg(pid, args, nak)
             elif op == "STOP":
                 self._stop(pid)
+            elif op == "START":
+                self._start(pid, args, nak)
+            elif op == "CHRONO?":
+                self._emettre(f"CHRONO {self._chrono_ms()}")
+            elif self.fini and op in ("SET_POSE", "SET_LIMITS", "GOTO", "PATH", "INIT", "Z", "ROT", "ASC", "PUMP", "TIR"):
+                nak("STATE", "FIN")                        # match terminé : plus aucune commande d'action
             elif self.role == "NAV" and op in ("SET_POSE", "SET_LIMITS", "GOTO", "PATH", "POSE?"):
                 self._cmd_nav(op, args, pid, nak)
             elif self.role == "ACT" and op in ("INIT", "Z", "ROT", "ASC", "PUMP", "TIR", "STATUS?"):
@@ -826,9 +922,31 @@ class FirmwareSimule:
             self._prochaine_telem = self.hz.now()
         elif cle == "VIDE_MIN_KPA" and self.role == "ACT":
             self.vide_min_kpa = val
+        elif cle == "FIN_MS":
+            if self.t0 is not None and not self.fini:
+                return nak("STATE", "MATCH")               # le match est en cours : l'instant d'arrêt ne peut plus être déplacé
+            self.fin_s = val / 1000.0 if val > 0 else None
+            self.t0, self.fini = None, False               # (ré)arme le chrono pour un nouveau match
         else:
             return nak("RANGE", cle)
         self._emettre(f"ACK #{pid}")
+
+    def _start(self, pid: Optional[int], args: List[str], nak: Callable[..., None]) -> None:
+        """`START <âge_ms>` : le match a commencé il y a `âge_ms` millisecondes. Répété : l'instant le plus ancien l'emporte."""
+        age = float(args[0])
+        if age < 0:
+            return nak("RANGE", "START")
+        if self.fin_s is None:
+            return nak("STATE", "FIN_MS")
+        if self.fini:
+            return nak("STATE", "FIN")
+        t = self.hz.now() - age / 1000.0
+        self.t0 = t if self.t0 is None else min(self.t0, t)
+        self._emettre(f"ACK #{pid}")
+
+    def _chrono_ms(self) -> int:
+        """Millisecondes écoulées depuis le départ (arrondies au-dessus : borne sûre pour le Pi) ; -1 si le match n'est pas parti."""
+        return -1 if self.t0 is None else max(0, math.ceil((self.hz.now() - self.t0) * 1000.0 - 1e-6))
 
     # ---- NAV -----------------------------------------------------------------------------------------------------------
     def _etat_nav(self) -> str:
@@ -891,6 +1009,7 @@ class FirmwareSimule:
     def _avancer_nav(self, now: float) -> None:
         mv = self._nav
         while mv is not None and now - mv["t0"] >= mv["cum"][mv["k"]] - 1e-9:
+            self._mv(mv["t0"] + mv["cum"][mv["k"]])
             mv["k"] += 1
             if mv["k"] < len(mv["pts"]):
                 self._emettre(f"WPT #{mv['id']} {mv['k']}")
@@ -907,6 +1026,7 @@ class FirmwareSimule:
             if self._nav:
                 self.pose = self._pose_nav(now)
                 self._emettre(f"ABORT #{self._nav['id']} STOP")
+                self._mv(now)
                 self._nav = None
             self._nav_stoppe = True
         else:
@@ -914,6 +1034,7 @@ class FirmwareSimule:
                 if voie.startswith("PUMP"):
                     continue
                 self._emettre(f"ABORT #{v['id']} STOP")
+                self._mv(now)
                 if voie == "TIR":
                     self.etat.tir = "IDLE"
                 else:
@@ -1007,12 +1128,14 @@ class FirmwareSimule:
                 self._appliquer(voie, v["cib"])
                 if voie == "TIR":
                     self.etat.tir = "DONE"
+                if not voie.startswith("PUMP"):
+                    self._mv(v["t0"] + v["dur"])
                 self._emettre(f"DONE #{v['id']}")
                 del self._voies[voie]
             elif v["cib"]:
                 self._appliquer(voie, self._valeur_voie(voie, v, now))
         if self._retrait_a is not None and self.tirette == 1 and now >= self._retrait_a - 1e-9:
-            self.retirer_tirette()
+            self.retirer_tirette(self._retrait_a)
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -1098,6 +1221,11 @@ class _Execution:
             out.append(s)
         return out
 
+    def marge_de_fin_atteinte(self) -> bool:
+        """Vrai si l'on est à moins de `marge_fin_s` de la fin du match : plus aucune commande n'est envoyée aux ESP32."""
+        fin = self.o.fin_match
+        return fin is not None and self.hz.now() >= fin - self.P.marge_fin_s - 1e-12
+
     def _menace(self, cible: Tuple[float, float, float]) -> bool:
         try:
             return bool(self.o.menace((cible[0], cible[1])))
@@ -1120,6 +1248,9 @@ class _Execution:
                 self.host[i] = now + (c.duree if c.texte.startswith("WAIT") else 0.0)
                 n += 1
                 continue
+            if self.marge_de_fin_atteinte():
+                self.echec(f"fin du match : commande non envoyée (marge de {self.P.marge_fin_s:g} s avant la fin) : {c.texte}")
+                break
             if c.dev == "NAV":
                 if self.bloque_depuis is not None:
                     continue
@@ -1154,6 +1285,8 @@ class _Execution:
         if rep is None:
             return self.echec(f"{texte} -> pas d'accusé de réception")
         if rep.type == "NAK":
+            if rep.args[:2] == ("STATE", "FIN"):         # l'ESP32 a déjà fini le match (arrêt autonome)
+                return self.echec(f"fin du match : {texte} refusée par l'ESP32 (arrêt autonome)")
             return self.echec(f"{texte} -> NAK {' '.join(rep.args)}")
         self.rap.debuts.setdefault(lot[0].id, now)
         self.t_seg[lot[0].id] = now
@@ -1196,6 +1329,8 @@ class _Execution:
                     del self.envois[(dev.role, env.pid)]
                     if env.stoppe and e.args[:1] == ("STOP",):
                         self.remettre(env, now)
+                    elif e.args[:1] == ("FIN",):
+                        self.echec("fin du match : arrêt autonome de l'ESP32 " + dev.role)
                     else:
                         self.echec(f"{env.texte} -> ABORT {' '.join(e.args)}")
         return n
@@ -1280,10 +1415,16 @@ class _Execution:
         return [x for x in c if x > now + 1e-12]
 
     def fin_de_match(self) -> bool:
+        """Fin du match : à `fin_match` (horloge du Pi) le Pi envoie `STOP` aux deux ESP32 (doublon de leur arrêt autonome) ; si un
+        ESP32 a déjà signalé son arrêt autonome (`EVT FIN`), le plan s'arrête sans attendre."""
         fin = self.o.fin_match
         if fin is not None and self.hz.now() >= fin - 1e-12:
             self.o.arreter_tout()
             self.echec("fin du match : robot arrêté")
+            self.envois.clear()
+            return True
+        if self.o.fin_match is not None and (self.o.nav.fin_recue or self.o.act.fin_recue):
+            self.echec("fin du match : arrêt autonome des ESP32")
             self.envois.clear()
             return True
         return False
@@ -1312,8 +1453,14 @@ class _Execution:
             else:
                 hz.sleep(self.P.poll_s)
         if hz.virtuelle and self.rap.ok:
-            # temps simulé : la durée de la brique est celle du moteur même sans commande (attentes internes, retour au trône...)
-            o.dormir_jusqua(self.origine + max(self.dt_plan, self.rel()))
+            # temps simulé : la durée de la brique est celle du moteur même sans commande (attentes internes, retour au trône...),
+            # mais jamais au-delà de la fin du match (le temps simulé ne dépasse pas l'instant où le Pi arrête le robot)
+            cible = self.origine + max(self.dt_plan, self.rel())
+            if o.fin_match is not None and cible >= o.fin_match - 1e-12:
+                o.dormir_jusqua(max(hz.now(), o.fin_match))
+                self.fin_de_match()
+            else:
+                o.dormir_jusqua(cible)
         return self.rap
 
 
@@ -1342,6 +1489,7 @@ class DualESP32Orchestrator:
         self.retards: Dict[int, float] = {}
         self.menace: Optional[Callable[[Tuple[float, float]], bool]] = None
         self.fin_match: Optional[float] = None
+        self.armes: Dict[str, bool] = {"NAV": False, "ACT": False}      # ESP32 dont l'arrêt autonome est armé (synchroniser_depart)
         self._seq = 0
 
     def prochain_id(self) -> int:
@@ -1377,8 +1525,11 @@ class DualESP32Orchestrator:
                 if not dev.connect():
                     raise ErreurLiaison(f"{dev.name} : liaison impossible ({dev.port})")
             for dev in (self.nav, self.act):
+                dev.fin_recue = False
                 self._commande(dev, f"CFG WATCHDOG_MS {p.watchdog_ms}")
                 self._commande(dev, f"CFG TELEM_MS {p.telem_ms}")
+                if p.arret_autonome:      # fin de match autonome : instant d'arrêt = durée du match (spec) - marge, après le départ
+                    self._commande(dev, f"CFG FIN_MS {self.fin_autonome_ms()}")
             self._commande(self.act, f"CFG VIDE_MIN_KPA {depression_minimale_kpa():g}")
             if pose is not None:                 # pose de départ (spec / moteur : ENGINE.DEF x0, y0, h0), fournie par l'appelant
                 x, y, h = _mirror_xy_h(pose[0], pose[1], pose[2], equipe, p.largeur_table_mm)
@@ -1395,6 +1546,10 @@ class DualESP32Orchestrator:
             for dev in (self.nav, self.act):
                 dev.demarrer_ping(p.periode_ping_s)
         return True
+
+    def fin_autonome_ms(self) -> int:
+        """Instant d'arrêt autonome des ESP32, en ms après le départ : durée du match (spec/regles_2027.json) moins la marge d'arrêt."""
+        return int(round((duree_match_s() - self.params.marge_arret_esp32_s) * 1000.0))
 
     def close(self) -> None:
         self.nav.close()
@@ -1448,6 +1603,66 @@ class DualESP32Orchestrator:
                 self.dormir_jusqua(e)
             else:
                 hz.sleep(self.params.poll_s)
+
+    def _start(self, dev: ESP32Device, age_ms: Callable[[], int]) -> bool:
+        """`START <âge_ms>` avec accusé ; l'âge est recalculé à chaque essai. Faux (et journalisé) si l'ESP32 refuse ou ne répond pas."""
+        for _ in range(max(1, self.params.essais_start)):
+            pid = self.prochain_id()
+            try:
+                dev.envoyer(f"START {age_ms()}", pid)
+            except ErreurLiaison as e:
+                logger.error("%s", e)
+                return False
+            rep = dev.attendre_reponse(pid)
+            if rep is not None and rep.type == "ACK":
+                return True
+            if rep is not None:
+                logger.error("%s : START refusé (%s)", dev.name, rep.ligne)
+                return False
+        logger.error("%s : START sans accusé de réception", dev.name)
+        return False
+
+    def synchroniser_depart(self, avec_tirette: bool = True) -> float:
+        """À appeler dès que la tirette est retirée (ou au lancement, sans tirette). Renvoie l'instant (horloge du Pi) du départ du match
+        et arme l'arrêt autonome (docs/PROTOCOLE_ESP32.md §6 bis) :
+        - ACT a son chrono, lancé par le retrait de la tirette ; le Pi le lit (`CHRONO?`, durée écoulée selon ACT, sans comparer d'horloges) ;
+        - NAV reçoit `START <âge>`, avec âge = chrono d'ACT + temps écoulé au Pi depuis la question : borne SUPÉRIEURE du temps écoulé
+          depuis le retrait, donc NAV s'arrête au plus tôt à l'instant voulu, jamais après, même si le Pi est en retard ;
+        - l'instant de départ du Pi est la borne la plus précoce : réponse d'ACT moins sa durée écoulée.
+        Sans tirette, ou si ACT n'a pas son chrono, les deux ESP32 reçoivent `START 0` maintenant. `self.armes` dit lesquels sont armés."""
+        hz = self.horloge
+        self.armes = {"NAV": False, "ACT": False}
+        h0 = hz.now()
+        if not self.params.arret_autonome:
+            return h0
+        chrono = -1
+        if avec_tirette:
+            try:
+                chrono = int(self.act.interroger("CHRONO?", "CHRONO"))
+            except ErreurLiaison as e:
+                logger.error("%s", e)
+            if chrono < 0:
+                logger.error("ACT n'a pas de chrono de tirette : arrêt autonome démarré maintenant (START 0), avec un retard possible")
+        if chrono >= 0:
+            self.armes["ACT"] = True
+            self.armes["NAV"] = self._start(self.nav, lambda: max(0, math.ceil(chrono + (hz.now() - h0) * 1000.0 - 1e-6)))
+            return h0 - chrono / 1000.0
+        h = hz.now()
+        self.armes["ACT"] = self._start(self.act, lambda: 0)
+        self.armes["NAV"] = self._start(self.nav, lambda: 0)
+        return h
+
+    def attendre_fin(self) -> None:
+        """Attend l'instant de fin du match (aucune action possible) en entretenant la liaison. Temps simulé : saute à cet instant."""
+        if self.fin_match is None:
+            return
+        if self.horloge.virtuelle:
+            self.dormir_jusqua(max(self.horloge.now(), self.fin_match))
+            return
+        while self.horloge.now() < self.fin_match:
+            self.horloge.sleep(min(self.params.poll_s, self.fin_match - self.horloge.now()))
+            self.nav.sonder()
+            self.act.sonder()
 
     def envoyer_stop(self, dev: ESP32Device) -> None:
         """`STOP` prioritaire. Ne lève pas si le périphérique est déjà arrêté."""

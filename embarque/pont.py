@@ -140,7 +140,11 @@ class PontNode:
             champs["equipe"] = equipe
         return self.appeler("track_start", **champs)
 
-    def track_exec(self, brique: dict, adversaire: Optional[dict] = None, trace: bool = False) -> Dict[str, Any]:
+    def track_exec(self, brique: dict, adversaire: Optional[dict] = None, trace: bool = False, dt_max: Optional[float] = None) -> Dict[str, Any]:
+        """Exécute la brique sur le modèle interne. `dt_max` (s) : si le plan dure plus, la brique est jouée à blanc (état restauré) et la
+        réponse porte `refuse: true`, `dt`, `plan: null` (fin de match)."""
+        if dt_max is not None:
+            return self.appeler("track_exec", brique=brique, adversaire=adversaire, trace=trace, dtMax=float(dt_max))
         return self.appeler("track_exec", brique=brique, adversaire=adversaire, trace=trace)
 
     def track_belief(self, adversaire: Optional[dict] = None) -> Dict[str, Any]:
