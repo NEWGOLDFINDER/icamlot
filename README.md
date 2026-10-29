@@ -91,7 +91,7 @@ python pi5_runner.py --modele .data/modeles/ppo.onnx --robot --mock-esp
 python pi5_runner.py --modele .data/modeles/ppo.onnx --benchmark
 ```
 
-Le mode `--robot` sans `--mock-esp` utilise les ports `--nav-port` et `--act-port` (protocole : `docs/PROTOCOLE_ESP32.md`).
+En mode `--robot` sans `--mock-esp`, les options `--nav-port` et `--act-port` (facultatives) fixent les ports série des deux ESP32 (protocole : `docs/PROTOCOLE_ESP32.md`).
 
 ### API et site
 
