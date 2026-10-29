@@ -1,5 +1,7 @@
 # Rapport de Benchmark Officiel ICAM LOT — Eurobot 2027
 
+> **HISTORIQUE — ancien moteur.** Ce rapport a été produit le 2026-10-27 avec l'ancien moteur PyTorch et le cerveau V2 abstrait (ICAM LOT Engine v1.3.0, 164 715 paramètres). Ses chiffres ne valent pas pour le moteur de référence actuel (`docs/CONTRATS.md` §5, `trainer/README.md`) et ne doivent pas être cités comme résultats. Pour des duels actuels : `python benchmark_duels.py --help`.
+
 Date d'évaluation : `2026-10-27 11:54:22`
 Moteur cinématique : `ICAM LOT Engine v1.3.0` | Barème : `Eurobot 2027 v1.0`
 Architecture : `Factorized Multi-Branch GRU ResNet (V2 - 164,715 paramètres)`
