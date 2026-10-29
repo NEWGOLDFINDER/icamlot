@@ -416,3 +416,11 @@ Référence de la demande (catalogue 3.2, imitation jaune seul) : 122 / 32. Avec
 - La neuroévolution (MLP) reçoit l'équipe tirée par la graine, mais n'utilise pas le mélange.
 - PPO court (38 400 transitions) : pas d'amélioration mesurable au-delà de l'imitation ; un entraînement plus long (`BUDGETS` des adversaires : 200 000 transitions) n'a pas été fait ici.
 - Entre 8 matchs par case, l'écart-type de Razzia en jaune (± 23 à 33) cache les différences entre modèles ; la sélection (24 matchs) est bruitée : augmenter `eval_matchs`.
+
+## 18. Fin de match autonome (embarqué, proposé)
+- Les ESP32 s'arrêtent d'eux-mêmes à `match.duree_s − marge_arret_esp32_s` (0,2 s, hypothèse).
+  - ACT : chronomètre lancé par la tirette.
+  - NAV : `START <âge_ms>`.
+  - Durée envoyée par `CFG FIN_MS`, calculée depuis la spec.
+- Le Pi n'envoie plus de commande après `fin − marge_fin_s` (0,5 s, hypothèse) et ne lance pas une brique qui ne finit pas avant.
+- Détail et questions Q12 à Q16 : `docs/PROTOCOLE_ESP32.md` §6 bis et §10.
