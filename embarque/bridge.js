@@ -240,7 +240,24 @@ function trackStart(msg) {
 function trackExec(msg) {
   if (!track) throw new Error('track_start d\'abord.');
   var brique = need(msg, 'brique'), sim = track.sim, k0 = sim.result(false).K.length, t0 = sim.time();
+  /* dtMax (facultatif) : durée maximale acceptée de la brique (s). Si le plan du moteur la dépasse, la brique est jouée à blanc :
+     l'état du modèle interne (moteur et mémoire) est restauré et la réponse porte { refuse: true, dt } (fin de match, pi5_runner). */
+  var dtMax = msg.dtMax != null ? +msg.dtMax : null;
+  var sauve = dtMax !== null ? { sim: sim.snapshot(), mem: JSON.parse(JSON.stringify(track.mem)) } : null;
   var reelle = ACTIONS.realStep(brique, track.equipe), info = track.duel ? track.duel.exec('yellow', reelle) : sim.exec(reelle);
+  if (sauve && !info.err && sim.time() - t0 > dtMax + 1e-9) {
+    var dt = sim.time() - t0;
+    sim.restore(sauve.sim); track.mem = sauve.mem;
+    return { refuse: true, dt: dt, info: info, plan: null, belief: trackBelief(msg.adversaire) };
+  }
+  if (sauve && info.err) {
+    /* brique impossible pour le modèle local : le Pi n'envoie rien aux ESP32, le robot ne bouge pas. Le moteur laisse alors un état
+       partiel (consignes des nacelles déjà changées) que les codeurs ne confirmeraient jamais : on restaure l'état d'avant, et seul
+       l'échec est mémorisé (la brique reste masquée tant que le temps n'avance pas). */
+    sim.restore(sauve.sim); track.mem = sauve.mem;
+    ENV.updateMemory(track.mem, sim, t0, sim.time(), reelle, info);
+    return { annule: true, info: info, plan: null, belief: trackBelief(msg.adversaire) };
+  }
   ENV.updateMemory(track.mem, sim, t0, sim.time(), reelle, info);
   var plan = extractPlan(sim, k0, t0, brique, info);
   var out = { info: info, plan: track.equipe === 'blue' ? planVersEquipe(plan) : plan, belief: trackBelief(msg.adversaire) };

@@ -129,8 +129,15 @@ class Politique:
         m = np.asarray(mask, bool)
         if not m.any():
             return -1
-        lg = self.logits(obs)
-        return int(np.argmax(np.where(m, lg, -np.inf)))
+        return self.choisir(self.logits(obs), mask)
+
+    @staticmethod
+    def choisir(logits: np.ndarray, mask: List[int]) -> int:
+        """Action gloutonne sous masque à partir de logits déjà calculés (sans nouveau pas du réseau) ; -1 si le masque est vide."""
+        m = np.asarray(mask, bool)
+        if not m.any():
+            return -1
+        return int(np.argmax(np.where(m, logits, -np.inf)))
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -230,6 +237,7 @@ class RobotBackend:
         self.cons = ConstructeurCroyance(pont, equipe, params_moteur)
         self.t_depart = 0.0
         self.echec_materiel = False
+        self.refusee = False                     # la dernière brique n'a pas été lancée : elle ne peut pas finir avant la fin du match
         self.programme: List[dict] = []
         self.rapports: List[Rapport] = []
 
@@ -248,12 +256,19 @@ class RobotBackend:
             self.orch.menace = self.capteurs.menace          # évitement : décidé par le Pi, STOP envoyé à l'ESP32 de navigation
         if self.attendre_tirette and not self.orch.attendre_depart():
             raise ErreurLiaison("départ : la tirette n'a pas été retirée")
-        self.t_depart = self.horloge.now()                   # t = 0 du match : retrait de la tirette (ESP32 des actionneurs)
+        # t = 0 du match : retrait de la tirette (ESP32 des actionneurs). `synchroniser_depart` lit le chrono d'ACT, arme l'arrêt autonome
+        # de NAV et renvoie l'instant de départ le plus précoce compatible avec ce que le Pi sait (jamais après le vrai départ).
+        self.t_depart = self.orch.synchroniser_depart(self.attendre_tirette)
         self.orch.fin_match = self.t_depart + duree_match_s()
         self.echec_materiel = False
+        self.refusee = False
+
+    def attendre_fin(self) -> None:
+        """Plus rien d'utile à faire : le robot reste immobile jusqu'à la fin du match (liaison entretenue)."""
+        self.orch.attendre_fin()
 
     def finir(self) -> None:
-        """Fin du match : tout s'arrête (pénalité si le robot bouge après la fin, spec/regles_2027.json)."""
+        """Fin du match : tout s'arrête (pénalité si le robot bouge après la fin, spec/regles_2027.json). Doublon de l'arrêt autonome."""
         self.orch.arreter_tout()
 
     def termine(self) -> bool:
@@ -267,10 +282,16 @@ class RobotBackend:
 
     def executer(self, idx: int, brique: Optional[dict]) -> Optional[str]:
         t0 = self.t_match()
+        self.refusee = False
         if brique is None:
             self.echec_materiel = True
             return "Action non résolue."
-        r = self.cons.appliquer(brique)
+        # Fin du match : une brique dont le plan ne finit pas avant `durée - marge_fin_s` n'est pas lancée (le modèle interne n'avance pas).
+        reste = duree_match_s() - self.orch.params.marge_fin_s - t0
+        r = self.cons.appliquer(brique, dt_max=max(0.0, reste))
+        if r.get("refuse"):
+            self.refusee = True
+            return f"Brique non lancée : {r['dt']:.2f} s de plan, {max(0.0, reste):.2f} s avant la marge de fin du match."
         err = r["info"].get("err")
         self.programme.append(brique)
         if err:
@@ -301,6 +322,9 @@ class Pi5Runner:
         self.backend.demarrer()
         self.decisions = []
         catalogue = self.pont.hello_info["catalogue"]
+        attendre = getattr(self.backend, "attendre_fin", None)       # robot seulement : la simulation garde son protocole d'évaluation
+        refusees: set = set()          # briques refusées pour la durée : refusées tant que le modèle interne n'a pas avancé
+        sans_avance, t_prec = 0, None   # décisions consécutives sans que le temps du match avance (erreurs, briques de durée nulle)
         while not self.backend.termine() and len(self.decisions) < self.max_decisions:
             b = self.backend.croyance()
             t_pont = time.perf_counter()
@@ -309,15 +333,41 @@ class Pi5Runner:
             if self.verifier_parite:
                 self.backend.verifier(obs, mask)
             t_mod = time.perf_counter()
-            idx = self.politique.decider(obs, mask)
+            lg = self.politique.logits(obs) if any(mask) else None      # UN pas du réseau par décision, même si des briques sont refusées
             dt_mod = (time.perf_counter() - t_mod) * 1000
-            if idx < 0:                                   # aucune action valide : le robot attend la fin du match
+            exclues: List[int] = sorted(refusees)
+            idx, st, err = -1, None, None
+            while lg is not None:
+                idx = Politique.choisir(lg, [0 if i in exclues else m for i, m in enumerate(mask)])
+                if idx < 0:
+                    break
+                st = self.pont.step(idx, b)
+                err = self.backend.executer(idx, st["brique"])
+                if not getattr(self.backend, "refusee", False):
+                    break
+                # fin de match : brique qui ne peut pas finir à temps, non lancée ; on prend la meilleure suivante (sans temps écoulé)
+                self.log(f"{b['t']:6.1f} s | {idx:3d} refusée : {err}")
+                exclues.append(idx)
+                refusees.add(idx)
+                idx = -1
+            if idx < 0:                                   # aucune action valide (ou lancable avant la fin) : le robot attend la fin du match
                 self.log("Aucune action valide : attente de la fin du match.")
+                if attendre:
+                    attendre()
                 break
-            st = self.pont.step(idx, b)
-            err = self.backend.executer(idx, st["brique"])
             d = ResultatDecision(idx, catalogue[idx]["label"], st["brique"], b["t"], dt_mod, dt_pont, err)
             self.decisions.append(d)
+            if err is None:
+                refusees.clear()                          # le modèle interne a avancé : la durée des briques a changé
+            sans_avance = sans_avance + 1 if (t_prec is not None and abs(b["t"] - t_prec) < 1e-9) else 0
+            t_prec = b["t"]
+            if attendre and sans_avance >= len(catalogue):
+                # Temps simulé figé pendant autant de décisions que d'actions du catalogue (chaque action ne peut échouer qu'une fois à un
+                # instant donné, mémoire des échecs du moteur) : plus rien de faisable. On attend la fin au lieu de tourner jusqu'à
+                # `max_decisions`. Sur le robot, le temps avance toujours : ce garde-fou ne joue pas.
+                self.log(f"{sans_avance} décisions sans avance du temps : attente de la fin du match.")
+                attendre()
+                break
             self.log(f"{b['t']:6.1f} s | {idx:3d} {d.label[:46]:46s} | modèle {dt_mod:5.2f} ms, pont {dt_pont:6.1f} ms" + (f" | ERREUR {err}" if err else ""))
         finir = getattr(self.backend, "finir", None)
         if finir:

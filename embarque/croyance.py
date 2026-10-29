@@ -112,9 +112,12 @@ class ConstructeurCroyance:
         self.echec = False
         return self.interne
 
-    def appliquer(self, brique: dict, adversaire: Optional[dict] = None) -> dict:
-        """Exécute la brique sur le modèle interne ; renvoie { info, plan, belief }. Le plan est celui que les ESP32 reproduisent."""
-        r = self.pont.track_exec(brique, adversaire)
+    def appliquer(self, brique: dict, adversaire: Optional[dict] = None, dt_max: Optional[float] = None) -> dict:
+        """Exécute la brique sur le modèle interne ; renvoie { info, plan, belief }. Le plan est celui que les ESP32 reproduisent.
+        `dt_max` (s) : si le plan du moteur dure plus, rien n'est appliqué (modèle interne inchangé) et la réponse porte `refuse: true`."""
+        r = self.pont.track_exec(brique, adversaire, dt_max=dt_max)
+        if r.get("refuse"):
+            return r
         self.interne = r["belief"]
         self.echec = bool(r["info"].get("err"))
         return r
