@@ -307,6 +307,27 @@ def test_brique_refusee_pour_la_duree_laisse_le_modele_interne_inchange(pont):
     assert pont.track_exec(programme[0], dt_max=1e6)["plan"]["dt"] > 0           # assez de temps : exécutée normalement
 
 
+def test_brique_impossible_laisse_le_modele_interne_comme_le_robot_immobile(pont):
+    """Brique en erreur dans le moteur local : rien n'est envoyé aux ESP32, donc le modèle interne ne doit garder aucun état partiel
+    (consignes de nacelles changées) que les codeurs ne confirmeraient jamais ; l'échec seul est mémorisé."""
+    trouve = 0
+    for idx in range(pont.hello_info["nOutputs"]):
+        depart = pont.track_start(vision=False)["belief"]
+        brique = pont.step(idx, depart)["brique"]
+        if brique is None:
+            continue
+        r = pont.track_exec(brique, dt_max=1e6)
+        if not r["info"].get("err"):
+            continue
+        trouve += 1
+        assert r.get("annule") and r["plan"] is None
+        assert r["belief"]["pinces"] == depart["pinces"] and r["belief"]["pose"] == depart["pose"] and r["belief"]["t"] == depart["t"]
+        assert r["belief"]["echec"] and r["belief"]["echecs"]["briques"]                # l'échec est mémorisé : brique masquée
+        if trouve >= 3:
+            break
+    assert trouve >= 1
+
+
 def test_backend_ne_lance_pas_une_brique_qui_ne_peut_pas_finir_avant_la_marge(pont):
     orch = DualESP32Orchestrator(mock=True)
     be = RobotBackend(pont, orch, CapteursRobot(orch), "yellow")

@@ -250,6 +250,14 @@ function trackExec(msg) {
     sim.restore(sauve.sim); track.mem = sauve.mem;
     return { refuse: true, dt: dt, info: info, plan: null, belief: trackBelief(msg.adversaire) };
   }
+  if (sauve && info.err) {
+    /* brique impossible pour le modèle local : le Pi n'envoie rien aux ESP32, le robot ne bouge pas. Le moteur laisse alors un état
+       partiel (consignes des nacelles déjà changées) que les codeurs ne confirmeraient jamais : on restaure l'état d'avant, et seul
+       l'échec est mémorisé (la brique reste masquée tant que le temps n'avance pas). */
+    sim.restore(sauve.sim); track.mem = sauve.mem;
+    ENV.updateMemory(track.mem, sim, t0, sim.time(), reelle, info);
+    return { annule: true, info: info, plan: null, belief: trackBelief(msg.adversaire) };
+  }
   ENV.updateMemory(track.mem, sim, t0, sim.time(), reelle, info);
   var plan = extractPlan(sim, k0, t0, brique, info);
   var out = { info: info, plan: track.equipe === 'blue' ? planVersEquipe(plan) : plan, belief: trackBelief(msg.adversaire) };
