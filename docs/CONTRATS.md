@@ -368,3 +368,51 @@ Les états tirés au hasard ne sont pas les mêmes avant et après (catalogue de
 **Asymétries restantes** : 33 des 44 actions différentes sont « Monter le Graal » (face C : ascenseur à droite, prise décalée de 2 × 57 mm), le reste sur le planificateur (tour, trajets). Rotation 90 -> 180 de l'équipe bleue = −90 -> 180 réel (270°, par 0 et 90) : 2 s de plus (1 s par 90°, spec) et un balayage horizontal différent (180° ne sert qu'au stockage sans pierre en rangée 1 et à « Préparer la pince »).
 
 **Points ouverts** : `plateau/app.js` (chantier web) ne propose que 0, 90 et 180° pour « Tourner la pince » (champ `r` de tour et porte non exposé) ; le matériel de rotation (Q3 de PROTOCOLE_ESP32) doit pouvoir aller à −90°.
+
+## 17. Entraînement et évaluation dans les deux couleurs (chantier deux-côtés)
+
+### 17.1 Équipe par scénario
+- **Constat** : `ENV.create` (`engine/env.js`) ne fait jouer que le jaune : `ENGINE.makeDuel` force `team: 'yellow'` pour le robot du joueur, l'adversaire est toujours bleu (params par `blueParams`, programmes par `mirrorStep`), et `exec` du joueur n'applique jamais `ACTIONS.realStep(., 'blue')`. Aucun champ de configuration ne permet de jouer en bleu.
+- **Scénario** : `{ seed, equipe: 'yellow' | 'blue', intensite, opponent / opponentRef, ... }` ; `equipe` = équipe de NOTRE robot (absente = jaune), l'adversaire joue l'autre.
+- **Pont** (`trainer/duel_equipe.js`, chargé par `engine/env_worker.js`) : remplace `ENGINE.makeDuel` dans le worker par un duel aux équipes échangées quand le scénario est bleu (mêmes clés de rôle : « yellow » = notre robot, « blue » = l'adversaire). Notre robot : `makeSim(blueParams(params))`, briques de l'équipe converties par `realStep(., 'blue')`. L'adversaire joue le jaune : params ramenés au jaune (inverse de `blueParams`), robot à règles construit avec `team: 'yellow'`, programme enregistré remis en repère jaune, cerveau inchangé (il lit son équipe). Le moteur n'est pas modifié ; quand `ENV.create` saura jouer le bleu, le pont se supprime.
+- **Bilan d'épisode** (`step_batch`, `final`) : `equipe` = équipe lue sur le robot du moteur (`result().params.team`), pas recopiée du scénario ; `reset_batch` la renvoie aussi.
+
+### 17.2 Proportion, tirage, évaluation
+- `reglages.part_bleu` (API, atelier Cerveau « Matchs en bleu (%) », `python -m trainer.evaluation|adversaires|imitation --part-bleu`) : défaut **0,5** (`PART_BLEU_DEFAUT`), 0 = jaune seul (ancien comportement), 1 = bleu seul.
+- **Entraînement** (`ScenarioSampler.sample`) : équipe tirée par la graine du scénario (`equipe_de_graine`, reproductible).
+- **Évaluation de sélection** (`ScenarioSampler.fixed`) : équipe répartie sans tirage (`equipe_equilibree`, bleu si `floor((k+1)p) > floor(kp)`), séparément pour chaque adversaire (chacun est affronté dans les deux couleurs dès 2 matchs).
+- **Rapport** (`.eval.json`, poids web `evaluation`, onglet Évaluation) : `par_equipe` { yellow, blue } (matchs, score, taux de victoire, score adverse, erreurs), `par_adversaire[k].par_equipe`, `selection` { valeur, jaune, bleu }, `protocole.part_bleu`. **Critère du champion** = moyenne des scores moyens jaune et bleu (`critere_selection`) ; une seule couleur jouée : la moyenne de cette couleur. `.eval.json` est aussi écrit après une imitation seule.
+- Scores d'entraînement par couleur dans la progression PPO (`score_jaune`, `score_bleu`).
+
+### 17.3 Imitation
+- Chaque scénario de démonstration est joué en jaune et en bleu (jaune seul si `part_bleu` = 0). Le programme jaune est rejoué tel quel côté équipe (`imitate` : briques de l'équipe), donc en miroir réel en bleu.
+- **Démonstrations bleues** : on ne garde que celles dont aucune action cible n'est interdite par le masque ; le bilan `{ jaune, bleu_total, bleu_retenues, bleu_exclues, bleu_tronquees, decisions_bleues }` est journalisé, mis dans `info.imitation.demonstrations_equipes` / `imitation_equipes` du modèle. Option `reglages.imitation_bleu_prefixe` (hypothèse, désactivée) : garder le début d'une démonstration exclue (au moins 3 décisions). Si aucune démonstration bleue n'est retenue : message « imitation bleue impossible », le côté bleu repose sur le PPO.
+- Mesuré (catalogue 3.3) : référence et démonstrations seules : 8 bleues sur 8 retenues ; avec adversaires (4 scénarios « aucun » + 4 tirés du mélange) : **6 retenues, 2 exclues** (la référence rejouée contre un adversaire qui prend ses paquets). Intermédiaire : 12 sur 12 retenues.
+- Avec l'ancien catalogue 3.2 (nacelles à 90°), la référence rejouée en bleu n'était pas imitable (cible invalide dès l'action 11).
+
+### 17.4 Adversaires réseau
+`python -m trainer.adversaires --robot <id> [--part-bleu p]` (API : `part_bleu` dans le corps du POST) : démonstrations, PPO et évaluation de sélection dans les deux couleurs. Essai (intermédiaire, 40 s de PPO, 6 matchs d'évaluation) : 79 pts jaune, 79 pts bleu, 12 démonstrations bleues sur 12 retenues. Le champion (116 pts d'esquisse) n'est pas réentraîné ici (décision de l'équipe, §14.3).
+
+### 17.5 Mesures (cette machine, 4 cœurs ; obs/catalogue 3.3 ; 48 matchs de mesure, graines 1000-1047, 8 par adversaire et par couleur)
+Entraînement : imitation 200 époques (lots de 4, lr 2e-3, 4 + 4 scénarios) ; PPO : mélange 1/3 seul, 1/3 Bâtisseur, 1/3 Razzia, lr 1e-4, 1579 s dont évaluations (150 mises à jour, 38 400 transitions, évaluation de sélection de 24 matchs tous les 10), champion sur le critère jaune/bleu. Nous · (adversaire).
+
+| Modèle | seul J / B | Bâtisseur J / B | Razzia J / B | moyenne J / B |
+|---|---|---|---|---|
+| imitation jaune seul, moteur actuel (sans le correctif ci-dessous) | 122 / 122 | 117,6 / 99,2 (93,5 / 78,0) | 97,4 / 16,0 (105,5 / 17,2) | 112,3 / 79,1 |
+| imitation jaune seul, avec le correctif | 122 / 122 | 117,6 / 116,6 | 89,0 / 99,1 | 109,5 / 112,6 |
+| imitation deux couleurs, avec le correctif | 122 / 122 | 117,6 / 116,6 | 82,1 / 101,0 | 107,2 / 113,2 |
+| imitation + PPO deux couleurs, avec le correctif | 122 / 122 | 117,6 / 109,5 (93,5 / 92,8) | 94,9 / 100,6 (105,5 / 106,0) | 111,5 / 110,7 |
+
+Référence de la demande (catalogue 3.2, imitation jaune seul) : 122 / 32. Avec le catalogue 3.3 (rotation −90°), ce même protocole donne 122 / 122 seul. Écarts de 8 matchs par case : ± 10 à 30 pts ; les différences entre les trois lignes « avec le correctif » ne sont pas significatives.
+
+### 17.6 Évolution moteur nécessaire (non faite : `engine/env.js` n'est pas à ce chantier)
+- **Bloquant en bleu contre un adversaire** : `engine/env.js` appelle `updateMemory(mem, sim, t0, t1, brick, info)` avec la brique de l'ÉQUIPE (`doAction`, `imitate`), alors que `mem.echecs` (comparé par le masque à des briques réelles, `actions.js`, `sameStep`) et `mem.paquets` (ids réels, `brick.p` / `brick.s`) attendent la brique RÉELLE (comme le fait `brainAgent` : `ACTIONS.realStep(brickOwn, b.team)`). Conséquence mesurée : en bleu, une prise refusée (paquet pris par l'adversaire) n'est pas masquée à l'instant suivant : boucle d'actions identiques sans temps qui passe, 146 erreurs par match, épisode tronqué. Même réseau, bleu contre Razzia : **16 pts / 146 erreurs, puis 102 pts / 2 erreurs** avec `updateMemory(..., ACTIONS.realStep(brick, sim.params().team), ...)` aux deux appels (lignes `doAction` et `imitate`). Proposé sur la branche `chantier/deux-cotes-env` (un commit, `engine/env.js` seul) pour être repris par le chantier actions-env.
+- **Équipe native** : `ENV.create` / `makeDuel` avec une équipe du joueur (option `equipe`), pour supprimer `trainer/duel_equipe.js` ; `opponentSetup` devrait produire des params et des programmes dans le repère de l'adversaire (aujourd'hui toujours bleu).
+- `ACTIONS.realStep(., 'blue')` n'est plus strictement involutive (le champ `r: ±90` devient explicite après deux passes), sans effet de jeu.
+
+### 17.7 Hypothèses et points ouverts
+- Hypothèses : `part_bleu` 0,5 (décision de l'équipe) ; mélange de mesure 1/3 seul, 1/3 Bâtisseur, 1/3 Razzia ; imitation toujours dans les deux couleurs quand 0 < `part_bleu` < 1 ; début des démonstrations exclues non gardé par défaut ; décalage d'un match par adversaire dans la répartition d'évaluation.
+- Le simulateur embarqué (`tests/test_embarque_e2e.py`) ne joue pas le bleu par scénario : son échantillonneur est en jaune seul (`part_bleu=0`).
+- La neuroévolution (MLP) reçoit l'équipe tirée par la graine, mais n'utilise pas le mélange.
+- PPO court (38 400 transitions) : pas d'amélioration mesurable au-delà de l'imitation ; un entraînement plus long (`BUDGETS` des adversaires : 200 000 transitions) n'a pas été fait ici.
+- Entre 8 matchs par case, l'écart-type de Razzia en jaune (± 23 à 33) cache les différences entre modèles ; la sélection (24 matchs) est bruitée : augmenter `eval_matchs`.
