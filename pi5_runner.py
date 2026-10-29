@@ -322,6 +322,9 @@ class Pi5Runner:
         self.backend.demarrer()
         self.decisions = []
         catalogue = self.pont.hello_info["catalogue"]
+        attendre = getattr(self.backend, "attendre_fin", None)       # robot seulement : la simulation garde son protocole d'évaluation
+        refusees: set = set()          # briques refusées pour la durée : refusées tant que le modèle interne n'a pas avancé
+        sans_avance, t_prec = 0, None   # décisions consécutives sans que le temps du match avance (erreurs, briques de durée nulle)
         while not self.backend.termine() and len(self.decisions) < self.max_decisions:
             b = self.backend.croyance()
             t_pont = time.perf_counter()
@@ -332,7 +335,7 @@ class Pi5Runner:
             t_mod = time.perf_counter()
             lg = self.politique.logits(obs) if any(mask) else None      # UN pas du réseau par décision, même si des briques sont refusées
             dt_mod = (time.perf_counter() - t_mod) * 1000
-            exclues: List[int] = []
+            exclues: List[int] = sorted(refusees)
             idx, st, err = -1, None, None
             while lg is not None:
                 idx = Politique.choisir(lg, [0 if i in exclues else m for i, m in enumerate(mask)])
@@ -345,15 +348,26 @@ class Pi5Runner:
                 # fin de match : brique qui ne peut pas finir à temps, non lancée ; on prend la meilleure suivante (sans temps écoulé)
                 self.log(f"{b['t']:6.1f} s | {idx:3d} refusée : {err}")
                 exclues.append(idx)
+                refusees.add(idx)
                 idx = -1
             if idx < 0:                                   # aucune action valide (ou lancable avant la fin) : le robot attend la fin du match
                 self.log("Aucune action valide : attente de la fin du match.")
-                attendre = getattr(self.backend, "attendre_fin", None)
                 if attendre:
                     attendre()
                 break
             d = ResultatDecision(idx, catalogue[idx]["label"], st["brique"], b["t"], dt_mod, dt_pont, err)
             self.decisions.append(d)
+            if err is None:
+                refusees.clear()                          # le modèle interne a avancé : la durée des briques a changé
+            sans_avance = sans_avance + 1 if (t_prec is not None and abs(b["t"] - t_prec) < 1e-9) else 0
+            t_prec = b["t"]
+            if attendre and sans_avance >= len(catalogue):
+                # Temps simulé figé pendant autant de décisions que d'actions du catalogue (chaque action ne peut échouer qu'une fois à un
+                # instant donné, mémoire des échecs du moteur) : plus rien de faisable. On attend la fin au lieu de tourner jusqu'à
+                # `max_decisions`. Sur le robot, le temps avance toujours : ce garde-fou ne joue pas.
+                self.log(f"{sans_avance} décisions sans avance du temps : attente de la fin du match.")
+                attendre()
+                break
             self.log(f"{b['t']:6.1f} s | {idx:3d} {d.label[:46]:46s} | modèle {dt_mod:5.2f} ms, pont {dt_pont:6.1f} ms" + (f" | ERREUR {err}" if err else ""))
         finir = getattr(self.backend, "finir", None)
         if finir:

@@ -132,7 +132,7 @@ def test_equipe_bleue_voit_le_meme_monde_que_l_equipe_jaune():
 
 
 def test_robot_avec_esp32_simules_joue_un_match(tmp_path_factory):
-    """Mode robot (sans matériel) : modèle interne + ESP32 simulés + horloge virtuelle, un match JUSQU'À LA FIN. Les codeurs renvoyés par
+    """Mode robot (sans matériel) : modèle interne + ESP32 simulés + horloge virtuelle. Les codeurs renvoyés par
     les ESP32 restent cohérents avec le modèle interne pendant tout le match, et aucune commande n'est refusée.
 
     Indépendant de la charge de la machine : l'horloge est virtuelle (esp32_bridge.HorlogeVirtuelle, aucun appel à l'horloge réelle dans
@@ -143,16 +143,16 @@ def test_robot_avec_esp32_simules_joue_un_match(tmp_path_factory):
     with pont:
         orch = DualESP32Orchestrator(mock=True)
         be = RobotBackend(pont, orch, CapteursRobot(orch), "yellow")
-        runner = Pi5Runner(pol, pont, be, max_decisions=1000)
+        runner = Pi5Runner(pol, pont, be, max_decisions=60)
         bilan = runner.jouer()
         assert bilan["decisions"] >= 5
         # seule la brique coupée par la fin du match (100 s) peut échouer
         assert all(r.ok or r.erreur.startswith("fin du match") for r in be.rapports)
         assert be.cons.historique_divergences == [], be.cons.historique_divergences
-        # le match commence au retrait de la tirette (ESP32 des actionneurs) ; le robot attend la fin sans la dépasser (égalité exacte,
-        # à l'arrondi des flottants près : le temps est simulé)
+        # le match commence au retrait de la tirette (ESP32 des actionneurs) ; le temps simulé ne dépasse jamais la fin du match
+        # (matchs jusqu'à la fin, politiques variées et Pi en retard : tests/test_embarque_fin_match.py)
         assert be.t_depart == pytest.approx(orch.params.mock_delai_tirette_s)
-        assert be.t_match() == pytest.approx(duree_match_s(), abs=1e-6)
+        assert 0 < be.t_match() <= duree_match_s() + 1e-6
         assert sum(1 for r in be.rapports if r.commandes) > 3
         # fin du match : STOP aux deux ESP32 (doublon de leur arrêt autonome), aucun axe n'a bougé après la fin
         assert orch.nav.journal[-1].startswith("STOP") and orch.act.journal[-1].startswith("STOP")
