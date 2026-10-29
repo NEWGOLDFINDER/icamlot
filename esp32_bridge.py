@@ -77,7 +77,7 @@ class ParamsESP32:
     marge_arret_esp32_s: float = 0.2
     # Marge (s) du Pi : plus aucune commande envoyée aux ESP32 après `durée - marge_fin_s`, et aucune brique lancée si elle ne peut pas
     # finir avant `durée - marge_fin_s` (durée du plan du moteur). Au moins la marge d'arrêt autonome (vérifié à la construction) : un Pi
-    # en bonne santé n'envoie jamais un ordre que l'arrêt autonome couperait. 0,5 s = 2,5 fois la marge d'arrêt ; à remesurer sur le Pi 5
+    # en bonne santé n'envoie jamais un ordre que l'arrêt autonome couperait. 0,5 s = 2,5 fois la marge d'arrêt, de l'ordre d'un cycle de décision (pont Node mesuré à 25-150 ms sur PC) ; à remesurer sur le Pi 5
     # (docs/PROTOCOLE_ESP32.md §9).
     marge_fin_s: float = 0.5
     # Essais de `START` à NAV (sans accusé, on réessaie avec un âge recalculé) avant de continuer sans arrêt autonome de NAV.
