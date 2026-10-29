@@ -387,7 +387,7 @@ Les états tirés au hasard ne sont pas les mêmes avant et après (catalogue de
 ### 17.3 Imitation
 - Chaque scénario de démonstration est joué en jaune et en bleu (jaune seul si `part_bleu` = 0). Le programme jaune est rejoué tel quel côté équipe (`imitate` : briques de l'équipe), donc en miroir réel en bleu.
 - **Démonstrations bleues** : on ne garde que celles dont aucune action cible n'est interdite par le masque ; le bilan `{ jaune, bleu_total, bleu_retenues, bleu_exclues, bleu_tronquees, decisions_bleues }` est journalisé, mis dans `info.imitation.demonstrations_equipes` / `imitation_equipes` du modèle. Option `reglages.imitation_bleu_prefixe` (hypothèse, désactivée) : garder le début d'une démonstration exclue (au moins 3 décisions). Si aucune démonstration bleue n'est retenue : message « imitation bleue impossible », le côté bleu repose sur le PPO.
-- Mesuré (catalogue 3.3) : référence et démonstrations seules : 8 bleues sur 8 retenues ; avec adversaires (4 scénarios « aucun » + 4 tirés du mélange) : **6 retenues, 2 exclues** (la référence rejouée contre un adversaire qui prend ses paquets). Intermédiaire : 12 sur 12 retenues.
+- Mesuré (catalogue 3.3, programme de référence, 4 scénarios « aucun » + 4 tirés du mélange seul / Bâtisseur / Razzia) : **6 démonstrations bleues retenues, 2 exclues** (cause non analysée : probablement un adversaire qui prend des paquets de la référence, à vérifier). Intermédiaire : 12 sur 12 retenues.
 - Avec l'ancien catalogue 3.2 (nacelles à 90°), la référence rejouée en bleu n'était pas imitable (cible invalide dès l'action 11).
 
 ### 17.4 Adversaires réseau
