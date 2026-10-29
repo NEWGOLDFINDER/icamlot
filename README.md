@@ -1,163 +1,125 @@
-# ICAM LOT — Robot Autonome Eurobot 2027
+# ICAM LOT — robot Eurobot 2027
 
-[![Python](https://img.shields.io/badge/Python-3.9%2B-blue.svg)](https://www.python.org/)
-[![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-EE4C2C.svg)](https://pytorch.org/)
-[![ONNX Runtime](https://img.shields.io/badge/ONNX%20Runtime-CPU%20%7C%20ARM64-005CED.svg)](https://onnxruntime.ai/)
-[![Eurobot](https://img.shields.io/badge/Eurobot-2027-F2A900.svg)](https://www.eurobot.org/)
+Dépôt du robot de l'équipe ICAM LOT pour Eurobot 2027 : moteur de simulation de référence, entraînement d'un réseau de
+décision (apprentissage par renforcement récurrent et imitation), adversaires, site de simulation et d'entraînement, et
+exécution sur Raspberry Pi 5 avec deux ESP32.
 
-Projet officiel **ICAM LOT** pour la coupe **Eurobot 2027** : système robotique autonome combinant simulation cinématique GPU temps-réel, intelligence artificielle par apprentissage par renforcement profond (**PPO récurrent**), anticipation spatio-temporelle et architecture matérielle distribuée (**Raspberry Pi 5 + Dual ESP32**).
+Règle de travail : ne rien inventer. Chaque valeur vient de `spec/*.json` (règlement et robot, avec leur source) ou
+devient un paramètre nommé, documenté comme hypothèse. Voir `CLAUDE.md`.
 
----
+## Architecture
 
-## Table des Matières
+| Partie | Fichiers | Rôle |
+|---|---|---|
+| Règlement et robot | `spec/regles_2027.json`, `spec/robot.json` → `spec/spec.js` (généré par `tools/gen_spec.js`) | Valeurs du règlement et du robot, chacune avec sa source. |
+| Moteur de référence (JS) | `engine/engine.js`, `score.js`, `geom.js`, `actions.js`, `env.js`, `env_worker.js`, `load.js` | Cinématique, barème 2027, catalogue d'actions, environnement pas à pas (observation et masque). Seul juge des résultats. |
+| Robots adverses | `engine/adversaires.js` | Bâtisseur et Razzia (robots à règles) ; Champion et Intermédiaire (réseaux figés, `.data/adversaires/`). |
+| Entraînement | `trainer/` | PPO récurrent avec démarrage à chaud par imitation, évaluation, export ONNX et web. Les environnements tournent en pool de processus Node (`trainer/js_env_pool.py`) ; le GPU ne sert qu'au réseau. |
+| API et site | `api/server.py`, `index.html`, `plateau/`, `cerveau/`, `connexion/`, `point-counter/` | Simulateur (`/plateau/`), Atelier Cerveau (`/cerveau/`), API REST (`/api/`). |
+| Raspberry Pi 5 + 2 ESP32 | `pi5_runner.py`, `esp32_bridge.py`, `lidar_tracker.py`, `embarque/`, `docs/PROTOCOLE_ESP32.md` | Runner ONNX (refuse un modèle incompatible avec le moteur), pilotage NAV (base roulante) et ACT (actionneurs). |
 
-- [1. Architecture Matérielle & Robotique](#1-architecture-matérielle--robotique)
-- [2. Cerveau IA V2 (Réseau de Neurones Factorisé)](#2-cerveau-ia-v2-réseau-de-neurones-factorisé)
-- [3. Anticipation Spatio-Temporelle](#3-anticipation-spatio-temporelle)
-- [4. Résultats du Benchmark Officiel (100 Matchs)](#4-résultats-du-benchmark-officiel-100-matchs)
-- [5. Démarrage Rapide & Commandes](#5-démarrage-rapide--commandes)
-- [6. Structure du Projet](#6-structure-du-projet)
+Le réseau (`trainer/models.py`) : encodeur MLP avec LayerNorm, cellule GRU, tête d'action à logits masqués et critique.
+Une seule tête de politique (`docs/CONTRATS.md` §5).
 
----
+Versions mesurées avec le moteur actuel (`JsEnvPool`) : observation `icamlot-obs-3.3` (86 entrées), catalogue
+`icamlot-catalogue-3.3` (157 actions), moteur 2.0.0, barème 2027-1.0.
 
-## 1. Architecture Matérielle & Robotique
+## Commandes
 
-Le robot est architecturé autour d'une répartition claire des rôles pour garantir réactivité temps-réel dur et puissance de calcul :
+Prérequis : Node.js ≥ 18 ; Python 3 avec `numpy` et `torch` (entraînement) ; `onnx` et `onnxruntime` (export et runner).
+Les commandes se lancent depuis la racine du dépôt.
 
-```
-                        ┌──────────────────────────────────────────────────────────┐
-                        │             Raspberry Pi 5 (8 Go, Cortex-A76)            │
-                        │  - Cerveau IA ONNX Runtime (Inférence en 48 µs)          │
-                        │  - Filtre de Kalman 2D (Tracking Lidar adverse)          │
-                        │  - Orchestrateur Dual ESP32 en Temps Masqué              │
-                        └───────────────┬──────────────────────────┬───────────────┘
-                                        │ UART 1 (/dev/ttyUSB_NAV) │ UART 2 (/dev/ttyUSB_ACT)
-                                        ▼                          ▼
-               ┌───────────────────────────────────┐    ┌───────────────────────────────────┐
-               │         ESP32 #1 : Navigation     │    │       ESP32 #2 : Actionneurs      │
-               │  - Asservissement différentiel/holo│    │  - Pince pneumatique Face A (vide)│
-               │  - Odométrie roues codeuses       │    │  - Pince pneumatique Face B (vide)│
-               │  - Détection anti-patinage        │    │  - Pince Graal & Ascenseur        │
-               │  - Évitement d'urgence Lidar      │    │  - Canon à boulets                │
-               └───────────────────────────────────┘    └───────────────────────────────────┘
-```
+### Tests
 
-### Pipelining en Temps Masqué (Dual ESP32)
-Grâce au module [`esp32_bridge.py`](esp32_bridge.py), la Raspberry Pi 5 pilote simultanément les deux ESP32 :
-- L'ESP32 Navigation initie le déplacement vers la cible ($P_1..P_{10}$, zone de muraille ou salle du trône).
-- **En temps masqué**, l'ESP32 Actionneurs pré-oriente la pince (Face A ou B), arme le vide pneumatique et règle la hauteur avant l'arrêt complet du châssis.
-- **Gain mesuré sur un match de 100 secondes** : **+37,11 secondes** épargnées par rapport à une exécution séquentielle, permettant d'exécuter l'intégralité des 105 points du barème.
-
----
-
-## 2. Cerveau IA V2 (Réseau de Neurones Factorisé)
-
-Pour dépasser les limites des architectures MLP classiques et exploiter pleinement les capacités du Raspberry Pi 5, le réseau V2 intègre :
-- **Encodeur Multi-Branches Spécialisé (`FactorizedEncoder`)** :
-  1. *Branche Géométrique* ($6 \to 32$ neurones) : pose du robot ($x, y, \cos\theta, \sin\theta$) et coordonnées Lidar de l'adversaire.
-  2. *Branche Terrain & Châteaux* ($23 \to 64$ neurones) : état des 10 paquets, murs $M_1..M_5$, tours $T_1..T_4$ et statut du Graal.
-  3. *Branche Mécanique & Horloge* ($8 \to 32$ neurones) : temps restant normalisé, charges des pinces A et B, tir des boulets.
-  4. *Fusion* : projection $128 \to 128$ avec `LayerNorm` et activation `SiLU` (Swish).
-- **Mémoire Récurrente Temporelle (`nn.GRUCell(128, 128)`)** : capture les dynamiques d'évitement adverse et mémorise l'historique du match.
-- **Têtes Acteur et Critique avec Connexions Résiduelles (`ResNet`)** :
-  - Tête Acteur : résidu dense $128 \to 128 \to 106$ logits d'actions Eurobot.
-  - Tête Critique : résidu dense $128 \to 128 \to 1$ valeur d'état $V(s)$.
-- **Poids totaux** : **164 715 paramètres** (exporté en `.data/weights/best_brain_pi5.onnx`, 53 Ko).
-
----
-
-## 3. Anticipation Spatio-Temporelle
-
-Deux mécanismes géométriques et temporels garantissent l'absence absolue de fautes :
-1. **Évitement Strict des Caisses ($> 235\text{ mm}$)** :
-   - Chaque trajectoire candidate $[A \to B]$ est projetée orthogonalement contre les coordonnées des caisses actives.
-   - Si la distance minimale d'approche passe sous le rayon de sécurité de $235\text{ mm}$, l'action est **strictement masquée**.
-2. **Couloir de Retour au Trône & Budget Boulets** :
-   - L'algorithme vérifie en permanence que le corridor direct depuis la cible finale vers le trône ($x = 250, y = 1000\text{ mm}$) reste dégagé d'obstacles.
-   - Le budget temps réserve systématiquement le temps de déplacement vers le trône plus le tir des boulets ($6,1\text{ s}$) avant la sirène des $100\text{ s}$.
-
----
-
-## 4. Résultats du Benchmark Officiel (100 Matchs)
-
-Les confrontations multi-matchs ont été exécutées avec le simulateur cinématique complet (`skipContacts: false`) :
-
-| Scénario Opposé | Matchs | Victoires V2 | Égalités | Défaites | Score Moyen V2 | Score Adverse | Collisions V2 | Overlap Robots |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Self-Play (V2 Jaune vs V2 Bleu)** | 20 | **100.0%** | 0.0% | 0.0% | **105.0 ± 0.0** | 34.0 ± 4.4 | **0** | **0** |
-| **vs Adversaire Réaliste** | 20 | **100.0%** | 0.0% | 0.0% | **70.7 ± 7.4** | 54.0 ± 0.0 | **0** | **0** |
-| **vs Adversaire Faible (70% vitesse)**| 20 | **100.0%** | 0.0% | 0.0% | **70.5 ± 7.0** | 54.0 ± 0.0 | **0** | **0** |
-| **vs Adversaire Agressif (120% vit.)**| 20 | 0.0% | 0.0% | 100.0% | 8.0 ± 0.0 | 62.0 ± 0.0 | **0** | **0** |
-| **vs Baseline V1 (64-dim, 42k)** | 20 | **30.0%** | 0.0% | 70.0% | 27.6 ± 33.6 | 53.3 ± 24.0 | **0** | **0** |
-
-### Benchmark Inférence CPU / Raspberry Pi 5 (5 000 itérations ONNX Runtime)
-- **Latence Médiane (P50)** : **$47,9\text{ µs}$** ($0,048\text{ ms}$)
-- **Latence 99e percentile (P99)** : **$81,0\text{ µs}$** ($0,081\text{ ms}$)
-- **Débit** : **$19\ 957\text{ décisions / seconde}$**
-- **Marge de sécurité temps-réel (< 5 ms)** : **$99,8\times$ plus rapide** que le cycle requis.
-
----
-
-## 5. Démarrage Rapide & Commandes
-
-### A. Dépendances Légères (Raspberry Pi 5)
-Sur le robot, aucune dépendance PyTorch lourde n'est requise :
 ```bash
-pip install onnxruntime numpy pyserial
+python -m pytest -q                  # tests Python (tests/ et trainer/)
+python -m pytest -q -m "not lent"    # sans les tests qui jouent des matchs
+node tests/test_moteur.js            # moteur
+node tests/test_engine.js            # environnement et actions
+node tests/test_adversaires.js       # robots adverses
 ```
 
-### B. Lancer le Benchmark Complet
+### Entraînement
+
 ```bash
-python benchmark_duels.py --matches 20 --inf-runs 5000
+# Démarrage à chaud par imitation du programme d'exemple
+python -m trainer.imitation --exemple --epoques 200 --sortie .data/modeles/imitation
+
+# PPO récurrent, avec imitation préalable, adversaire = stratégie enregistrée
+python -m trainer.ppo_trainer --imitation-exemple --processus 4 --envs-par-processus 4 --rollout 32 \
+    --mises-a-jour 500 --intensites aucun realiste --strategie .data/strategies/ma-strategie.json \
+    --eval-matchs 200 --eval-tous-les 50 --sortie .data/modeles/ppo
+
+# Reprise (poids, optimiseur, statistiques de normalisation)
+python -m trainer.ppo_trainer --reprendre .data/modeles/ppo.dernier.pt --mises-a-jour 200 --sortie .data/modeles/ppo
+
+# Robot adverse réseau figé (écrit .data/adversaires/<id>.json)
+python -m trainer.adversaires --robot champion
 ```
 
-### C. Exécuter un Match avec Pilotage Dual ESP32 (Temps Masqué)
+Sorties d'une session `<B>` : `<B>.dernier.pt` (reprise), `<B>.pt` (champion, selon l'évaluation JS), puis
+`<B>.onnx`, `<B>.meta.json`, `<B>.json` et `<B>.eval.json` (exports). Détail : `trainer/README.md`.
+
+### Évaluation et duels
+
 ```bash
-python pi5_runner.py --esp32 --mock-esp
+# Évaluation dans le moteur JS (moyenne ± écart-type, victoires, erreurs moteur)
+python -m trainer.evaluation --modele .data/modeles/ppo.pt --matchs 200 --intensites realiste \
+    --strategie .data/strategies/ma-strategie.json
+
+# Duels par adversaire et par couleur (modèle .onnx ou .pt, robots à règles, stratégies, cerveaux)
+python benchmark_duels.py --modele .data/modeles/ppo.onnx --matchs 40 --robots batisseur razzia \
+    --rapport .data/benchmarks/ppo.md
+
+# Export ONNX, meta et JSON web d'un point de sauvegarde
+python -m trainer.export_onnx --modele .data/modeles/ppo.pt
+
+# Débit du moteur selon le nombre de processus
+python -m trainer.debit --processus 1 2 4 6 8
 ```
 
-### D. Lancer le Serveur Web & Trainer Local
+### Raspberry Pi 5
+
 ```bash
-python api/server.py --port 8081 --static .
-```
-Accédez ensuite à l'interface sur `http://localhost:8081/`.
+# Capteurs simulés par le moteur JS, un match
+python pi5_runner.py --modele .data/modeles/ppo.onnx --simulation --matchs 1 --intensite realiste
 
-### E. Entraîner un Nouveau Cerveau sur PC GPU
+# Capteurs et ESP32 simulés (horloge virtuelle)
+python pi5_runner.py --modele .data/modeles/ppo.onnx --robot --mock-esp
+
+# Latence du modèle seul sur cette machine
+python pi5_runner.py --modele .data/modeles/ppo.onnx --benchmark
+```
+
+Le mode `--robot` sans `--mock-esp` utilise les ports `--nav-port` et `--act-port` (protocole : `docs/PROTOCOLE_ESP32.md`).
+
+### API et site
+
 ```bash
-python trainer/ppo_trainer.py --steps 100000 --batch-size 256 --rollout-len 32
+ICAMLOT_PASSWORD=test python3 api/server.py --port 8081 --static . --data .data/strategies
 ```
 
----
+Puis ouvrir `http://127.0.0.1:8081/`. Sans `ICAMLOT_PASSWORD`, le simulateur est ouvert à tous (avertissement au démarrage).
 
-## 6. Structure du Projet
+### Déploiement
 
-```
-icamlot/
-├── .data/
-│   ├── brains/              # Définitions JSON des cerveaux
-│   └── weights/             # Poids pré-entraînés (best_brain_pi5.onnx, ppo_best.pt)
-├── api/
-│   └── server.py            # Serveur API REST et serveur web local
-├── engine/
-│   ├── actions.js           # Catalogue des 106 actions et masquage légal
-│   ├── duel_bridge.js       # Pont cinématique Node.js pour duels multi-robots
-│   ├── engine.js            # Moteur cinématique Eurobot 2027 officiel
-│   ├── env.js               # Environnement pas-à-pas et miroir équipe Bleu
-│   └── score.js             # Barème et calcul officiel des points
-├── trainer/
-│   ├── models.py            # Architecture FactorizedEncoder + GRU + ResNet Actor-Critic
-│   ├── ppo_trainer.py       # Algorithme PPO vectorisé avec warm-start imitation
-│   ├── torch_engine.py      # Moteur vectorisé 100% PyTorch GPU (>119k steps/s)
-│   └── export_onnx.py       # Exporteur et validateur ONNX pour Raspberry Pi 5
-├── benchmark_duels.py       # Banc de test multi-scénarios (100 matchs)
-├── BENCHMARK_REPORT.md      # Rapport officiel des résultats de benchmark
-├── esp32_bridge.py          # Orchestrateur Dual ESP32 en temps masqué
-├── lidar_tracker.py         # Filtre de Kalman 2D pour lidar adverse
-├── pi5_runner.py            # Moteur d'inférence autonome Raspberry Pi 5
-└── index.html               # Interface graphique interactive
-```
+Nginx, tunnel Cloudflare, installation et mise à jour du site : voir `deploy/README.md`.
 
----
+## Documents de référence
 
-## Licence & Équipe
-Projet développé pour la coupe de France de Robotique / Eurobot 2027 par l'équipe **ICAM LOT**.
+- `docs/CONTRATS.md` : interfaces entre chantiers, répartition des fichiers (§0), modèle (§5), adversaires (§14), deux couleurs (§17), fin de match (§18).
+- `docs/PROTOCOLE_ESP32.md` : protocole Raspberry Pi 5 ↔ ESP32 (statut proposé, à valider par l'équipe).
+- `docs/RECETTE.md` : procédure de recette sur le site.
+- `trainer/README.md` : entraîneur, modules, commandes, hypothèses nommées.
+- `trainer/FORMAT_MODELE.md` : format des poids pour le web.
+- `deploy/README.md` : déploiement du site.
+- `AUDIT_SIMULATEUR_IA.md` : constats de l'audit et plan de remise en état.
+- `BENCHMARK_REPORT.md` : historique de l'ancien moteur, à ne pas citer comme résultat actuel.
+
+## Limites connues
+
+- Aucun cerveau entraîné n'est versionné pour le moteur actuel. `.data/modeles/fumee.*` est un test de fumée : il est refusé
+  par `benchmark_duels.py` et `pi5_runner.py` (version d'observation différente).
+- Les anciens fichiers (`.data/legacy/`) sont incompatibles avec le moteur actuel (`.data/legacy/README.md`).
+- Les adversaires Champion et Intermédiaire ne sont pas versionnés : ils se réentraînent avec `trainer.adversaires`.
+- La latence sur Raspberry Pi 5 reste à mesurer sur la carte (`pi5_runner.py --benchmark`).
