@@ -9,6 +9,7 @@ Même pipeline que notre robot (catalogue, observation, trainer/) :
 - imitation d'un programme de démonstration (ADVERSAIRES.programmeDemo : la référence pour le champion, 3 murs + Graal + tir
   pour l'intermédiaire ; attentes courtes avant le tir ajustées à la vitesse tirée), puis PPO ;
 - adversaires pendant son entraînement : 50 % seul sur la table, 50 % programme de référence en miroir (hypothèse) ;
+- deux couleurs (contrat §17) : démonstrations, PPO et évaluation de sélection en jaune ET en bleu (--part-bleu, défaut 50 %) ;
 - sélection sur l'évaluation dans le moteur JS.
 Sortie : .data/adversaires/<modele>.json (JSON web « icamlot-modele-recurrent », chargé par engine/env_worker.js et le
 plateau) et .data/adversaires/<modele>.entrainement.json (réglages, durée mesurée, évaluation). L'API lance la même commande
@@ -30,6 +31,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from trainer.js_env_pool import JsEnvPool, default_procs  # noqa: E402
+from trainer.scenarios import PART_BLEU_DEFAUT  # noqa: E402
 
 DOSSIER = ROOT / ".data" / "adversaires"
 # Budgets par défaut (hypothèses, réglables) : (durée max s, transitions PPO, époques d'imitation, matchs d'évaluation)
@@ -46,7 +48,8 @@ MAX_DECISIONS = 150
 MELANGE_ENTRAINEMENT = {"aucun": 0.5, "reference": 0.5}
 
 
-def config_robot(robot: str, n_procs: int, duree: float, transitions: int, epoques: int, eval_matchs: int, graine: int) -> dict:
+def config_robot(robot: str, n_procs: int, duree: float, transitions: int, epoques: int, eval_matchs: int, graine: int,
+                 part_bleu: float = PART_BLEU_DEFAUT) -> dict:
     with JsEnvPool(1, 1, {"skipContacts": True}) as pool:
         info = pool.procs[0].call({"cmd": "adversaire_cfg", "robot": robot}, 60)
     if info.get("error"):
@@ -58,6 +61,7 @@ def config_robot(robot: str, n_procs: int, duree: float, transitions: int, epoqu
         "adversaire": {"melange": MELANGE_ENTRAINEMENT},
         "reglages": {
             "mode": "rapide", "processus": n_procs, "graine": graine, "duree_max": duree, "ppo_steps": transitions,
+            "part_bleu": part_bleu,
             "pretrain_imitation": True, "imitation_exemple": False, "epoques": epoques, "imitation_scenarios": BUDGETS[robot]["imitation_scenarios"],
             "eval_apres_imitation": True, "eval_tous_les": BUDGETS[robot]["eval_tous_les"], "ppo_lr": BUDGETS[robot]["ppo_lr"],
             "eval_matchs": eval_matchs, "ppo_batch_size": 2 * n_procs, "hidden": 128,
@@ -68,12 +72,12 @@ def config_robot(robot: str, n_procs: int, duree: float, transitions: int, epoqu
 
 
 def entrainer(robot: str, n_procs: int = 0, duree: float = None, transitions: int = None, epoques: int = None,
-              eval_matchs: int = None, graine: int = 1, dossier: Path = DOSSIER) -> dict:
+              eval_matchs: int = None, graine: int = 1, dossier: Path = DOSSIER, part_bleu: float = PART_BLEU_DEFAUT) -> dict:
     from trainer import trainer as T
     b = BUDGETS[robot]
     n_procs = n_procs or default_procs()
     cfg = config_robot(robot, n_procs, duree if duree is not None else b["duree"], transitions or b["transitions"],
-                       epoques or b["epoques"], eval_matchs if eval_matchs is not None else b["eval"], graine)
+                       epoques or b["epoques"], eval_matchs if eval_matchs is not None else b["eval"], graine, part_bleu)
     modele = cfg["_profil"]["modele"]
     work = dossier / "entrainement"
     work.mkdir(parents=True, exist_ok=True)
@@ -109,9 +113,10 @@ def main(argv=None):
     ap.add_argument("--epoques", type=int, help="époques d'imitation")
     ap.add_argument("--eval", type=int, help="matchs de l'évaluation de sélection")
     ap.add_argument("--graine", type=int, default=1)
+    ap.add_argument("--part-bleu", type=float, default=PART_BLEU_DEFAUT, help="proportion de matchs joués en bleu (0 = jaune seul)")
     ap.add_argument("--dossier", default=str(DOSSIER))
     a = ap.parse_args(argv)
-    b = entrainer(a.robot, a.processus, a.duree, a.transitions, a.epoques, a.eval, a.graine, Path(a.dossier))
+    b = entrainer(a.robot, a.processus, a.duree, a.transitions, a.epoques, a.eval, a.graine, Path(a.dossier), a.part_bleu)
     ev = b.get("evaluation") or {}
     print(json.dumps({"robot": b["robot"], "modele": b["modele"], "duree_s": b["duree_s"], "score": (ev.get("score") or {})}, ensure_ascii=False))
 

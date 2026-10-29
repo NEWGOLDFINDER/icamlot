@@ -35,7 +35,7 @@ def test_meme_score_que_trainer_evaluation(nom, tmp_path_factory, strategie_refe
     onnx, pt = F.modele_de_test(tmp_path_factory, nom)
     model, ck = load_checkpoint(str(pt))
     env_cfg = ck.get("env_config") or {"skipContacts": True}
-    sampler = build_sampler([strategie_reference], intensites=["aucun", "realiste"], seed=1)
+    sampler = build_sampler([strategie_reference], intensites=["aucun", "realiste"], seed=1, part_bleu=0)  # le simulateur embarqué joue en jaune
     registre = sampler.registry()
     scenarios = sampler.fixed(N_SCENARIOS, GRAINE)
     assert any("opponentRef" in s for s in scenarios) and any("opponentRef" not in s for s in scenarios)

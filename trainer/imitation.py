@@ -31,7 +31,7 @@ import torch.nn.functional as F
 
 from trainer.js_env_pool import JsEnvPool, default_procs
 from trainer.models import MASK_LOGIT, RecurrentActorCritic, RunningMeanStd, masked_logits, save_checkpoint
-from trainer.scenarios import ScenarioSampler, load_strategies
+from trainer.scenarios import BLEU, JAUNE, PART_BLEU_DEFAUT, ScenarioSampler, equipe_scenario, load_strategies, normaliser_part_bleu
 
 
 @dataclass
@@ -44,6 +44,8 @@ class Demo:
     score: float
     score0: float
     erreurs: int
+    equipe: str = JAUNE   # équipe jouée par la démonstration (scénario)
+    invalides: int = 0    # décisions dont l'action cible est interdite par le masque (asymétrie bleue, CONTRATS §15)
 
 
 def example_program(pool: JsEnvPool) -> List[dict]:
@@ -58,13 +60,15 @@ def collect_demos(pool: JsEnvPool, programmes: Sequence[dict], scenarios: Sequen
     for p in programmes:
         for sc in scenarios:
             msgs.append({"cmd": "imitate_trace", "program": p["program"], "scenario": sc})
-            noms.append(f"{p['nom']} · graine {sc.get('seed')} · {sc.get('intensite', 'aucun')}")
+            noms.append(f"{p['nom']} · graine {sc.get('seed')} · {sc.get('intensite', 'aucun')} · {'bleu' if equipe_scenario(sc) == BLEU else 'jaune'}")
     out = pool.map(msgs, timeout=timeout or max(pool.timeout, 600.0))
     demos = []
-    for nom, r in zip(noms, out):
+    for nom, r, sc in zip(noms, out, [sc for _ in programmes for sc in scenarios]):
         pairs = r.get("pairs") or []
         if not pairs:
             continue
+        acts = np.asarray([p["action"] for p in pairs], dtype=np.int64)
+        msk = np.asarray([p["mask"] for p in pairs], dtype=bool).reshape(len(pairs), pool.n_out)
         demos.append(Demo(
             nom=nom,
             obs=np.asarray([p["obs"] for p in pairs], dtype=np.float32).reshape(len(pairs), pool.n_in),
@@ -72,8 +76,53 @@ def collect_demos(pool: JsEnvPool, programmes: Sequence[dict], scenarios: Sequen
             masks=np.asarray([p["mask"] for p in pairs], dtype=bool).reshape(len(pairs), pool.n_out),
             rewards=np.asarray([p.get("reward", 0.0) for p in pairs], dtype=np.float32),
             score=float(r.get("score") or 0), score0=float(r.get("score0") or 0), erreurs=int(r.get("errors") or 0),
+            equipe=equipe_scenario(sc), invalides=int(np.count_nonzero(np.logical_not(msk[np.arange(len(acts)), acts]))),
         ))
     return demos
+
+
+def scenarios_deux_couleurs(base: Sequence[dict], part_bleu: Optional[float] = PART_BLEU_DEFAUT) -> List[dict]:
+    """Chaque scénario de base est joué dans les deux couleurs (jaune seul si part_bleu = 0, bleu seul si 1)."""
+    p = normaliser_part_bleu(part_bleu)
+    out: List[dict] = []
+    for sc in base:
+        if p < 1.0:
+            out.append(dict(sc, equipe=JAUNE))
+        if p > 0.0:
+            out.append(dict(sc, equipe=BLEU))
+    return out
+
+
+def filtrer_demos_bleues(demos: Sequence[Demo], prefixe: bool = False, prefixe_min: int = 3) -> tuple:
+    """Démonstrations utilisables. Jaune : toutes (une cible invalide est ignorée par la perte, comme avant). Bleu : le programme
+    jaune rejoué en miroir peut contenir des actions interdites par le masque bleu (asymétrie des nacelles à 90°, CONTRATS §15) ;
+    on ne garde en bleu que les démonstrations SANS cible invalide. Option `prefixe` (hypothèse, désactivée par défaut) : au lieu
+    d'exclure une démonstration bleue, on garde ses décisions avant la première cible invalide si elles sont au moins `prefixe_min`.
+    Renvoie (démonstrations retenues, bilan { jaune, bleu_total, bleu_retenues, bleu_exclues, bleu_tronquees, decisions_bleues })."""
+    kept: List[Demo] = []
+    bilan = {"jaune": 0, "bleu_total": 0, "bleu_retenues": 0, "bleu_exclues": 0, "bleu_tronquees": 0, "decisions_bleues": 0}
+    for d in demos:
+        if d.equipe != BLEU:
+            bilan["jaune"] += 1
+            kept.append(d)
+            continue
+        bilan["bleu_total"] += 1
+        if d.invalides == 0:
+            bilan["bleu_retenues"] += 1
+            bilan["decisions_bleues"] += len(d.actions)
+            kept.append(d)
+            continue
+        if prefixe:
+            ok = d.masks[np.arange(len(d.actions)), d.actions]
+            k = int(np.argmin(ok)) if not ok.all() else len(ok)   # première cible invalide
+            if k >= prefixe_min:
+                kept.append(Demo(nom=d.nom + f" · {k} premières décisions", obs=d.obs[:k], actions=d.actions[:k], masks=d.masks[:k],
+                                 rewards=d.rewards[:k], score=d.score, score0=d.score0, erreurs=d.erreurs, equipe=BLEU, invalides=0))
+                bilan["bleu_tronquees"] += 1
+                bilan["decisions_bleues"] += k
+                continue
+        bilan["bleu_exclues"] += 1
+    return kept, bilan
 
 
 def discounted_returns(rewards: np.ndarray, gamma: float) -> np.ndarray:
@@ -189,6 +238,9 @@ def main(argv=None):
     ap.add_argument("--strategies", help="dossier de stratégies (camelot-strategie) à imiter")
     ap.add_argument("--scenarios", type=int, default=4, help="nombre de graines par programme")
     ap.add_argument("--intensites", nargs="+", default=["aucun"])
+    ap.add_argument("--part-bleu", type=float, default=PART_BLEU_DEFAUT,
+                    help="0 : démonstrations jaunes seules ; entre 0 et 1 : chaque scénario dans les deux couleurs ; 1 : bleu seul")
+    ap.add_argument("--prefixe-bleu", action="store_true", help="démonstrations bleues : garder les décisions avant la première cible invalide")
     ap.add_argument("--epoques", type=int, default=200)
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--gamma", type=float, default=1.0)
@@ -207,20 +259,22 @@ def main(argv=None):
             programmes.append({"nom": "ENV.EXAMPLE", "program": example_program(pool)})
         if not programmes:
             ap.error("Aucun programme à imiter (--exemple ou --strategies).")
-        scs = [{"seed": 1 + k, "intensite": a.intensites[k % len(a.intensites)]} for k in range(a.scenarios)]
+        scs = scenarios_deux_couleurs([{"seed": 1 + k, "intensite": a.intensites[k % len(a.intensites)]} for k in range(a.scenarios)], a.part_bleu)
         t0 = time.time()
         demos = collect_demos(pool, programmes, scs)
-        print(f"{len(demos)} démonstrations en {time.time() - t0:.1f} s ; scores : {[d.score for d in demos]}")
+        print(f"{len(demos)} démonstrations en {time.time() - t0:.1f} s ; scores : {[(d.equipe, d.score) for d in demos]}")
+        demos, bilan_bleu = filtrer_demos_bleues(demos, a.prefixe_bleu)
+        print("Démonstrations bleues : " + json.dumps(bilan_bleu))
         model = RecurrentActorCritic(pool.n_in, pool.n_out, hidden=a.hidden)
         st = imitation_train(model, demos, epochs=a.epoques, lr=a.lr, gamma=a.gamma, log=print)
         ev = None
         if a.eval_matchs:
-            ev = evaluate(model, pool, sampler.fixed(a.eval_matchs))
+            ev = evaluate(model, pool, ScenarioSampler([], ["aucun"], 1, part_bleu=a.part_bleu).fixed(a.eval_matchs))
             print(resume(ev))
         extra = {"env_config": env_cfg, "obs_version": pool.obs_version, "catalogue_version": pool.catalogue_version,
                  "catalogue": pool.catalogue, "groupes": pool.groups, "moteur": pool.moteur, "bareme": pool.bareme,
                  "obs_rms": st["obs_rms"].state_dict(), "ret_rms": st["ret_rms"].state_dict(), "gamma": a.gamma,
-                 "imitation": {k: v for k, v in st.items() if k not in ("historique", "obs_rms", "ret_rms")},
+                 "imitation": dict({k: v for k, v in st.items() if k not in ("historique", "obs_rms", "ret_rms")}, demonstrations_equipes=bilan_bleu),
                  "evaluation": ev}
         save_checkpoint(a.sortie + ".pt", model, extra)
         print(json.dumps(export_all(model, a.sortie, extra), ensure_ascii=False, indent=2))

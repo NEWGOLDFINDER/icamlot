@@ -26,7 +26,8 @@ import torch
 
 from trainer.js_env_pool import JsEnvPool, default_procs
 from trainer.models import RecurrentActorCritic, load_checkpoint
-from trainer.scenarios import INTENSITES, ScenarioSampler, brain_opponent, cle_scenario, load_strategies, load_strategy_file
+from trainer.scenarios import (BLEU, EQUIPES, INTENSITES, JAUNE, PART_BLEU_DEFAUT, ScenarioSampler, brain_opponent, cle_scenario,
+                               equipe_scenario, critere_selection, load_strategies, load_strategy_file)
 
 # Hypothèse : nombre de matchs pour sélectionner un champion (critère de sortie de la phase 3 de l'audit : ≥ 200).
 MATCHS_SELECTION = 200
@@ -110,6 +111,24 @@ def evaluate(
     return rapport(results, dt, pool.stats["decisions"] - dec0)
 
 
+def equipe_resultat(r: dict) -> str:
+    """Équipe jouée par un match : lue sur le moteur (bilan « equipe »), à défaut sur le scénario (jaune si absente)."""
+    return r.get("equipe") or equipe_scenario(r.get("scenario"))
+
+
+def _bloc(v: List[dict]) -> dict:
+    """Statistiques d'un groupe de matchs : score, victoires, score adverse, erreurs moteur."""
+    duels = [x for x in v if x.get("adversaire")]
+    return {"matchs": len(v), "score": _stats([float(x.get("score") or 0) for x in v]),
+            "taux_victoire": (sum(1 for x in duels if x["score"] > x["adversaire"]["score"]) / len(duels)) if duels else None,
+            "score_adversaire": _stats([float(x["adversaire"]["score"]) for x in duels]),
+            "erreurs_par_match": _stats([int(x.get("errors") or 0) for x in v])}
+
+
+def _par_equipe(v: List[dict]) -> Dict[str, dict]:
+    return {e: _bloc([x for x in v if equipe_resultat(x) == e]) for e in EQUIPES if any(equipe_resultat(x) == e for x in v)}
+
+
 def rapport(results: List[dict], duree_s: float, decisions: int) -> dict:
     scores = [float(r.get("score") or 0) for r in results]
     errs = [int(r.get("errors") or 0) for r in results]
@@ -122,9 +141,16 @@ def rapport(results: List[dict], duree_s: float, decisions: int) -> dict:
         key = cle_scenario(sc) + " · " + (sc.get("intensite") or "aucun")
         par_adv.setdefault(key, []).append(r)
     detail_keys = sorted({k for r in results for k in (r.get("detail") or {})})
+    par_eq = _par_equipe(results)
+    moyennes = [b["score"]["moyenne"] for b in par_eq.values() if b["score"]["moyenne"] is not None]
+    valeur = float(np.mean(moyennes)) if moyennes else None
     return {
         "matchs": len(results),
         "score": _stats(scores),
+        "par_equipe": par_eq,
+        "selection": {"valeur": valeur, "regle": "moyenne des scores moyens jaune et bleu",
+                      "jaune": (par_eq.get(JAUNE) or {}).get("score", {}).get("moyenne"),
+                      "bleu": (par_eq.get(BLEU) or {}).get("score", {}).get("moyenne")},
         "erreurs_par_match": _stats(errs),
         "erreurs_moteur": errs,
         "matchs_sans_erreur": sum(1 for e in errs if e == 0),
@@ -136,13 +162,7 @@ def rapport(results: List[dict], duree_s: float, decisions: int) -> dict:
         "tronques": sum(1 for r in results if r.get("truncated")),
         "actions_invalides": sum(int(r.get("invalid") or 0) for r in results),
         "detail_moyen": {k: float(np.mean([(r.get("detail") or {}).get(k) or 0 for r in results])) for k in detail_keys},
-        "par_adversaire": {k: {"matchs": len(v), "score": _stats([float(x.get("score") or 0) for x in v]),
-                               "taux_victoire": (sum(1 for x in v if x.get("adversaire") and x["score"] > x["adversaire"]["score"])
-                                                 / max(1, sum(1 for x in v if x.get("adversaire"))))
-                               if any(x.get("adversaire") for x in v) else None,
-                               "score_adversaire": _stats([float(x["adversaire"]["score"]) for x in v if x.get("adversaire")]),
-                               "erreurs_par_match": _stats([int(x.get("errors") or 0) for x in v])}
-                           for k, v in sorted(par_adv.items())},
+        "par_adversaire": {k: dict(_bloc(v), par_equipe=_par_equipe(v)) for k, v in sorted(par_adv.items())},
         "duree_s": duree_s,
         "matchs_par_s": len(results) / duree_s if duree_s > 0 else None,
         "decisions": decisions,
@@ -153,6 +173,10 @@ def rapport(results: List[dict], duree_s: float, decisions: int) -> dict:
 def resume(r: dict) -> str:
     s = r["score"]
     txt = f"{r['matchs']} matchs : score {s['moyenne']:.1f} ± {s['ecart_type']:.1f} (min {s['min']:.0f}, max {s['max']:.0f})"
+    pe = r.get("par_equipe") or {}
+    if len(pe) > 1:
+        txt += " · jaune " + f"{pe[JAUNE]['score']['moyenne']:.1f} ({pe[JAUNE]['matchs']})" + " · bleu " + f"{pe[BLEU]['score']['moyenne']:.1f} ({pe[BLEU]['matchs']})"
+        txt += f" · critère {r['selection']['valeur']:.1f}"
     if r.get("taux_victoire") is not None:
         txt += f" · victoires {100 * r['taux_victoire']:.0f} % ({r['victoires']}/{r['duels']})"
     e = r["erreurs_par_match"]
@@ -162,14 +186,14 @@ def resume(r: dict) -> str:
 
 
 def build_sampler(strategies: Sequence[Path] = (), dossier: Optional[Path] = None, cerveaux: Sequence[tuple] = (),
-                  intensites: Sequence[str] = ("aucun",), seed: int = 1) -> ScenarioSampler:
+                  intensites: Sequence[str] = ("aucun",), seed: int = 1, part_bleu: Optional[float] = PART_BLEU_DEFAUT) -> ScenarioSampler:
     opps = [load_strategy_file(p) for p in strategies]
     opps += load_strategies(dossier) if dossier else []
     for k, (cfg_path, poids_path) in enumerate(cerveaux):
         cfg = json.loads(Path(cfg_path).read_text(encoding="utf-8"))
         poids = json.loads(Path(poids_path).read_text(encoding="utf-8"))
         opps.append(brain_opponent(cfg, poids, ident=f"cerveau:{Path(cfg_path).stem}"))
-    return ScenarioSampler(opps, intensites, seed)
+    return ScenarioSampler(opps, intensites, seed, part_bleu=part_bleu)
 
 
 def main(argv=None):
@@ -184,6 +208,7 @@ def main(argv=None):
     ap.add_argument("--cerveau", nargs=2, action="append", default=[], metavar=("CONFIG", "POIDS"),
                     help="cerveau MLP adverse : configuration camelot-cerveau et poids camelot-poids")
     ap.add_argument("--graine", type=int, default=10_000, help="première graine des scénarios")
+    ap.add_argument("--part-bleu", type=float, default=PART_BLEU_DEFAUT, help="proportion de matchs joués en bleu (0 = jaune seul)")
     ap.add_argument("--echantillonner", action="store_true", help="politique échantillonnée au lieu de gloutonne")
     ap.add_argument("--sortie", help="écrit le rapport JSON ici")
     ap.add_argument("--env-config", help="configuration ENV.create (JSON) ; sinon celle du point de sauvegarde")
@@ -193,7 +218,7 @@ def main(argv=None):
         model, ck = load_checkpoint(a.modele)
     env_cfg = json.loads(Path(a.env_config).read_text()) if a.env_config else (ck.get("env_config") or {"skipContacts": True})
     sampler = build_sampler([Path(p) for p in a.strategie], Path(a.dossier_strategies) if a.dossier_strategies else None,
-                            a.cerveau, a.intensites)
+                            a.cerveau, a.intensites, part_bleu=a.part_bleu)
     with JsEnvPool(a.processus, a.envs_par_processus, env_cfg, opponents=sampler.registry()) as pool:
         if model is not None and (ck.get("catalogue_version") not in (None, pool.catalogue_version)
                                   or ck.get("obs_version") not in (None, pool.obs_version)):

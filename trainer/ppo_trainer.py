@@ -34,7 +34,7 @@ import torch.nn.functional as F
 from trainer.evaluation import MATCHS_SELECTION, evaluate, resume
 from trainer.js_env_pool import JsEnvPool, default_procs
 from trainer.models import RecurrentActorCritic, RunningMeanStd, load_checkpoint, save_checkpoint
-from trainer.scenarios import ScenarioSampler
+from trainer.scenarios import ScenarioSampler, critere_selection
 
 
 @dataclass
@@ -322,6 +322,11 @@ class PPOTrainer:
             "erreurs_moyennes": float(np.mean([e.get("errors") or 0 for e in new])) if new else None,
             "recompense_rollout": float(data["rew"].sum() / max(1, data["rew"].shape[1])),
         })
+        # scores d'entraînement par couleur (équipe lue sur le moteur, contrat §17)
+        for equipe, cle in (("yellow", "score_jaune"), ("blue", "score_bleu")):
+            xs = [e.get("score", 0) for e in new if e.get("equipe") == equipe]
+            st[cle] = float(np.mean(xs)) if xs else None
+            st["episodes_" + ("jaune" if equipe == "yellow" else "bleu")] = len(xs)
         return st
 
     # ───────── évaluation / champion ─────────
@@ -347,7 +352,7 @@ class PPOTrainer:
                     best = old["evaluation"]
             except Exception:
                 best = None
-        better = best is None or ev["score"]["moyenne"] > best["score"]["moyenne"]
+        better = best is None or critere_selection(ev) > critere_selection(best)
         ev["champion"] = bool(better)
         if better:
             self.best_eval = ev
@@ -363,7 +368,7 @@ class PPOTrainer:
             self.log(f"Nouveau champion : {champion_pt}")
         else:
             self.best_eval = best
-            self.log(f"Champion conservé (score {best['score']['moyenne']:.1f} ≥ {ev['score']['moyenne']:.1f}).")
+            self.log(f"Champion conservé (critère {critere_selection(best):.1f} ≥ {critere_selection(ev):.1f}).")
         return ev
 
     def run(self, base: Path, eval_sampler: Optional[ScenarioSampler] = None,
